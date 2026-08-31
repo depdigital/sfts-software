@@ -254,84 +254,6 @@ button { border: 0; cursor: pointer; }
   border-radius: 50%;
 }
 
-.refereeScreen { background: #06090f; }
-.refHeader {
-  height: 78px;
-  display: grid;
-  grid-template-columns: 120px 1fr 170px;
-  gap: 10px;
-  align-items: center;
-  padding: 8px;
-  background: #0e131d;
-}
-.cornerSelectWrap label {
-  display: block;
-  font-size: 12px;
-  font-weight: 700;
-  margin-bottom: 4px;
-}
-.cornerSelectWrap select,
-.connectButton {
-  width: 100%;
-  height: 52px;
-  border-radius: 8px;
-}
-.refStatus {
-  text-align: center;
-  font-weight: 900;
-}
-.refLayout {
-  display: grid;
-  grid-template-columns: 1fr 210px 1fr;
-  gap: 12px;
-  padding: 12px;
-  height: calc(100vh - 78px);
-}
-.refColumn {
-  display: grid;
-  grid-template-rows: repeat(3, 1fr);
-  gap: 12px;
-}
-.refColumn button {
-  border-radius: 12px;
-  color: #fff;
-  font-size: clamp(52px, 9vw, 124px);
-  font-weight: 900;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 18px;
-}
-.redRefColumn button { background: linear-gradient(160deg, #ef2c23, #ff5d36); }
-.blueRefColumn button { background: linear-gradient(160deg, #13a2e6, #26d3ff); }
-.refCenterColumn {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-}
-.refLogo {
-  width: 180px;
-  height: 110px;
-  object-fit: contain;
-  margin-bottom: 18px;
-}
-.refVoteText {
-  font-size: 14px;
-  font-weight: 700;
-  color: #dce2ef;
-}
-.cancelVoteButton {
-  margin-top: 18px;
-  width: 100%;
-  padding: 14px 10px;
-  border-radius: 8px;
-  background: #364052;
-  color: #fff;
-  font-weight: 900;
-}
-
 .overlay {
   position: fixed;
   inset: 0;
@@ -415,18 +337,6 @@ button { border: 0; cursor: pointer; }
   font-size: 32px;
   text-align: center;
 }
-.qrImage {
-  width: min(340px, 78vw);
-  padding: 8px;
-  background: #fff;
-  border-radius: 8px;
-}
-.qrUrl {
-  word-break: break-all;
-  color: #bac6d8;
-  font-size: 13px;
-}
-
 .historyList {
   display: grid;
   gap: 10px;
@@ -639,8 +549,6 @@ button { border: 0; cursor: pointer; }
   .hostHeader { grid-template-columns: 1fr; }
   .mainBoard, .bottomArea { grid-template-columns: minmax(0, 1fr) 210px minmax(0, 1fr); gap: 12px; }
   .controlGrid { grid-template-rows: repeat(2, 60px); }
-  .refLayout { grid-template-columns: 1fr 150px 1fr; }
-  .refLogo { width: 130px; height: 90px; }
   .roundGrid { grid-template-columns: 1fr 170px 1fr; }
 }
 @media (max-width: 700px) {
@@ -652,8 +560,6 @@ button { border: 0; cursor: pointer; }
   .controlGrid button { font-size: 10px; gap: 4px; }
   .controlGrid b { font-size: 16px; }
   .icon { width: 20px; height: 24px; border-width: 2px; }
-  .refLayout { grid-template-columns: 1fr 90px 1fr; }
-  .refColumn button { font-size: 44px; }
   .roundGrid { grid-template-columns: 1fr; }
   .historyItem { grid-template-columns: 1fr; }
   .joystickGrid { grid-template-columns: 1fr; }

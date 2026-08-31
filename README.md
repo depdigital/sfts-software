@@ -1,14 +1,14 @@
 # SFTS Taekwondo Scoring System
 
-SFTS is a LAN-based taekwondo match scoring application. One host runs the scoring server and scoreboard, while referee clients connect over the same local network and submit votes in real time.
+SFTS is a LAN-based taekwondo match scoring application. One host runs the scoring server and scoreboard, while dedicated C1–C4 ESP32 remotes submit votes in real time.
 
-This repository contains the browser-based referee client plus the backend protocol and simulator for ESP32-based physical remotes. Raspberry Pi appliance deployment and the actual ESP32 firmware are not yet implemented.
+This repository contains the scoring dashboard, backend remote protocol, and simulator for ESP32-based physical remotes. Raspberry Pi appliance deployment and the actual ESP32 firmware are not yet implemented.
 
 ## Current features
 
 - Host scoreboard for red and blue competitors.
-- Up to four referee corners, C1–C4.
-- One connected host and one connected referee client per corner.
+- Up to four physical remote corners, C1–C4.
+- One connected host and one connected remote per corner.
 - 3-of-4 majority voting for +1, +2, and +3 points.
 - Host controls for points, gam-jeom, score editing, names, and timer control.
 - Best-of-three match flow.
@@ -16,8 +16,7 @@ This repository contains the browser-based referee client plus the backend proto
 - Automatic round ending after timer expiry, a 15-point gap, or five gam-jeom.
 - Round summaries with score, gam-jeom, and point-type statistics.
 - Match winner screen and match numbering.
-- QR-code connection screen for referee devices.
-- Host-only controller test mode.
+- Host-only remote test mode for checking all C1–C4 remotes.
 - ESP32 remote protocol with fixed C1–C4 identities, token authentication, acknowledgements, and sequence-based duplicate protection.
 - Node-based remote simulator for backend testing before hardware is available.
 - In-memory history of the last 50 completed matches.
@@ -65,7 +64,7 @@ npm install
 npm test
 ```
 
-The tests verify the HTTP server, QR-code endpoint, WebSocket roles, referee voting, vote cleanup, timer expiry, phase restrictions, and malformed input handling.
+The tests verify the HTTP server, WebSocket remote protocol, vote cleanup, timer expiry, phase restrictions, and malformed input handling.
 
 ### 3. Start the application
 
@@ -85,15 +84,9 @@ http://localhost:8080
 
 Select **MAIN SCOREBOARD**, then use the host controls to configure the match.
 
-### 5. Connect referee devices
+### 5. Test the physical remotes
 
-Connect referee phones or other browser devices to the same Wi-Fi network as the host. Open the Wi-Fi URL printed by the server, for example:
-
-```text
-http://192.168.0.101:8080
-```
-
-Select **CORNER REFEREE**, choose C1–C4, and press **CONNECT**. The host’s **QR CODE CONNECT** setting can also be used to display the connection URL.
+From the landing screen, select **TEST REMOTES**. This opens the host-only remote test screen and checks all six scoring buttons for each C1–C4 remote. A remote or simulator press lights the matching control; all six successful presses mark that corner as passed.
 
 ### 6. Stop the application
 

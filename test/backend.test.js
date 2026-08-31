@@ -219,10 +219,13 @@ test('malformed WebSocket input does not terminate a connection', async () => {
   assert.equal(client.readyState, WebSocket.OPEN);
 });
 
-test('HTTP static and connection-info endpoints are available', async () => {
+test('HTTP static endpoint is available and QR endpoint is removed', async () => {
   const page = await fetch(`http://127.0.0.1:${port}/`);
   assert.equal(page.status, 200);
-  assert.match(await page.text(), /STRIKE FORCE TAEKWONDO SCORING SYSTEM/);
+  const html = await page.text();
+  assert.match(html, /STRIKE FORCE TAEKWONDO SCORING SYSTEM/);
+  assert.doesNotMatch(html, /onclick="openTestRemotes\(\)"/);
+  assert.match(html, /onclick="openTestMode\(\)">TEST REMOTES<\/button>/);
 
   const css = await fetch(`http://127.0.0.1:${port}/css/style.css`);
   const js = await fetch(`http://127.0.0.1:${port}/js/app.js`);
@@ -230,8 +233,5 @@ test('HTTP static and connection-info endpoints are available', async () => {
   assert.equal(js.status, 200);
 
   const info = await fetch(`http://127.0.0.1:${port}/api/info`);
-  assert.equal(info.status, 200);
-  const body = await info.json();
-  assert.match(body.url, /^http:\/\//);
-  assert.match(body.qr, /^data:image\/png;base64,/);
+  assert.equal(info.status, 404);
 });

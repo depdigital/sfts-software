@@ -3,7 +3,6 @@ import http from "http";
 import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
-import QRCode from "qrcode";
 import { WebSocketServer } from "ws";
 
 const PORT = Number(process.env.PORT || 8080);
@@ -37,17 +36,6 @@ function getLocalIPv4() {
   }
   return "localhost";
 }
-
-app.get("/api/info", async (_req, res) => {
-  try {
-    const url = `http://${getLocalIPv4()}:${PORT}/`;
-    const qr = await QRCode.toDataURL(url, { margin: 1, width: 360 });
-    res.json({ url, qr });
-  } catch (error) {
-    console.error('QR generation failed:', error.message);
-    res.status(500).json({ error: 'Unable to generate connection QR code' });
-  }
-});
 
 const baseStats = () => ({ plus1: 0, plus2: 0, plus3: 0 });
 function makeSide(name, profile = {}) {

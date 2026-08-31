@@ -100,11 +100,6 @@ function openHost() {
   showScreen('host');
 }
 
-function openRef() {
-  role = 'referee';
-  showScreen('ref');
-}
-
 function nameChange(player, value) {
   send({ type: 'host', action: 'name', player, name: value });
 }
@@ -179,16 +174,6 @@ function saveTimer() {
   closeTimerEditor();
 }
 
-async function showQR() {
-  closeSettings();
-  const res = await fetch('/api/info');
-  const data = await res.json();
-  $('qrImage').src = data.qr;
-  $('qrUrl').textContent = data.url;
-  $('qrModal').classList.remove('hidden');
-}
-function closeQR() { $('qrModal').classList.add('hidden'); }
-
 function openHistory() {
   closeSettings();
   const box = $('historyList');
@@ -244,21 +229,6 @@ function startNewMatch() {
   send({ type: 'host', action: 'newMatch' });
   $('winnerSlide').classList.add('hidden');
   $('roundOverlay').classList.add('hidden');
-}
-
-function connectRef() {
-  const corner = Number($('cornerSelect').value);
-  send({ type: 'role', role: 'referee', corner });
-  $('refStatus').textContent = `C${corner} CONNECTED`;
-}
-function refVote(player, points) {
-  const corner = Number($('cornerSelect').value);
-  send({ type: 'ref', action: 'vote', player, points });
-  $('refVoteText').textContent = `C${corner}: ${player} +${points}`;
-}
-function cancelVote() {
-  send({ type: 'ref', action: 'cancel' });
-  $('refVoteText').textContent = 'VOTE CANCELLED';
 }
 
 function openTestMode() {
@@ -326,7 +296,6 @@ function escapeHtml(text) {
 }
 
 window.openHost = openHost;
-window.openRef = openRef;
 window.nameChange = nameChange;
 window.playPause = playPause;
 window.resetRoundTimer = resetRoundTimer;
@@ -343,14 +312,9 @@ window.resetCurrentMatch = resetCurrentMatch;
 window.openTimerEditor = openTimerEditor;
 window.closeTimerEditor = closeTimerEditor;
 window.saveTimer = saveTimer;
-window.showQR = showQR;
-window.closeQR = closeQR;
 window.openHistory = openHistory;
 window.closeHistory = closeHistory;
 window.closeRoundOverlay = closeRoundOverlay;
 window.startNewMatch = startNewMatch;
-window.connectRef = connectRef;
-window.refVote = refVote;
-window.cancelVote = cancelVote;
 window.openTestMode = openTestMode;
 window.closeTestMode = closeTestMode;

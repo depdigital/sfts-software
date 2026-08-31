@@ -16,8 +16,7 @@
 
     <section id="home" class="screen homeScreen">
       <img class="homeLogo" src="/assets/sfts-logo.jpg" alt="SFTS logo" />
-      <button class="homeBtn" onclick="openHost()">MAIN SCOREBOARD</button>
-      <button class="homeBtn" onclick="openRef()">CORNER REFEREE</button>
+      <button class="homeBtn" onclick="openHost()">LAUNCH SCOREBOARD</button>
     </section>
 
     <section id="host" class="screen hidden hostScreen">
@@ -102,60 +101,13 @@
       </section>
     </section>
 
-    <section id="ref" class="screen hidden refereeScreen">
-      <header class="refHeader">
-        <div class="cornerSelectWrap">
-          <label>CORNER</label>
-          <select id="cornerSelect">
-            <option value="1">C1</option>
-            <option value="2">C2</option>
-            <option value="3">C3</option>
-            <option value="4">C4</option>
-          </select>
-        </div>
-        <button class="connectButton" onclick="connectRef()">CONNECT</button>
-        <div id="refStatus" class="refStatus">OFFLINE</div>
-      </header>
-
-      <main class="refLayout">
-        <div class="refColumn redRefColumn">
-          <button onclick="refVote('RED', 1)">+1</button>
-          <button onclick="refVote('RED', 2)">
-            <span class="icon chest"></span><b>+2</b>
-          </button>
-          <button onclick="refVote('RED', 3)">
-            <span class="icon head"></span><b>+3</b>
-          </button>
-        </div>
-
-        <div class="refCenterColumn">
-          <img src="/assets/sfts-logo.jpg" class="refLogo" alt="SFTS" />
-          <div id="refVoteText" class="refVoteText">SELECT A POINT</div>
-          <button class="cancelVoteButton" onclick="cancelVote()">
-            CANCEL VOTE
-          </button>
-        </div>
-
-        <div class="refColumn blueRefColumn">
-          <button onclick="refVote('BLUE', 1)">+1</button>
-          <button onclick="refVote('BLUE', 2)">
-            <span class="icon chest"></span><b>+2</b>
-          </button>
-          <button onclick="refVote('BLUE', 3)">
-            <span class="icon head"></span><b>+3</b>
-          </button>
-        </div>
-      </main>
-    </section>
-
     <section id="settingsModal" class="overlay hidden">
       <div class="modalCard">
         <h2>SETTINGS</h2>
         <button onclick="resetCurrentMatch()">RESET CURRENT MATCH</button>
-        <button onclick="showQR()">QR CODE CONNECT</button>
         <button onclick="openTimerEditor()">EDIT TIMER</button>
         <button onclick="openHistory()">MATCH HISTORY</button>
-        <button onclick="openTestMode()">TEST MODE</button>
+        <button onclick="openTestMode()">TEST REMOTES</button>
         <button onclick="closeSettings()">CLOSE</button>
       </div>
     </section>
@@ -338,15 +290,6 @@
       </div>
     </section>
 
-    <section id="qrModal" class="overlay hidden">
-      <div class="modalCard smallModal">
-        <h2>REFEREE QR CONNECT</h2>
-        <img id="qrImage" class="qrImage" alt="QR code" />
-        <p id="qrUrl" class="qrUrl"></p>
-        <button onclick="closeQR()">CLOSE</button>
-      </div>
-    </section>
-
     <section id="historyModal" class="overlay hidden">
       <div class="modalCard wideModal">
         <h2>MATCH HISTORY</h2>
@@ -396,14 +339,14 @@
     <section id="testMode" class="screen hidden testModeScreen">
       <header class="testHeader">
         <img src="/assets/sfts-logo.jpg" class="testLogo" alt="SFTS" />
-        <div class="testHeaderTitle">TEST MODE</div>
+        <div class="testHeaderTitle">TEST REMOTES</div>
         <button class="exitTestButton" onclick="closeTestMode()">
           EXIT TEST
         </button>
       </header>
       <p class="testHelp">
-        Press all six buttons on each corner referee device. Each press lights
-        up below. When all six buttons work, a ✓ appears on that joystick.
+        Press all six buttons on each remote corner. Each press lights up below.
+        When all six buttons work, a ✓ appears on that remote.
       </p>
       <div class="joystickGrid">
         <div id="joy1" class="joystickCard">
