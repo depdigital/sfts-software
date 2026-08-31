@@ -1,367 +1,470 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#07090f">
-  <title>SFTS Taekwondo Scoring V3</title>
-  <link rel="manifest" href="/manifest.json">
-  <link rel="stylesheet" href="/css/style.css">
-</head>
-<body>
-  <div id="toast"></div>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width,initial-scale=1,viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#07090f" />
+    <title>SFTS Dashboard</title>
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="stylesheet" href="/css/style.css" />
+  </head>
+  <body>
+    <div id="toast"></div>
 
-  <section id="home" class="screen homeScreen">
-    <img class="homeLogo" src="/assets/sfts-logo.jpg" alt="SFTS logo">
-    <button class="homeBtn" onclick="openHost()">MAIN SCOREBOARD</button>
-    <button class="homeBtn" onclick="openRef()">CORNER REFEREE</button>
-  </section>
+    <section id="home" class="screen homeScreen">
+      <img class="homeLogo" src="/assets/sfts-logo.jpg" alt="SFTS logo" />
+      <button class="homeBtn" onclick="openHost()">MAIN SCOREBOARD</button>
+      <button class="homeBtn" onclick="openRef()">CORNER REFEREE</button>
+    </section>
 
-  <section id="host" class="screen hidden hostScreen">
-    <header class="hostHeader">
-      <img class="headerLogo" src="/assets/sfts-logo.jpg" alt="SFTS">
-      <div id="voteStrip" class="voteStrip">C1 — &nbsp; C2 — &nbsp; C3 — &nbsp; C4 —</div>
-      <button class="settingsButton" onclick="openSettings()">⚙</button>
-    </header>
+    <section id="host" class="screen hidden hostScreen">
+      <header class="hostHeader">
+        <div class="systemHeading">STRIKE FORCE TAEKWONDO SCORING SYSTEM</div>
+      </header>
 
-    <section class="mainBoard">
-      <div class="fighterSide redSide">
-        <div class="gamRibbon">GAM-JEOM <b id="redGam">0</b></div>
-        <div id="redName" class="nameInput">HONG</div>
-        <div id="redMeta" class="playerMeta">PLAYER NAME — · WEIGHT — · STATE — · DISTRICT —</div>
-        <div id="redScore" class="scoreNumber">0</div>
-      </div>
+      <section class="mainBoard">
+        <div class="fighterSide redSide">
+          <div class="gamRibbon">GAM-JEOM <b id="redGam">0</b></div>
+          <div id="redName" class="nameInput">HONG</div>
+          <div id="redMeta" class="playerMeta">
+            PLAYER NAME — · WEIGHT — · STATE — · DISTRICT —
+          </div>
+          <div id="redScore" class="scoreNumber">0</div>
+        </div>
 
-      <div class="centerBoard">
-        <div class="matchText">MATCH <b id="matchNo">001</b></div>
-        <div id="timer" class="timerText">1:00</div>
-        <div id="roundText" class="roundText">ROUND 1</div>
-        <button id="playBtn" class="centerControl primary" onclick="playPause()">▶ PLAY</button>
-        <button class="centerControl" onclick="resetRoundTimer()">↺ RESET TIMER</button>
-      </div>
+        <div class="centerBoard">
+          <div class="matchText">MATCH <b id="matchNo">001</b></div>
+          <div id="timer" class="timerText">1:00</div>
+          <div id="roundText" class="roundText">ROUND 1</div>
+          <button
+            id="playBtn"
+            class="centerControl primary"
+            onclick="playPause()"
+          >
+            ▶ PLAY
+          </button>
+          <button class="centerControl" onclick="resetRoundTimer()">
+            ↺ RESET TIMER
+          </button>
+          <div id="voteStrip" class="voteStrip">
+            C1 — &nbsp; C2 — &nbsp; C3 — &nbsp; C4 —
+          </div>
+        </div>
 
-      <div class="fighterSide blueSide">
-        <div class="gamRibbon right">GAM-JEOM <b id="blueGam">0</b></div>
-        <div id="blueName" class="nameInput">CHUNG</div>
-        <div id="blueMeta" class="playerMeta">PLAYER NAME — · WEIGHT — · STATE — · DISTRICT —</div>
-        <div id="blueScore" class="scoreNumber">0</div>
+        <div class="fighterSide blueSide">
+          <div class="gamRibbon right">GAM-JEOM <b id="blueGam">0</b></div>
+          <div id="blueName" class="nameInput">CHUNG</div>
+          <div id="blueMeta" class="playerMeta">
+            PLAYER NAME — · WEIGHT — · STATE — · DISTRICT —
+          </div>
+          <div id="blueScore" class="scoreNumber">0</div>
+        </div>
+      </section>
+
+      <section class="bottomArea">
+        <div class="controlGrid redButtons">
+          <button onclick="manualPoint('RED', 2)">
+            <span class="icon chest"></span><b>+2</b> CHEST
+          </button>
+          <button onclick="manualPoint('RED', 3)">
+            <span class="icon head"></span><b>+3</b> HEAD
+          </button>
+          <button onclick="manualPoint('RED', 1)"><b>+1</b> PUNCH</button>
+          <button onclick="manualGam('RED')">GAM-JEOM</button>
+          <button onclick="editScore('RED')">EDIT SCORE</button>
+          <button onclick="editGam('RED')">EDIT GAM-JEOM</button>
+        </div>
+
+        <div class="centerBottomBox">
+          <button class="centerBottomButton" onclick="openSettings()">
+            SETTINGS
+          </button>
+          <button class="centerBottomButton" onclick="openPlayerSettings()">
+            PLAYER SETTINGS
+          </button>
+        </div>
+
+        <div class="controlGrid blueButtons">
+          <button onclick="manualPoint('BLUE', 2)">
+            <span class="icon chest"></span><b>+2</b> CHEST
+          </button>
+          <button onclick="manualPoint('BLUE', 3)">
+            <span class="icon head"></span><b>+3</b> HEAD
+          </button>
+          <button onclick="manualPoint('BLUE', 1)"><b>+1</b> PUNCH</button>
+          <button onclick="manualGam('BLUE')">GAM-JEOM</button>
+          <button onclick="editScore('BLUE')">EDIT SCORE</button>
+          <button onclick="editGam('BLUE')">EDIT GAM-JEOM</button>
+        </div>
+      </section>
+    </section>
+
+    <section id="ref" class="screen hidden refereeScreen">
+      <header class="refHeader">
+        <div class="cornerSelectWrap">
+          <label>CORNER</label>
+          <select id="cornerSelect">
+            <option value="1">C1</option>
+            <option value="2">C2</option>
+            <option value="3">C3</option>
+            <option value="4">C4</option>
+          </select>
+        </div>
+        <button class="connectButton" onclick="connectRef()">CONNECT</button>
+        <div id="refStatus" class="refStatus">OFFLINE</div>
+      </header>
+
+      <main class="refLayout">
+        <div class="refColumn redRefColumn">
+          <button onclick="refVote('RED', 1)">+1</button>
+          <button onclick="refVote('RED', 2)">
+            <span class="icon chest"></span><b>+2</b>
+          </button>
+          <button onclick="refVote('RED', 3)">
+            <span class="icon head"></span><b>+3</b>
+          </button>
+        </div>
+
+        <div class="refCenterColumn">
+          <img src="/assets/sfts-logo.jpg" class="refLogo" alt="SFTS" />
+          <div id="refVoteText" class="refVoteText">SELECT A POINT</div>
+          <button class="cancelVoteButton" onclick="cancelVote()">
+            CANCEL VOTE
+          </button>
+        </div>
+
+        <div class="refColumn blueRefColumn">
+          <button onclick="refVote('BLUE', 1)">+1</button>
+          <button onclick="refVote('BLUE', 2)">
+            <span class="icon chest"></span><b>+2</b>
+          </button>
+          <button onclick="refVote('BLUE', 3)">
+            <span class="icon head"></span><b>+3</b>
+          </button>
+        </div>
+      </main>
+    </section>
+
+    <section id="settingsModal" class="overlay hidden">
+      <div class="modalCard">
+        <h2>SETTINGS</h2>
+        <button onclick="resetCurrentMatch()">RESET CURRENT MATCH</button>
+        <button onclick="showQR()">QR CODE CONNECT</button>
+        <button onclick="openTimerEditor()">EDIT TIMER</button>
+        <button onclick="openHistory()">MATCH HISTORY</button>
+        <button onclick="openTestMode()">TEST MODE</button>
+        <button onclick="closeSettings()">CLOSE</button>
       </div>
     </section>
 
-    <section class="bottomArea">
-      <div class="controlGrid redButtons">
-        <button onclick="manualPoint('RED',2)"><span class="icon chest"></span><b>+2</b> CHEST</button>
-        <button onclick="manualPoint('RED',3)"><span class="icon head"></span><b>+3</b> HEAD</button>
-        <button onclick="manualPoint('RED',1)"><b>+1</b> PUNCH</button>
-        <button onclick="manualGam('RED')">GAM-JEOM</button>
-        <button onclick="editScore('RED')">EDIT SCORE</button>
-        <button onclick="editGam('RED')">EDIT GAM-JEOM</button>
-      </div>
+    <section id="playerSettingsModal" class="overlay hidden">
+      <div class="modalCard playerSettingsModal">
+        <h2>PLAYER SETTINGS</h2>
+        <div class="playerSettingsGrid">
+          <div class="playerSettingsPanel redPlayerPanel">
+            <h3>RED PLAYER</h3>
+            <label
+              >PLAYER NAME
+              <input
+                id="playerRedName"
+                class="playerSettingsInput"
+                maxlength="24"
+                autocomplete="off"
+              />
+            </label>
+            <label
+              >WEIGHT CATEGORY
+              <input
+                id="playerRedWeight"
+                class="playerSettingsInput"
+                maxlength="32"
+                placeholder="Example: -58 kg"
+                autocomplete="off"
+              />
+            </label>
+            <label
+              >STATE CODE
+              <select id="playerRedStateCode" class="playerSettingsSelect">
+                <option value="">SELECT CODE</option>
+                <option value="AN">AN — Andaman and Nicobar Islands</option>
+                <option value="AP">AP — Andhra Pradesh</option>
+                <option value="AR">AR — Arunachal Pradesh</option>
+                <option value="AS">AS — Assam</option>
+                <option value="BR">BR — Bihar</option>
+                <option value="CH">CH — Chandigarh</option>
+                <option value="CG">CG — Chhattisgarh</option>
+                <option value="DD">
+                  DD — Dadra and Nagar Haveli and Daman and Diu
+                </option>
+                <option value="DL">DL — Delhi</option>
+                <option value="DN">
+                  DN — Dadra and Nagar Haveli (legacy code)
+                </option>
+                <option value="GA">GA — Goa</option>
+                <option value="GJ">GJ — Gujarat</option>
+                <option value="HR">HR — Haryana</option>
+                <option value="HP">HP — Himachal Pradesh</option>
+                <option value="JK">JK — Jammu and Kashmir</option>
+                <option value="JH">JH — Jharkhand</option>
+                <option value="KA">KA — Karnataka</option>
+                <option value="KL">KL — Kerala</option>
+                <option value="LA">LA — Ladakh</option>
+                <option value="LD">LD — Lakshadweep</option>
+                <option value="MP">MP — Madhya Pradesh</option>
+                <option value="MH">MH — Maharashtra</option>
+                <option value="MN">MN — Manipur</option>
+                <option value="ML">ML — Meghalaya</option>
+                <option value="MZ">MZ — Mizoram</option>
+                <option value="NL">NL — Nagaland</option>
+                <option value="OD">OD — Odisha</option>
+                <option value="PB">PB — Punjab</option>
+                <option value="PY">PY — Puducherry</option>
+                <option value="RJ">RJ — Rajasthan</option>
+                <option value="SK">SK — Sikkim</option>
+                <option value="TN">TN — Tamil Nadu</option>
+                <option value="TS">TS — Telangana</option>
+                <option value="TR">TR — Tripura</option>
+                <option value="UK">UK — Uttarakhand</option>
+                <option value="UP">UP — Uttar Pradesh</option>
+                <option value="WB">WB — West Bengal</option>
+              </select>
+            </label>
+            <label
+              >DISTRICT
+              <input
+                id="playerRedDistrict"
+                class="playerSettingsInput"
+                maxlength="48"
+                placeholder="Enter district"
+                autocomplete="address-level2"
+              />
+            </label>
+          </div>
 
-      <div class="centerBottomBox">
-        <button class="centerBottomButton" onclick="openSettings()">SETTINGS</button>
-        <button class="centerBottomButton" onclick="openPlayerSettings()">PLAYER SETTINGS</button>
-      </div>
-
-      <div class="controlGrid blueButtons">
-        <button onclick="manualPoint('BLUE',2)"><span class="icon chest"></span><b>+2</b> CHEST</button>
-        <button onclick="manualPoint('BLUE',3)"><span class="icon head"></span><b>+3</b> HEAD</button>
-        <button onclick="manualPoint('BLUE',1)"><b>+1</b> PUNCH</button>
-        <button onclick="manualGam('BLUE')">GAM-JEOM</button>
-        <button onclick="editScore('BLUE')">EDIT SCORE</button>
-        <button onclick="editGam('BLUE')">EDIT GAM-JEOM</button>
+          <div class="playerSettingsPanel bluePlayerPanel">
+            <h3>BLUE PLAYER</h3>
+            <label
+              >PLAYER NAME
+              <input
+                id="playerBlueName"
+                class="playerSettingsInput"
+                maxlength="24"
+                autocomplete="off"
+              />
+            </label>
+            <label
+              >WEIGHT CATEGORY
+              <input
+                id="playerBlueWeight"
+                class="playerSettingsInput"
+                maxlength="32"
+                placeholder="Example: -68 kg"
+                autocomplete="off"
+              />
+            </label>
+            <label
+              >STATE CODE
+              <select id="playerBlueStateCode" class="playerSettingsSelect">
+                <option value="">SELECT CODE</option>
+                <option value="AN">AN — Andaman and Nicobar Islands</option>
+                <option value="AP">AP — Andhra Pradesh</option>
+                <option value="AR">AR — Arunachal Pradesh</option>
+                <option value="AS">AS — Assam</option>
+                <option value="BR">BR — Bihar</option>
+                <option value="CH">CH — Chandigarh</option>
+                <option value="CG">CG — Chhattisgarh</option>
+                <option value="DD">
+                  DD — Dadra and Nagar Haveli and Daman and Diu
+                </option>
+                <option value="DL">DL — Delhi</option>
+                <option value="DN">
+                  DN — Dadra and Nagar Haveli (legacy code)
+                </option>
+                <option value="GA">GA — Goa</option>
+                <option value="GJ">GJ — Gujarat</option>
+                <option value="HR">HR — Haryana</option>
+                <option value="HP">HP — Himachal Pradesh</option>
+                <option value="JK">JK — Jammu and Kashmir</option>
+                <option value="JH">JH — Jharkhand</option>
+                <option value="KA">KA — Karnataka</option>
+                <option value="KL">KL — Kerala</option>
+                <option value="LA">LA — Ladakh</option>
+                <option value="LD">LD — Lakshadweep</option>
+                <option value="MP">MP — Madhya Pradesh</option>
+                <option value="MH">MH — Maharashtra</option>
+                <option value="MN">MN — Manipur</option>
+                <option value="ML">ML — Meghalaya</option>
+                <option value="MZ">MZ — Mizoram</option>
+                <option value="NL">NL — Nagaland</option>
+                <option value="OD">OD — Odisha</option>
+                <option value="PB">PB — Punjab</option>
+                <option value="PY">PY — Puducherry</option>
+                <option value="RJ">RJ — Rajasthan</option>
+                <option value="SK">SK — Sikkim</option>
+                <option value="TN">TN — Tamil Nadu</option>
+                <option value="TS">TS — Telangana</option>
+                <option value="TR">TR — Tripura</option>
+                <option value="UK">UK — Uttarakhand</option>
+                <option value="UP">UP — Uttar Pradesh</option>
+                <option value="WB">WB — West Bengal</option>
+              </select>
+            </label>
+            <label
+              >DISTRICT
+              <input
+                id="playerBlueDistrict"
+                class="playerSettingsInput"
+                maxlength="48"
+                placeholder="Enter district"
+                autocomplete="address-level2"
+              />
+            </label>
+          </div>
+        </div>
+        <button onclick="savePlayerSettings()">SAVE PLAYER SETTINGS</button>
+        <button onclick="closePlayerSettings()">CLOSE</button>
       </div>
     </section>
-  </section>
 
-  <section id="ref" class="screen hidden refereeScreen">
-    <header class="refHeader">
-      <div class="cornerSelectWrap">
-        <label>CORNER</label>
-        <select id="cornerSelect">
-          <option value="1">C1</option>
-          <option value="2">C2</option>
-          <option value="3">C3</option>
-          <option value="4">C4</option>
-        </select>
+    <section id="timerModal" class="overlay hidden">
+      <div class="modalCard smallModal">
+        <h2>EDIT TIMER</h2>
+        <input id="timeInput" class="timeInput" value="01:00" />
+        <button onclick="saveTimer()">SAVE TIMER</button>
+        <button onclick="closeTimerEditor()">CLOSE</button>
       </div>
-      <button class="connectButton" onclick="connectRef()">CONNECT</button>
-      <div id="refStatus" class="refStatus">OFFLINE</div>
-    </header>
+    </section>
 
-    <main class="refLayout">
-      <div class="refColumn redRefColumn">
-        <button onclick="refVote('RED',1)">+1</button>
-        <button onclick="refVote('RED',2)"><span class="icon chest"></span><b>+2</b></button>
-        <button onclick="refVote('RED',3)"><span class="icon head"></span><b>+3</b></button>
+    <section id="qrModal" class="overlay hidden">
+      <div class="modalCard smallModal">
+        <h2>REFEREE QR CONNECT</h2>
+        <img id="qrImage" class="qrImage" alt="QR code" />
+        <p id="qrUrl" class="qrUrl"></p>
+        <button onclick="closeQR()">CLOSE</button>
       </div>
+    </section>
 
-      <div class="refCenterColumn">
-        <img src="/assets/sfts-logo.jpg" class="refLogo" alt="SFTS">
-        <div id="refVoteText" class="refVoteText">SELECT A POINT</div>
-        <button class="cancelVoteButton" onclick="cancelVote()">CANCEL VOTE</button>
+    <section id="historyModal" class="overlay hidden">
+      <div class="modalCard wideModal">
+        <h2>MATCH HISTORY</h2>
+        <div id="historyList" class="historyList"></div>
+        <button onclick="closeHistory()">CLOSE</button>
       </div>
+    </section>
 
-      <div class="refColumn blueRefColumn">
-        <button onclick="refVote('BLUE',1)">+1</button>
-        <button onclick="refVote('BLUE',2)"><span class="icon chest"></span><b>+2</b></button>
-        <button onclick="refVote('BLUE',3)"><span class="icon head"></span><b>+3</b></button>
-      </div>
-    </main>
-  </section>
-
-  <section id="settingsModal" class="overlay hidden">
-    <div class="modalCard">
-      <h2>SETTINGS</h2>
-      <button onclick="resetCurrentMatch()">RESET CURRENT MATCH</button>
-      <button onclick="showQR()">QR CODE CONNECT</button>
-      <button onclick="openTimerEditor()">EDIT TIMER</button>
-      <button onclick="openHistory()">MATCH HISTORY</button>
-      <button onclick="openTestMode()">TEST MODE</button>
-      <button onclick="closeSettings()">CLOSE</button>
-    </div>
-  </section>
-
-  <section id="playerSettingsModal" class="overlay hidden">
-    <div class="modalCard playerSettingsModal">
-      <h2>PLAYER SETTINGS</h2>
-      <div class="playerSettingsGrid">
-        <div class="playerSettingsPanel redPlayerPanel">
-          <h3>RED PLAYER</h3>
-          <label>PLAYER NAME
-            <input id="playerRedName" class="playerSettingsInput" maxlength="24" autocomplete="off">
-          </label>
-          <label>WEIGHT CATEGORY
-            <input id="playerRedWeight" class="playerSettingsInput" maxlength="32" placeholder="Example: -58 kg" autocomplete="off">
-          </label>
-          <label>STATE CODE
-            <select id="playerRedStateCode" class="playerSettingsSelect">
-              <option value="">SELECT CODE</option>
-              <option value="AN">AN — Andaman and Nicobar Islands</option>
-              <option value="AP">AP — Andhra Pradesh</option>
-              <option value="AR">AR — Arunachal Pradesh</option>
-              <option value="AS">AS — Assam</option>
-              <option value="BR">BR — Bihar</option>
-              <option value="CH">CH — Chandigarh</option>
-              <option value="CG">CG — Chhattisgarh</option>
-              <option value="DD">DD — Dadra and Nagar Haveli and Daman and Diu</option>
-              <option value="DL">DL — Delhi</option>
-              <option value="DN">DN — Dadra and Nagar Haveli (legacy code)</option>
-              <option value="GA">GA — Goa</option>
-              <option value="GJ">GJ — Gujarat</option>
-              <option value="HR">HR — Haryana</option>
-              <option value="HP">HP — Himachal Pradesh</option>
-              <option value="JK">JK — Jammu and Kashmir</option>
-              <option value="JH">JH — Jharkhand</option>
-              <option value="KA">KA — Karnataka</option>
-              <option value="KL">KL — Kerala</option>
-              <option value="LA">LA — Ladakh</option>
-              <option value="LD">LD — Lakshadweep</option>
-              <option value="MP">MP — Madhya Pradesh</option>
-              <option value="MH">MH — Maharashtra</option>
-              <option value="MN">MN — Manipur</option>
-              <option value="ML">ML — Meghalaya</option>
-              <option value="MZ">MZ — Mizoram</option>
-              <option value="NL">NL — Nagaland</option>
-              <option value="OD">OD — Odisha</option>
-              <option value="PB">PB — Punjab</option>
-              <option value="PY">PY — Puducherry</option>
-              <option value="RJ">RJ — Rajasthan</option>
-              <option value="SK">SK — Sikkim</option>
-              <option value="TN">TN — Tamil Nadu</option>
-              <option value="TS">TS — Telangana</option>
-              <option value="TR">TR — Tripura</option>
-              <option value="UK">UK — Uttarakhand</option>
-              <option value="UP">UP — Uttar Pradesh</option>
-              <option value="WB">WB — West Bengal</option>
-            </select>
-          </label>
-          <label>DISTRICT
-            <input id="playerRedDistrict" class="playerSettingsInput" maxlength="48" placeholder="Enter district" autocomplete="address-level2">
-          </label>
-        </div>
-
-        <div class="playerSettingsPanel bluePlayerPanel">
-          <h3>BLUE PLAYER</h3>
-          <label>PLAYER NAME
-            <input id="playerBlueName" class="playerSettingsInput" maxlength="24" autocomplete="off">
-          </label>
-          <label>WEIGHT CATEGORY
-            <input id="playerBlueWeight" class="playerSettingsInput" maxlength="32" placeholder="Example: -68 kg" autocomplete="off">
-          </label>
-          <label>STATE CODE
-            <select id="playerBlueStateCode" class="playerSettingsSelect">
-              <option value="">SELECT CODE</option>
-              <option value="AN">AN — Andaman and Nicobar Islands</option>
-              <option value="AP">AP — Andhra Pradesh</option>
-              <option value="AR">AR — Arunachal Pradesh</option>
-              <option value="AS">AS — Assam</option>
-              <option value="BR">BR — Bihar</option>
-              <option value="CH">CH — Chandigarh</option>
-              <option value="CG">CG — Chhattisgarh</option>
-              <option value="DD">DD — Dadra and Nagar Haveli and Daman and Diu</option>
-              <option value="DL">DL — Delhi</option>
-              <option value="DN">DN — Dadra and Nagar Haveli (legacy code)</option>
-              <option value="GA">GA — Goa</option>
-              <option value="GJ">GJ — Gujarat</option>
-              <option value="HR">HR — Haryana</option>
-              <option value="HP">HP — Himachal Pradesh</option>
-              <option value="JK">JK — Jammu and Kashmir</option>
-              <option value="JH">JH — Jharkhand</option>
-              <option value="KA">KA — Karnataka</option>
-              <option value="KL">KL — Kerala</option>
-              <option value="LA">LA — Ladakh</option>
-              <option value="LD">LD — Lakshadweep</option>
-              <option value="MP">MP — Madhya Pradesh</option>
-              <option value="MH">MH — Maharashtra</option>
-              <option value="MN">MN — Manipur</option>
-              <option value="ML">ML — Meghalaya</option>
-              <option value="MZ">MZ — Mizoram</option>
-              <option value="NL">NL — Nagaland</option>
-              <option value="OD">OD — Odisha</option>
-              <option value="PB">PB — Punjab</option>
-              <option value="PY">PY — Puducherry</option>
-              <option value="RJ">RJ — Rajasthan</option>
-              <option value="SK">SK — Sikkim</option>
-              <option value="TN">TN — Tamil Nadu</option>
-              <option value="TS">TS — Telangana</option>
-              <option value="TR">TR — Tripura</option>
-              <option value="UK">UK — Uttarakhand</option>
-              <option value="UP">UP — Uttar Pradesh</option>
-              <option value="WB">WB — West Bengal</option>
-            </select>
-          </label>
-          <label>DISTRICT
-            <input id="playerBlueDistrict" class="playerSettingsInput" maxlength="48" placeholder="Enter district" autocomplete="address-level2">
-          </label>
-        </div>
-      </div>
-      <button onclick="savePlayerSettings()">SAVE PLAYER SETTINGS</button>
-      <button onclick="closePlayerSettings()">CLOSE</button>
-    </div>
-  </section>
-
-  <section id="timerModal" class="overlay hidden">
-    <div class="modalCard smallModal">
-      <h2>EDIT TIMER</h2>
-      <input id="timeInput" class="timeInput" value="01:00">
-      <button onclick="saveTimer()">SAVE TIMER</button>
-      <button onclick="closeTimerEditor()">CLOSE</button>
-    </div>
-  </section>
-
-  <section id="qrModal" class="overlay hidden">
-    <div class="modalCard smallModal">
-      <h2>REFEREE QR CONNECT</h2>
-      <img id="qrImage" class="qrImage" alt="QR code">
-      <p id="qrUrl" class="qrUrl"></p>
-      <button onclick="closeQR()">CLOSE</button>
-    </div>
-  </section>
-
-  <section id="historyModal" class="overlay hidden">
-    <div class="modalCard wideModal">
-      <h2>MATCH HISTORY</h2>
-      <div id="historyList" class="historyList"></div>
-      <button onclick="closeHistory()">CLOSE</button>
-    </div>
-  </section>
-
-  <section id="roundOverlay" class="overlay hidden">
-    <div class="roundCard">
-      <h2 id="roundTitle">ROUND COMPLETE</h2>
-      <div class="roundGrid">
-        <div class="summaryBox redSummary">
-          <h3 id="summaryRedName">HONG</h3>
-          <div id="summaryRedScore" class="summaryScore">0</div>
-          <p><span>GAM-JEOM</span><b id="summaryRedGam">0</b></p>
-          <p><span>+1 PUNCH</span><b id="summaryRedP1">0</b></p>
-          <p><span>+2 CHEST</span><b id="summaryRedP2">0</b></p>
-          <p><span>+3 FACE</span><b id="summaryRedP3">0</b></p>
-        </div>
-        <div class="roundMiddle">
-          <div id="roundReason" class="roundReason">TIME 0:00</div>
-          <div id="breakTimeText" class="breakTimeText">BREAK 0:35</div>
-          <button onclick="closeRoundOverlay()">VIEW SCOREBOARD</button>
-        </div>
-        <div class="summaryBox blueSummary">
-          <h3 id="summaryBlueName">CHUNG</h3>
-          <div id="summaryBlueScore" class="summaryScore">0</div>
-          <p><span>GAM-JEOM</span><b id="summaryBlueGam">0</b></p>
-          <p><span>+1 PUNCH</span><b id="summaryBlueP1">0</b></p>
-          <p><span>+2 CHEST</span><b id="summaryBlueP2">0</b></p>
-          <p><span>+3 FACE</span><b id="summaryBlueP3">0</b></p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section id="winnerSlide" class="winnerSlide hidden">
-    <img src="/assets/sfts-logo.jpg" class="winnerLogo" alt="SFTS">
-    <div id="winnerNameText" class="winnerNameText">PLAYER NAME</div>
-    <div class="winnerWord">WINNER</div>
-    <button class="newMatchButton" onclick="startNewMatch()">NEW MATCH</button>
-  </section>
-
-  <section id="testMode" class="screen hidden testModeScreen">
-    <header class="testHeader">
-      <img src="/assets/sfts-logo.jpg" class="testLogo" alt="SFTS">
-      <div class="testHeaderTitle">TEST MODE</div>
-      <button class="exitTestButton" onclick="closeTestMode()">EXIT TEST</button>
-    </header>
-    <p class="testHelp">Press all six buttons on each corner referee device. Each press lights up below. When all six buttons work, a ✓ appears on that joystick.</p>
-    <div class="joystickGrid">
-      <div id="joy1" class="joystickCard">
-        <h3>CORNER 1</h3>
-        <div class="joystickBody">
-          <div class="joyButtons redJoyBtns">
-            <i data-key="RED-1">+1</i><i data-key="RED-2">+2</i><i data-key="RED-3">+3</i>
+    <section id="roundOverlay" class="overlay hidden">
+      <div class="roundCard">
+        <h2 id="roundTitle">ROUND COMPLETE</h2>
+        <div class="roundGrid">
+          <div class="summaryBox redSummary">
+            <h3 id="summaryRedName">HONG</h3>
+            <div id="summaryRedScore" class="summaryScore">0</div>
+            <p><span>GAM-JEOM</span><b id="summaryRedGam">0</b></p>
+            <p><span>+1 PUNCH</span><b id="summaryRedP1">0</b></p>
+            <p><span>+2 CHEST</span><b id="summaryRedP2">0</b></p>
+            <p><span>+3 FACE</span><b id="summaryRedP3">0</b></p>
           </div>
-          <div class="joyCenter">🎮<span class="joyCheck">✓</span></div>
-          <div class="joyButtons blueJoyBtns">
-            <i data-key="BLUE-1">+1</i><i data-key="BLUE-2">+2</i><i data-key="BLUE-3">+3</i>
+          <div class="roundMiddle">
+            <div id="roundReason" class="roundReason">TIME 0:00</div>
+            <div id="breakTimeText" class="breakTimeText">BREAK 0:35</div>
+            <button onclick="closeRoundOverlay()">VIEW SCOREBOARD</button>
+          </div>
+          <div class="summaryBox blueSummary">
+            <h3 id="summaryBlueName">CHUNG</h3>
+            <div id="summaryBlueScore" class="summaryScore">0</div>
+            <p><span>GAM-JEOM</span><b id="summaryBlueGam">0</b></p>
+            <p><span>+1 PUNCH</span><b id="summaryBlueP1">0</b></p>
+            <p><span>+2 CHEST</span><b id="summaryBlueP2">0</b></p>
+            <p><span>+3 FACE</span><b id="summaryBlueP3">0</b></p>
           </div>
         </div>
       </div>
-      <div id="joy2" class="joystickCard">
-        <h3>CORNER 2</h3>
-        <div class="joystickBody">
-          <div class="joyButtons redJoyBtns">
-            <i data-key="RED-1">+1</i><i data-key="RED-2">+2</i><i data-key="RED-3">+3</i>
-          </div>
-          <div class="joyCenter">🎮<span class="joyCheck">✓</span></div>
-          <div class="joyButtons blueJoyBtns">
-            <i data-key="BLUE-1">+1</i><i data-key="BLUE-2">+2</i><i data-key="BLUE-3">+3</i>
-          </div>
-        </div>
-      </div>
-      <div id="joy3" class="joystickCard">
-        <h3>CORNER 3</h3>
-        <div class="joystickBody">
-          <div class="joyButtons redJoyBtns">
-            <i data-key="RED-1">+1</i><i data-key="RED-2">+2</i><i data-key="RED-3">+3</i>
-          </div>
-          <div class="joyCenter">🎮<span class="joyCheck">✓</span></div>
-          <div class="joyButtons blueJoyBtns">
-            <i data-key="BLUE-1">+1</i><i data-key="BLUE-2">+2</i><i data-key="BLUE-3">+3</i>
-          </div>
-        </div>
-      </div>
-      <div id="joy4" class="joystickCard">
-        <h3>CORNER 4</h3>
-        <div class="joystickBody">
-          <div class="joyButtons redJoyBtns">
-            <i data-key="RED-1">+1</i><i data-key="RED-2">+2</i><i data-key="RED-3">+3</i>
-          </div>
-          <div class="joyCenter">🎮<span class="joyCheck">✓</span></div>
-          <div class="joyButtons blueJoyBtns">
-            <i data-key="BLUE-1">+1</i><i data-key="BLUE-2">+2</i><i data-key="BLUE-3">+3</i>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
+    </section>
 
-  <script src="/js/app.js"></script>
-</body>
+    <section id="winnerSlide" class="winnerSlide hidden">
+      <img src="/assets/sfts-logo.jpg" class="winnerLogo" alt="SFTS" />
+      <div id="winnerNameText" class="winnerNameText">PLAYER NAME</div>
+      <div class="winnerWord">WINNER</div>
+      <button class="newMatchButton" onclick="startNewMatch()">
+        NEW MATCH
+      </button>
+    </section>
+
+    <section id="testMode" class="screen hidden testModeScreen">
+      <header class="testHeader">
+        <img src="/assets/sfts-logo.jpg" class="testLogo" alt="SFTS" />
+        <div class="testHeaderTitle">TEST MODE</div>
+        <button class="exitTestButton" onclick="closeTestMode()">
+          EXIT TEST
+        </button>
+      </header>
+      <p class="testHelp">
+        Press all six buttons on each corner referee device. Each press lights
+        up below. When all six buttons work, a ✓ appears on that joystick.
+      </p>
+      <div class="joystickGrid">
+        <div id="joy1" class="joystickCard">
+          <h3>CORNER 1</h3>
+          <div class="joystickBody">
+            <div class="joyButtons redJoyBtns">
+              <i data-key="RED-1">+1</i><i data-key="RED-2">+2</i
+              ><i data-key="RED-3">+3</i>
+            </div>
+            <div class="joyCenter">🎮<span class="joyCheck">✓</span></div>
+            <div class="joyButtons blueJoyBtns">
+              <i data-key="BLUE-1">+1</i><i data-key="BLUE-2">+2</i
+              ><i data-key="BLUE-3">+3</i>
+            </div>
+          </div>
+        </div>
+        <div id="joy2" class="joystickCard">
+          <h3>CORNER 2</h3>
+          <div class="joystickBody">
+            <div class="joyButtons redJoyBtns">
+              <i data-key="RED-1">+1</i><i data-key="RED-2">+2</i
+              ><i data-key="RED-3">+3</i>
+            </div>
+            <div class="joyCenter">🎮<span class="joyCheck">✓</span></div>
+            <div class="joyButtons blueJoyBtns">
+              <i data-key="BLUE-1">+1</i><i data-key="BLUE-2">+2</i
+              ><i data-key="BLUE-3">+3</i>
+            </div>
+          </div>
+        </div>
+        <div id="joy3" class="joystickCard">
+          <h3>CORNER 3</h3>
+          <div class="joystickBody">
+            <div class="joyButtons redJoyBtns">
+              <i data-key="RED-1">+1</i><i data-key="RED-2">+2</i
+              ><i data-key="RED-3">+3</i>
+            </div>
+            <div class="joyCenter">🎮<span class="joyCheck">✓</span></div>
+            <div class="joyButtons blueJoyBtns">
+              <i data-key="BLUE-1">+1</i><i data-key="BLUE-2">+2</i
+              ><i data-key="BLUE-3">+3</i>
+            </div>
+          </div>
+        </div>
+        <div id="joy4" class="joystickCard">
+          <h3>CORNER 4</h3>
+          <div class="joystickBody">
+            <div class="joyButtons redJoyBtns">
+              <i data-key="RED-1">+1</i><i data-key="RED-2">+2</i
+              ><i data-key="RED-3">+3</i>
+            </div>
+            <div class="joyCenter">🎮<span class="joyCheck">✓</span></div>
+            <div class="joyButtons blueJoyBtns">
+              <i data-key="BLUE-1">+1</i><i data-key="BLUE-2">+2</i
+              ><i data-key="BLUE-3">+3</i>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <script src="/js/app.js"></script>
+  </body>
 </html>

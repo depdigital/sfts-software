@@ -222,7 +222,7 @@ test('malformed WebSocket input does not terminate a connection', async () => {
 test('HTTP static and connection-info endpoints are available', async () => {
   const page = await fetch(`http://127.0.0.1:${port}/`);
   assert.equal(page.status, 200);
-  assert.match(await page.text(), /SFTS Taekwondo Scoring/);
+  assert.match(await page.text(), /STRIKE FORCE TAEKWONDO SCORING SYSTEM/);
 
   const css = await fetch(`http://127.0.0.1:${port}/css/style.css`);
   const js = await fetch(`http://127.0.0.1:${port}/js/app.js`);
