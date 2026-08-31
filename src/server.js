@@ -536,7 +536,17 @@ setInterval(() => {
 }, HEARTBEAT_MS);
 
 wss.on('error', error => {
-  console.error('WebSocket server error:', error.message);
+  if (error.code !== 'EADDRINUSE') console.error('WebSocket server error:', error.message);
+});
+
+server.on('error', error => {
+  if (error.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} is already in use. Stop the existing server or start with another port.`);
+  } else {
+    console.error('HTTP server error:', error.message);
+  }
+  process.exitCode = 1;
+  process.exit();
 });
 
 function shutdown(signal) {
