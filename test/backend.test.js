@@ -56,7 +56,7 @@ async function assign(ws, role, corner) {
 }
 
 before(async () => {
-  serverProcess = spawn(process.execPath, ['server.js'], {
+  serverProcess = spawn(process.execPath, ['src/server.js'], {
     cwd: projectRoot,
     env: { ...process.env, PORT: String(port) },
     stdio: ['ignore', 'pipe', 'pipe']
@@ -151,6 +151,11 @@ test('HTTP static and connection-info endpoints are available', async () => {
   const page = await fetch(`http://127.0.0.1:${port}/`);
   assert.equal(page.status, 200);
   assert.match(await page.text(), /SFTS Taekwondo Scoring/);
+
+  const css = await fetch(`http://127.0.0.1:${port}/css/style.css`);
+  const js = await fetch(`http://127.0.0.1:${port}/js/app.js`);
+  assert.equal(css.status, 200);
+  assert.equal(js.status, 200);
 
   const info = await fetch(`http://127.0.0.1:${port}/api/info`);
   assert.equal(info.status, 200);

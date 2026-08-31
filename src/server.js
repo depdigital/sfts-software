@@ -18,7 +18,7 @@ const MAX_BUFFERED_BYTES = 1024 * 1024;
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, maxPayload: MAX_WS_PAYLOAD });
-const publicDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'public');
+const publicDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 app.use(express.static(publicDir));
 
 function getLocalIPv4() {

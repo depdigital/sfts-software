@@ -1,45 +1,143 @@
-# Taekwondo Scoring System Web App V3
+# SFTS Taekwondo Scoring System
 
-This V3 is based on your V2 and includes the requested layout and rule changes.
+SFTS is a LAN-based taekwondo match scoring application. One host runs the scoring server and scoreboard, while referee clients connect over the same local network and submit votes in real time.
 
-## Main changes added
-- Home page uses the supplied SFTS logo image instead of the old text heading.
-- Host scoreboard shows the SFTS logo at top-left.
-- Editable player names on top of both score sides.
-- Removed the extra point/gam-jeom circles under the main score.
-- Bottom host controls changed to 3 buttons per row and 2 rows on each side.
-- +2 buttons use a chest-guard icon and +3 buttons use a head-guard icon.
-- Settings now include QR code, timer edit, match history, and host-only test mode.
-- A 15-point gap ends the round immediately.
-- Round summary shows score, gam-jeom, +1 punch count, +2 chest count, and +3 face count.
-- New Match button appears when a match ends and automatically increments the match number.
-- Match history stores up to 50 completed matches while the server is running.
-- Round-end whistle/buzzer lasts about 2 seconds.
-- Test mode exists only on the host device; referee button presses light up the matching test joystick buttons.
-- Winner slide appears in red or blue style with the winner name.
-- Referee controller screen has the SFTS logo above CANCEL VOTE and removes the old HONG/RED center text.
+This repository currently contains the browser-based referee client. Raspberry Pi deployment and ESP32-based physical remotes are planned next and are not yet implemented.
 
-## Existing behavior kept
-- 4 referee phones maximum.
-- Real-time Wi-Fi connection through one host server.
-- 3-of-4 majority voting for +1 / +2 / +3.
-- Host manual edit buttons for score and gam-jeom.
-- Timer, play/pause, reset round timer.
-- 35-second break between rounds.
-- Best-of-3 round match flow.
-- Five gam-jeom in a round gives the round to the opponent.
+## Current features
+
+- Host scoreboard for red and blue competitors.
+- Up to four referee corners, C1–C4.
+- One connected host and one connected referee client per corner.
+- 3-of-4 majority voting for +1, +2, and +3 points.
+- Host controls for points, gam-jeom, score editing, names, and timer control.
+- Best-of-three match flow.
+- 60-second default rounds and 35-second breaks.
+- Automatic round ending after timer expiry, a 15-point gap, or five gam-jeom.
+- Round summaries with score, gam-jeom, and point-type statistics.
+- Match winner screen and match numbering.
+- QR-code connection screen for referee devices.
+- Host-only controller test mode.
+- In-memory history of the last 50 completed matches.
+
+## Backend reliability
+
+The backend uses Express and WebSocket communication through a single Node.js process.
+
+The current backend includes:
+
+- WebSocket ping/pong heartbeats and disconnected-client cleanup.
+- Vote removal when a referee disconnects.
+- Host and referee-corner connection exclusivity.
+- Input validation and malformed-message protection.
+- WebSocket payload and slow-client limits.
+- Timestamp-based timer tracking to reduce timer drift.
+- Protection against scoring outside an active round.
+- Graceful shutdown handling.
+- Automated HTTP and WebSocket integration tests.
+
+## Requirements
+
+- Node.js 18 or newer recommended.
+- A host computer or Raspberry Pi connected to a local network.
+- Referee devices on the same Wi-Fi network.
+
+The current version does not require internet access after dependencies have been installed.
 
 ## How to run
-1. Install Node.js.
-2. Open Command Prompt inside this project folder.
-3. Run:
-   npm install
-   npm start
-4. Open on host laptop:
-   http://localhost:8080
-5. Open referee phones on the same Wi-Fi using the Wi-Fi URL printed in the terminal.
 
-## Notes
-- Match history is memory-only and resets if you stop the server.
-- The included SFTS logo file is copied from the image you provided.
-- Please verify official tournament rules before using this in a real competition.
+### 1. Install dependencies
+
+Open a terminal in the project directory:
+
+```bash
+npm install
+```
+
+### 2. Run the backend tests
+
+```bash
+npm test
+```
+
+The tests verify the HTTP server, QR-code endpoint, WebSocket roles, referee voting, vote cleanup, timer expiry, phase restrictions, and malformed input handling.
+
+### 3. Start the application
+
+```bash
+npm start
+```
+
+The server listens on port `8080` by default and prints the available local and Wi-Fi URLs.
+
+### 4. Open the host scoreboard
+
+On the host computer, open:
+
+```text
+http://localhost:8080
+```
+
+Select **MAIN SCOREBOARD**, then use the host controls to configure the match.
+
+### 5. Connect referee devices
+
+Connect referee phones or other browser devices to the same Wi-Fi network as the host. Open the Wi-Fi URL printed by the server, for example:
+
+```text
+http://192.168.0.101:8080
+```
+
+Select **CORNER REFEREE**, choose C1–C4, and press **CONNECT**. The host’s **QR CODE CONNECT** setting can also be used to display the connection URL.
+
+### 6. Stop the application
+
+Press `Ctrl+C` in the terminal running the server.
+
+### Optional: change the port
+
+Windows Command Prompt:
+
+```bat
+set PORT=8081
+npm start
+```
+
+Linux/macOS/Raspberry Pi:
+
+```bash
+export PORT=8081
+npm start
+```
+
+## Raspberry Pi direction
+
+The application can be run on a Raspberry Pi as a Node.js server, but the current repository does not yet include an appliance setup, kiosk configuration, service file, or ESP32 firmware.
+
+The planned deployment is:
+
+```text
+ESP32 referee remotes → dedicated local Wi-Fi → Raspberry Pi → scoreboard display
+```
+
+Before using physical remotes in competition, the communication protocol should add acknowledgements, sequence numbers, duplicate-event protection, pairing, battery reporting, and a clear offline/failure indication.
+
+## Project structure
+
+```text
+src/server.js              Express and WebSocket backend
+public/index.html          Application markup
+public/js/app.js           Browser-side behavior and WebSocket client
+public/css/style.css       Application styling
+public/assets/             Static image assets
+test/backend.test.js       Backend integration tests
+package.json               Scripts and dependencies
+```
+
+## Limitations
+
+- Match state and match history are memory-only and are lost when the server stops.
+- The current role protocol is intended for a trusted local network; it is not an internet-facing authenticated service.
+- The application is a manual referee-voting system and does not detect strikes through electronic protectors.
+- It is not a replacement for certified World Taekwondo Protector and Scoring System equipment.
+- Tournament rules and scoring behavior must be verified with the relevant federation before real competition use.
