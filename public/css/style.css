@@ -52,9 +52,15 @@ button { border: 0; cursor: pointer; }
   box-shadow: 0 12px 28px rgba(0,0,0,.35);
 }
 
-.hostScreen { background: #080b12; }
+.hostScreen {
+  display: grid;
+  grid-template-rows: clamp(64px, 7vh, 110px) minmax(0, 1fr) auto;
+  min-height: 100vh;
+  background: #080b12;
+}
 .hostHeader {
-  height: 72px;
+  height: auto;
+  min-height: 0;
   display: grid;
   grid-template-columns: 1fr;
   align-items: center;
@@ -84,10 +90,10 @@ button { border: 0; cursor: pointer; }
 }
 .mainBoard {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(250px, 280px) minmax(0, 1fr);
-  gap: 16px;
-  padding: 0 14px;
-  min-height: calc(100vh - 72px - 170px);
+  grid-template-columns: minmax(0, 1fr) minmax(250px, clamp(250px, min(20vw, 32vh), 560px)) minmax(0, 1fr);
+  gap: clamp(10px, 1.2vw, 30px);
+  padding-inline: clamp(8px, 2vw, 36px);
+  min-height: 0;
 }
 .fighterSide {
   position: relative;
@@ -116,7 +122,7 @@ button { border: 0; cursor: pointer; }
   background: transparent;
   color: #fff;
   text-align: center;
-  font-size: clamp(28px, 5vw, 72px);
+  font-size: clamp(28px, min(5vw, 8vh), 124px);
   font-weight: 900;
   text-transform: uppercase;
   outline: none;
@@ -126,7 +132,7 @@ button { border: 0; cursor: pointer; }
   min-height: 28px;
   margin-top: 8px;
   color: rgba(255,255,255,.9);
-  font-size: clamp(13px, 1.5vw, 20px);
+  font-size: clamp(13px, min(1.5vw, 2.2vh), 30px);
   font-weight: 800;
   letter-spacing: .04em;
   text-align: center;
@@ -135,7 +141,7 @@ button { border: 0; cursor: pointer; }
 .scoreNumber {
   margin: auto 0;
   line-height: 1;
-  font-size: clamp(150px, 24vw, 330px);
+  font-size: clamp(150px, min(24vw, 48vh), 560px);
   font-weight: 900;
   text-shadow: 0 8px 25px rgba(0,0,0,.2);
 }
@@ -144,39 +150,40 @@ button { border: 0; cursor: pointer; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
+  gap: clamp(10px, 1.6vh, 24px);
   background: #090c13;
-  padding: 14px 10px;
-  margin-inline: 6px;
+  padding: clamp(10px, 1.5vw, 28px) clamp(8px, 1vw, 20px);
+  margin-inline: clamp(2px, .35vw, 8px);
   border-radius: 14px;
 }
 .matchText {
-  font-size: 14px;
+  font-size: clamp(13px, min(1.1vw, 1.8vh), 24px);
   font-weight: 800;
   text-align: center;
 }
 .matchText b {
   display: block;
-  font-size: 34px;
+  font-size: clamp(30px, min(2.6vw, 4.8vh), 58px);
   margin-top: 4px;
 }
 .timerText {
   background: #000;
   border: 2px solid rgba(255,255,255,.18);
   padding: 6px 14px;
-  font-size: clamp(44px, 7vw, 92px);
+  font-size: clamp(44px, min(7vw, 12vh), 164px);
   font-weight: 900;
 }
 .roundText {
-  font-size: 28px;
+  font-size: clamp(24px, min(2.2vw, 4.2vh), 48px);
   font-weight: 900;
 }
 .centerControl {
   width: 100%;
-  padding: 14px 8px;
+  padding: clamp(12px, 1.5vh, 24px) clamp(8px, .8vw, 18px);
   border-radius: 7px;
   color: #fff;
   background: #2a3140;
+  font-size: clamp(13px, min(1.2vw, 2vh), 26px);
   font-weight: 900;
 }
 .centerControl.primary {
@@ -185,21 +192,21 @@ button { border: 0; cursor: pointer; }
 }
 .bottomArea {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(250px, 280px) minmax(0, 1fr);
-  gap: 16px;
-  padding: 14px 18px;
+  grid-template-columns: minmax(0, 1fr) minmax(250px, clamp(250px, min(20vw, 32vh), 560px)) minmax(0, 1fr);
+  gap: clamp(10px, 1.2vw, 30px);
+  padding: clamp(8px, 1.5vh, 24px) clamp(10px, 2vw, 36px);
   background: #0d1118;
 }
 .controlGrid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: repeat(2, 70px);
-  gap: 10px;
+  grid-template-rows: repeat(2, clamp(60px, 7vh, 110px));
+  gap: clamp(8px, 1vw, 18px);
 }
 .controlGrid button {
   color: #fff;
   border-radius: 8px;
-  font-size: 15px;
+  font-size: clamp(13px, min(1.1vw, 2vh), 24px);
   font-weight: 900;
   display: flex;
   align-items: center;
@@ -208,11 +215,11 @@ button { border: 0; cursor: pointer; }
 }
 .redButtons button { background: #b31e1e; border-left: 5px solid #ff5b46; }
 .blueButtons button { background: #0c73b0; border-right: 5px solid #22c6ff; }
-.controlGrid b { font-size: 22px; }
+.controlGrid b { font-size: clamp(20px, min(1.8vw, 3vh), 38px); }
 .centerBottomBox {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: clamp(8px, 1vh, 16px);
 }
 .centerBottomButton {
   width: 100%;
@@ -222,6 +229,7 @@ button { border: 0; cursor: pointer; }
   background: #262f3b;
   color: #fff;
   font-weight: 900;
+  font-size: clamp(13px, min(1.2vw, 2vh), 26px);
 }
 
 .icon {
@@ -544,6 +552,99 @@ button { border: 0; cursor: pointer; }
 .joystickCard.passed .joyCheck { opacity: 1; }
 .joyButtons i.litRed { background: #ef2323; box-shadow: 0 0 16px rgba(239,35,35,.55); }
 .joyButtons i.litBlue { background: #09a7ef; box-shadow: 0 0 16px rgba(9,167,239,.55); }
+
+@media (min-width: 1400px) and (min-height: 800px) {
+  .hostScreen {
+    grid-template-rows: clamp(80px, 8vh, 110px) minmax(0, 1fr) auto;
+  }
+  .hostHeader {
+    height: clamp(80px, 8vh, 110px);
+  }
+  .systemHeading {
+    font-size: clamp(21px, 1.45vw, 34px);
+  }
+
+  .mainBoard {
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 20vw) minmax(0, 1fr);
+    gap: clamp(16px, 1.4vw, 30px);
+    padding-inline: clamp(14px, 2vw, 36px);
+    min-height: 0;
+  }
+  .fighterSide {
+    padding-top: clamp(16px, 2vh, 32px);
+  }
+  .gamRibbon {
+    top: clamp(16px, 2vh, 30px);
+    left: clamp(12px, 1.2vw, 24px);
+    font-size: clamp(12px, 1vw, 20px);
+  }
+  .gamRibbon.right {
+    left: auto;
+    right: clamp(12px, 1.2vw, 24px);
+  }
+  .gamRibbon b {
+    font-size: clamp(30px, 2.8vw, 56px);
+  }
+  .nameInput {
+    font-size: clamp(72px, 5vw, 124px);
+    padding-bottom: clamp(10px, 1.2vh, 18px);
+  }
+  .playerMeta {
+    min-height: clamp(28px, 3vh, 42px);
+    margin-top: clamp(8px, 1vh, 16px);
+    font-size: clamp(18px, 1.35vw, 30px);
+  }
+  .scoreNumber {
+    font-size: clamp(330px, 24vw, 560px);
+  }
+
+  .centerBoard {
+    gap: clamp(12px, 1.6vh, 24px);
+    padding: clamp(14px, 1.5vw, 28px) clamp(10px, 1vw, 20px);
+  }
+  .matchText {
+    font-size: clamp(14px, 1.1vw, 24px);
+  }
+  .matchText b {
+    font-size: clamp(34px, 2.6vw, 58px);
+  }
+  .timerText {
+    padding: clamp(6px, .7vh, 12px) clamp(14px, 1.2vw, 26px);
+    font-size: clamp(92px, 7vw, 164px);
+  }
+  .roundText {
+    font-size: clamp(28px, 2.2vw, 48px);
+  }
+  .centerControl {
+    padding: clamp(14px, 1.5vh, 24px) clamp(8px, .8vw, 18px);
+    font-size: clamp(16px, 1.2vw, 26px);
+  }
+  .voteStrip {
+    font-size: clamp(13px, 1vw, 20px);
+  }
+
+  .bottomArea {
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 20vw) minmax(0, 1fr);
+    gap: clamp(16px, 1.4vw, 30px);
+    padding: clamp(14px, 1.5vh, 24px) clamp(18px, 2vw, 36px);
+  }
+  .controlGrid {
+    grid-template-rows: repeat(2, clamp(70px, 8vh, 112px));
+    gap: clamp(10px, 1vw, 18px);
+  }
+  .controlGrid button {
+    font-size: clamp(15px, 1.1vw, 24px);
+  }
+  .controlGrid b {
+    font-size: clamp(22px, 1.8vw, 38px);
+  }
+  .centerBottomBox {
+    gap: clamp(10px, 1vh, 16px);
+  }
+  .centerBottomButton {
+    font-size: clamp(16px, 1.2vw, 26px);
+  }
+}
 
 @media (max-width: 980px) {
   .hostHeader { grid-template-columns: 1fr; }
