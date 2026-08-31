@@ -17,6 +17,11 @@ const MAX_BUFFERED_BYTES = 1024 * 1024;
 const REMOTE_PROTOCOL_VERSION = 1;
 const REMOTE_IDS = new Set(['C1', 'C2', 'C3', 'C4']);
 const REMOTE_ACK_CACHE_SIZE = 100;
+const INDIAN_STATE_CODES = new Set([
+  'AN', 'AP', 'AR', 'AS', 'BR', 'CH', 'CG', 'DD', 'DL', 'DN', 'GA', 'GJ',
+  'HR', 'HP', 'JK', 'JH', 'KA', 'KL', 'LA', 'LD', 'MP', 'MH', 'MN', 'ML',
+  'MZ', 'NL', 'OD', 'PB', 'PY', 'RJ', 'SK', 'TN', 'TS', 'TR', 'UK', 'UP', 'WB'
+]);
 
 const app = express();
 const server = http.createServer(app);
@@ -45,10 +50,27 @@ app.get("/api/info", async (_req, res) => {
 });
 
 const baseStats = () => ({ plus1: 0, plus2: 0, plus3: 0 });
-function makeSide(name) {
-  return { name, score: 0, gamjeom: 0, stats: baseStats() };
+function makeSide(name, profile = {}) {
+  const stateCode = String(profile?.stateCode || '').trim().toUpperCase();
+  return {
+    name,
+    playerName: String(profile?.playerName || '').trim().slice(0, 24),
+    weightCategory: String(profile?.weightCategory || '').trim().slice(0, 32),
+    stateCode: INDIAN_STATE_CODES.has(stateCode) ? stateCode : '',
+    district: String(profile?.district || '').trim().slice(0, 48),
+    score: 0,
+    gamjeom: 0,
+    stats: baseStats()
+  };
 }
-function makeMatch(matchNo = 1, redName = "HONG", blueName = "CHUNG", roundMs = ROUND_MS_DEFAULT) {
+function makeMatch(
+  matchNo = 1,
+  redName = "HONG",
+  blueName = "CHUNG",
+  roundMs = ROUND_MS_DEFAULT,
+  redProfile = {},
+  blueProfile = {}
+) {
   return {
     matchNo,
     round: 1,
@@ -57,8 +79,8 @@ function makeMatch(matchNo = 1, redName = "HONG", blueName = "CHUNG", roundMs = 
     breakMs: BREAK_MS_DEFAULT,
     running: false,
     phase: "ROUND", // ROUND | BREAK | MATCH_END
-    red: makeSide(redName),
-    blue: makeSide(blueName),
+    red: makeSide(redName, redProfile),
+    blue: makeSide(blueName, blueProfile),
     votes: {},
     roundHistory: [],
     matchWinner: null,
@@ -382,10 +404,10 @@ function finishMatch(winner, reason) {
   match.matchReason = reason;
   matchHistory.unshift({
     matchNo: match.matchNo,
-    redName: match.red.name,
-    blueName: match.blue.name,
+    redName: playerDisplayName(match.red),
+    blueName: playerDisplayName(match.blue),
     winner,
-    winnerName: winner ? side(winner).name : 'DRAW',
+    winnerName: winner ? playerDisplayName(side(winner)) : 'DRAW',
     reason,
     rounds: deep(match.roundHistory),
     endedAt: new Date().toISOString()
@@ -413,15 +435,70 @@ function startNextRound() {
 }
 
 function resetCurrentMatch() {
-  match = makeMatch(match.matchNo, match.red.name, match.blue.name, match.configuredRoundMs);
+  match = makeMatch(
+    match.matchNo,
+    match.red.name,
+    match.blue.name,
+    match.configuredRoundMs,
+    match.red,
+    match.blue
+  );
   timerLastAt = null;
   state();
 }
 
 function newMatch() {
-  match = makeMatch(match.matchNo + 1, match.red.name, match.blue.name, match.configuredRoundMs);
+  match = makeMatch(
+    match.matchNo + 1,
+    match.red.name,
+    match.blue.name,
+    match.configuredRoundMs,
+    match.red,
+    match.blue
+  );
   timerLastAt = null;
   state();
+}
+
+function updatePlayerSettings(players) {
+  if (!players || typeof players !== 'object' || Array.isArray(players)) {
+    return { ok: false, code: 'INVALID_PLAYER_SETTINGS', message: 'Player settings are required' };
+  }
+
+  const next = {};
+  for (const player of ['RED', 'BLUE']) {
+    const current = side(player);
+    const input = players[player];
+    if (!input || typeof input !== 'object' || Array.isArray(input)) {
+      return { ok: false, code: 'INVALID_PLAYER_SETTINGS', message: `${player} player settings are required` };
+    }
+
+    const hasStateCode = Object.prototype.hasOwnProperty.call(input, 'stateCode');
+    const legacyStateCode = String(input.district || '').trim().toUpperCase();
+    const stateCode = String(
+      hasStateCode ? input.stateCode : (INDIAN_STATE_CODES.has(legacyStateCode) ? legacyStateCode : '')
+    ).trim().toUpperCase();
+    if (stateCode && !INDIAN_STATE_CODES.has(stateCode)) {
+      return { ok: false, code: 'INVALID_STATE_CODE', message: 'State code must be a valid Indian state code' };
+    }
+
+    next[player] = {
+      playerName: String(input.playerName || input.name || '').trim().slice(0, 24),
+      weightCategory: String(input.weightCategory || '').trim().slice(0, 32),
+      stateCode,
+      district: hasStateCode
+        ? String(input.district || '').trim().slice(0, 48)
+        : ''
+    };
+  }
+
+  Object.assign(match.red, next.RED);
+  Object.assign(match.blue, next.BLUE);
+  return { ok: true };
+}
+
+function playerDisplayName(player) {
+  return player.playerName || player.name;
 }
 
 function evaluateVotes() {
@@ -650,14 +727,21 @@ wss.on('connection', ws => {
         setRunning(false);
         if (match.phase === 'ROUND') match.timerMs = match.configuredRoundMs;
       }
+      if (msg.action === 'playerSettings') {
+        const result = updatePlayerSettings(msg.players);
+        if (!result.ok) {
+          sendError(ws, result.code, result.message);
+          return;
+        }
+      }
       if (msg.action === 'name') {
         if (!validPlayer(msg.player)) {
           sendError(ws, 'INVALID_PLAYER', 'Invalid player');
           return;
         }
-        const name = String(msg.name || '').trim().slice(0, 24) || (msg.player === 'RED' ? 'HONG' : 'CHUNG');
-        if (msg.player === 'RED') match.red.name = name;
-        if (msg.player === 'BLUE') match.blue.name = name;
+        const name = String(msg.name || '').trim().slice(0, 24);
+        if (msg.player === 'RED') match.red.playerName = name;
+        if (msg.player === 'BLUE') match.blue.playerName = name;
       }
       if (msg.action === 'editScore') {
         if (!validPlayer(msg.player) || !scoringIsAllowed()) {

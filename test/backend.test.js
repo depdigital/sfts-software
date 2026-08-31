@@ -97,6 +97,29 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   assert.equal(initial.match.phase, 'ROUND');
   assert.equal((await assign(host, 'host')).type, 'roleAccepted');
 
+  host.send(JSON.stringify({
+    type: 'host',
+    action: 'playerSettings',
+    players: {
+      RED: { playerName: 'LEE', weightCategory: '-58 kg', stateCode: 'DL', district: 'New Delhi' },
+      BLUE: { playerName: 'KIM', weightCategory: '-68 kg', stateCode: 'KA', district: 'Bengaluru' }
+    }
+  }));
+  const configuredPlayers = await waitForMessage(host, message => (
+    message.type === 'state' &&
+    message.match.red.name === 'HONG' &&
+    message.match.red.playerName === 'LEE' &&
+    message.match.red.weightCategory === '-58 kg' &&
+    message.match.red.stateCode === 'DL' &&
+    message.match.red.district === 'New Delhi' &&
+    message.match.blue.name === 'CHUNG' &&
+    message.match.blue.playerName === 'KIM' &&
+    message.match.blue.weightCategory === '-68 kg' &&
+    message.match.blue.stateCode === 'KA' &&
+    message.match.blue.district === 'Bengaluru'
+  ));
+  assert.equal(configuredPlayers.match.red.playerName, 'LEE');
+
   const referees = [];
   for (let corner = 1; corner <= 4; corner += 1) {
     const referee = await connect();
@@ -140,7 +163,18 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   assert.equal(pausedBreak.match.red.score, breakState.match.red.score);
 
   host.send(JSON.stringify({ type: 'host', action: 'resetMatch' }));
-  await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'ROUND' && message.match.red.score === 0);
+  const resetState = await waitForMessage(host, message => (
+    message.type === 'state' &&
+    message.match.phase === 'ROUND' &&
+    message.match.red.score === 0 &&
+    message.match.red.name === 'HONG' &&
+    message.match.red.playerName === 'LEE' &&
+    message.match.red.weightCategory === '-58 kg' &&
+    message.match.red.stateCode === 'DL' &&
+    message.match.red.district === 'New Delhi'
+  ));
+  assert.equal(resetState.match.blue.stateCode, 'KA');
+  assert.equal(resetState.match.blue.district, 'Bengaluru');
   const remote = await connect();
   remote.send(JSON.stringify({
     type: 'remote_hello',

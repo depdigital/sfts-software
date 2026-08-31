@@ -48,8 +48,10 @@ function showScreen(id) {
 
 function renderState(match) {
   if (!match) return;
-  $('redName').value = match.red.name;
-  $('blueName').value = match.blue.name;
+  $('redName').textContent = 'HONG';
+  $('blueName').textContent = 'CHUNG';
+  $('redMeta').textContent = playerMetaText(match.red);
+  $('blueMeta').textContent = playerMetaText(match.blue);
   $('redScore').textContent = match.red.score;
   $('blueScore').textContent = match.blue.score;
   $('redGam').textContent = match.red.gamjeom;
@@ -70,6 +72,14 @@ function renderState(match) {
   if (match.phase !== 'MATCH_END') {
     $('winnerSlide').classList.add('hidden');
   }
+}
+
+function playerMetaText(player) {
+  const name = String(player.playerName || '').trim() || 'PLAYER NAME —';
+  const weight = String(player.weightCategory || '').trim() || 'WEIGHT —';
+  const stateCode = String(player.stateCode || '').trim() || 'STATE —';
+  const district = String(player.district || '').trim() || 'DISTRICT —';
+  return `${name} · ${weight} · ${stateCode} · ${district}`;
 }
 
 function formatTime(ms) {
@@ -118,6 +128,41 @@ function editGam(player) {
 
 function openSettings() { $('settingsModal').classList.remove('hidden'); }
 function closeSettings() { $('settingsModal').classList.add('hidden'); }
+function openPlayerSettings() {
+  closeSettings();
+  if (!lastState) return;
+  $('playerRedName').value = lastState.red.playerName || '';
+  $('playerRedWeight').value = lastState.red.weightCategory || '';
+  $('playerRedDistrict').value = lastState.red.district || '';
+  $('playerRedStateCode').value = lastState.red.stateCode || '';
+  $('playerBlueName').value = lastState.blue.playerName || '';
+  $('playerBlueWeight').value = lastState.blue.weightCategory || '';
+  $('playerBlueDistrict').value = lastState.blue.district || '';
+  $('playerBlueStateCode').value = lastState.blue.stateCode || '';
+  $('playerSettingsModal').classList.remove('hidden');
+}
+function closePlayerSettings() { $('playerSettingsModal').classList.add('hidden'); }
+function savePlayerSettings() {
+  send({
+    type: 'host',
+    action: 'playerSettings',
+    players: {
+      RED: {
+        playerName: $('playerRedName').value,
+        weightCategory: $('playerRedWeight').value,
+        stateCode: $('playerRedStateCode').value,
+        district: $('playerRedDistrict').value
+      },
+      BLUE: {
+        playerName: $('playerBlueName').value,
+        weightCategory: $('playerBlueWeight').value,
+        stateCode: $('playerBlueStateCode').value,
+        district: $('playerBlueDistrict').value
+      }
+    }
+  });
+  closePlayerSettings();
+}
 function resetCurrentMatch() {
   if (confirm('Reset the current match?')) send({ type: 'host', action: 'resetMatch' });
   closeSettings();
@@ -165,12 +210,14 @@ function closeHistory() { $('historyModal').classList.add('hidden'); }
 
 function showRoundSummary(record) {
   currentRoundRecord = record;
+  const redName = record.red.playerName || record.red.name;
+  const blueName = record.blue.playerName || record.blue.name;
   $('roundTitle').textContent = record.winner
-    ? `${record.winner === 'RED' ? record.red.name : record.blue.name} WON ROUND ${record.round}`
+    ? `${record.winner === 'RED' ? redName : blueName} WON ROUND ${record.round}`
     : `ROUND ${record.round} COMPLETE`;
   $('roundReason').textContent = record.reason;
-  $('summaryRedName').textContent = record.red.name;
-  $('summaryBlueName').textContent = record.blue.name;
+  $('summaryRedName').textContent = redName;
+  $('summaryBlueName').textContent = blueName;
   $('summaryRedScore').textContent = record.red.score;
   $('summaryBlueScore').textContent = record.blue.score;
   $('summaryRedGam').textContent = record.red.gamjeom;
@@ -187,7 +234,8 @@ function closeRoundOverlay() { $('roundOverlay').classList.add('hidden'); }
 
 function showWinnerSlide(winner, match) {
   if (!winner) return;
-  const name = winner === 'RED' ? match.red.name : match.blue.name;
+  const side = winner === 'RED' ? match.red : match.blue;
+  const name = side.playerName || side.name;
   $('winnerNameText').textContent = name;
   $('winnerSlide').classList.remove('redWinner', 'blueWinner', 'hidden');
   $('winnerSlide').classList.add(winner === 'RED' ? 'redWinner' : 'blueWinner');
@@ -288,6 +336,9 @@ window.editScore = editScore;
 window.editGam = editGam;
 window.openSettings = openSettings;
 window.closeSettings = closeSettings;
+window.openPlayerSettings = openPlayerSettings;
+window.closePlayerSettings = closePlayerSettings;
+window.savePlayerSettings = savePlayerSettings;
 window.resetCurrentMatch = resetCurrentMatch;
 window.openTimerEditor = openTimerEditor;
 window.closeTimerEditor = closeTimerEditor;

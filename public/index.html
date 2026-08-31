@@ -27,7 +27,8 @@
     <section class="mainBoard">
       <div class="fighterSide redSide">
         <div class="gamRibbon">GAM-JEOM <b id="redGam">0</b></div>
-        <input id="redName" class="nameInput" value="HONG" maxlength="24" onchange="nameChange('RED', this.value)">
+        <div id="redName" class="nameInput">HONG</div>
+        <div id="redMeta" class="playerMeta">PLAYER NAME — · WEIGHT — · STATE — · DISTRICT —</div>
         <div id="redScore" class="scoreNumber">0</div>
       </div>
 
@@ -41,7 +42,8 @@
 
       <div class="fighterSide blueSide">
         <div class="gamRibbon right">GAM-JEOM <b id="blueGam">0</b></div>
-        <input id="blueName" class="nameInput" value="CHUNG" maxlength="24" onchange="nameChange('BLUE', this.value)">
+        <div id="blueName" class="nameInput">CHUNG</div>
+        <div id="blueMeta" class="playerMeta">PLAYER NAME — · WEIGHT — · STATE — · DISTRICT —</div>
         <div id="blueScore" class="scoreNumber">0</div>
       </div>
     </section>
@@ -58,6 +60,7 @@
 
       <div class="centerBottomBox">
         <button class="centerBottomButton" onclick="openSettings()">SETTINGS</button>
+        <button class="centerBottomButton" onclick="openPlayerSettings()">PLAYER SETTINGS</button>
       </div>
 
       <div class="controlGrid blueButtons">
@@ -116,6 +119,125 @@
       <button onclick="openHistory()">MATCH HISTORY</button>
       <button onclick="openTestMode()">TEST MODE</button>
       <button onclick="closeSettings()">CLOSE</button>
+    </div>
+  </section>
+
+  <section id="playerSettingsModal" class="overlay hidden">
+    <div class="modalCard playerSettingsModal">
+      <h2>PLAYER SETTINGS</h2>
+      <div class="playerSettingsGrid">
+        <div class="playerSettingsPanel redPlayerPanel">
+          <h3>RED PLAYER</h3>
+          <label>PLAYER NAME
+            <input id="playerRedName" class="playerSettingsInput" maxlength="24" autocomplete="off">
+          </label>
+          <label>WEIGHT CATEGORY
+            <input id="playerRedWeight" class="playerSettingsInput" maxlength="32" placeholder="Example: -58 kg" autocomplete="off">
+          </label>
+          <label>STATE CODE
+            <select id="playerRedStateCode" class="playerSettingsSelect">
+              <option value="">SELECT CODE</option>
+              <option value="AN">AN — Andaman and Nicobar Islands</option>
+              <option value="AP">AP — Andhra Pradesh</option>
+              <option value="AR">AR — Arunachal Pradesh</option>
+              <option value="AS">AS — Assam</option>
+              <option value="BR">BR — Bihar</option>
+              <option value="CH">CH — Chandigarh</option>
+              <option value="CG">CG — Chhattisgarh</option>
+              <option value="DD">DD — Dadra and Nagar Haveli and Daman and Diu</option>
+              <option value="DL">DL — Delhi</option>
+              <option value="DN">DN — Dadra and Nagar Haveli (legacy code)</option>
+              <option value="GA">GA — Goa</option>
+              <option value="GJ">GJ — Gujarat</option>
+              <option value="HR">HR — Haryana</option>
+              <option value="HP">HP — Himachal Pradesh</option>
+              <option value="JK">JK — Jammu and Kashmir</option>
+              <option value="JH">JH — Jharkhand</option>
+              <option value="KA">KA — Karnataka</option>
+              <option value="KL">KL — Kerala</option>
+              <option value="LA">LA — Ladakh</option>
+              <option value="LD">LD — Lakshadweep</option>
+              <option value="MP">MP — Madhya Pradesh</option>
+              <option value="MH">MH — Maharashtra</option>
+              <option value="MN">MN — Manipur</option>
+              <option value="ML">ML — Meghalaya</option>
+              <option value="MZ">MZ — Mizoram</option>
+              <option value="NL">NL — Nagaland</option>
+              <option value="OD">OD — Odisha</option>
+              <option value="PB">PB — Punjab</option>
+              <option value="PY">PY — Puducherry</option>
+              <option value="RJ">RJ — Rajasthan</option>
+              <option value="SK">SK — Sikkim</option>
+              <option value="TN">TN — Tamil Nadu</option>
+              <option value="TS">TS — Telangana</option>
+              <option value="TR">TR — Tripura</option>
+              <option value="UK">UK — Uttarakhand</option>
+              <option value="UP">UP — Uttar Pradesh</option>
+              <option value="WB">WB — West Bengal</option>
+            </select>
+          </label>
+          <label>DISTRICT
+            <input id="playerRedDistrict" class="playerSettingsInput" maxlength="48" placeholder="Enter district" autocomplete="address-level2">
+          </label>
+        </div>
+
+        <div class="playerSettingsPanel bluePlayerPanel">
+          <h3>BLUE PLAYER</h3>
+          <label>PLAYER NAME
+            <input id="playerBlueName" class="playerSettingsInput" maxlength="24" autocomplete="off">
+          </label>
+          <label>WEIGHT CATEGORY
+            <input id="playerBlueWeight" class="playerSettingsInput" maxlength="32" placeholder="Example: -68 kg" autocomplete="off">
+          </label>
+          <label>STATE CODE
+            <select id="playerBlueStateCode" class="playerSettingsSelect">
+              <option value="">SELECT CODE</option>
+              <option value="AN">AN — Andaman and Nicobar Islands</option>
+              <option value="AP">AP — Andhra Pradesh</option>
+              <option value="AR">AR — Arunachal Pradesh</option>
+              <option value="AS">AS — Assam</option>
+              <option value="BR">BR — Bihar</option>
+              <option value="CH">CH — Chandigarh</option>
+              <option value="CG">CG — Chhattisgarh</option>
+              <option value="DD">DD — Dadra and Nagar Haveli and Daman and Diu</option>
+              <option value="DL">DL — Delhi</option>
+              <option value="DN">DN — Dadra and Nagar Haveli (legacy code)</option>
+              <option value="GA">GA — Goa</option>
+              <option value="GJ">GJ — Gujarat</option>
+              <option value="HR">HR — Haryana</option>
+              <option value="HP">HP — Himachal Pradesh</option>
+              <option value="JK">JK — Jammu and Kashmir</option>
+              <option value="JH">JH — Jharkhand</option>
+              <option value="KA">KA — Karnataka</option>
+              <option value="KL">KL — Kerala</option>
+              <option value="LA">LA — Ladakh</option>
+              <option value="LD">LD — Lakshadweep</option>
+              <option value="MP">MP — Madhya Pradesh</option>
+              <option value="MH">MH — Maharashtra</option>
+              <option value="MN">MN — Manipur</option>
+              <option value="ML">ML — Meghalaya</option>
+              <option value="MZ">MZ — Mizoram</option>
+              <option value="NL">NL — Nagaland</option>
+              <option value="OD">OD — Odisha</option>
+              <option value="PB">PB — Punjab</option>
+              <option value="PY">PY — Puducherry</option>
+              <option value="RJ">RJ — Rajasthan</option>
+              <option value="SK">SK — Sikkim</option>
+              <option value="TN">TN — Tamil Nadu</option>
+              <option value="TS">TS — Telangana</option>
+              <option value="TR">TR — Tripura</option>
+              <option value="UK">UK — Uttarakhand</option>
+              <option value="UP">UP — Uttar Pradesh</option>
+              <option value="WB">WB — West Bengal</option>
+            </select>
+          </label>
+          <label>DISTRICT
+            <input id="playerBlueDistrict" class="playerSettingsInput" maxlength="48" placeholder="Enter district" autocomplete="address-level2">
+          </label>
+        </div>
+      </div>
+      <button onclick="savePlayerSettings()">SAVE PLAYER SETTINGS</button>
+      <button onclick="closePlayerSettings()">CLOSE</button>
     </div>
   </section>
 
