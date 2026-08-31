@@ -1,0 +1,10 @@
+{
+  "name": "SFTS Taekwondo Scoring",
+  "short_name": "SFTS Scoring",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#07090f",
+  "theme_color": "#07090f",
+  "icons": []
+}
