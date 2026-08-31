@@ -14,6 +14,9 @@ const TIMER_TICK_MS = 250;
 const HEARTBEAT_MS = 10_000;
 const MAX_WS_PAYLOAD = 64 * 1024;
 const MAX_BUFFERED_BYTES = 1024 * 1024;
+const REMOTE_PROTOCOL_VERSION = 1;
+const REMOTE_IDS = new Set(['C1', 'C2', 'C3', 'C4']);
+const REMOTE_ACK_CACHE_SIZE = 100;
 
 const app = express();
 const server = http.createServer(app);
@@ -71,21 +74,26 @@ let match = makeMatch();
 let matchHistory = [];
 let hostSocket = null;
 const refereeSockets = new Map();
+const remoteSockets = new Map();
+const remoteSessions = new Map();
 let timerLastAt = null;
 let lastStateAt = 0;
 
 function deep(v) { return JSON.parse(JSON.stringify(v)); }
-function send(ws, message) {
+function sendText(ws, text, label = 'send') {
   if (!ws || ws.readyState !== 1) return false;
   try {
-    ws.send(JSON.stringify(message), error => {
-      if (error) console.error('WebSocket send failed:', error.message);
+    ws.send(text, error => {
+      if (error) console.error(`WebSocket ${label} failed:`, error.message);
     });
     return true;
   } catch (error) {
-    console.error('WebSocket send failed:', error.message);
+    console.error(`WebSocket ${label} failed:`, error.message);
     return false;
   }
+}
+function send(ws, message) {
+  return sendText(ws, JSON.stringify(message));
 }
 function broadcast(text, label) {
   for (const ws of wss.clients) {
@@ -95,22 +103,38 @@ function broadcast(text, label) {
       ws.terminate();
       continue;
     }
-    try {
-      ws.send(text, error => {
-        if (error) console.error(`WebSocket ${label} failed:`, error.message);
-      });
-    } catch (error) {
-      console.error(`WebSocket ${label} failed:`, error.message);
-    }
+    sendText(ws, text, label);
   }
+}
+function remoteState(ws) {
+  return {
+    type: 'remote_state',
+    deviceId: ws.deviceId,
+    corner: ws.corner,
+    matchNo: match.matchNo,
+    round: match.round,
+    phase: match.phase,
+    timerMs: Math.max(0, Math.ceil(match.timerMs)),
+    running: match.running,
+    red: { score: match.red.score, gamjeom: match.red.gamjeom },
+    blue: { score: match.blue.score, gamjeom: match.blue.gamjeom },
+    votes: deep(match.votes)
+  };
 }
 function state() {
   const payload = { type: "state", match: deep(match), matchHistory: deep(matchHistory) };
-  broadcast(JSON.stringify(payload), 'state broadcast');
+  const text = JSON.stringify(payload);
+  for (const ws of wss.clients) {
+    if (ws.role === 'remote') sendText(ws, JSON.stringify(remoteState(ws)), 'remote state broadcast');
+    else sendText(ws, text, 'state broadcast');
+  }
   lastStateAt = Date.now();
 }
 function emit(message) {
-  broadcast(JSON.stringify(message), 'broadcast');
+  const text = JSON.stringify(message);
+  for (const ws of wss.clients) {
+    if (ws.role !== 'remote') sendText(ws, text, 'broadcast');
+  }
 }
 
 function sendError(ws, code, message) {
@@ -127,6 +151,39 @@ function validPoints(points) {
 
 function validInteger(value) {
   return Number.isInteger(value) && Number.isFinite(value);
+}
+
+function validRemoteSessionId(value) {
+  return typeof value === 'string' && /^[A-Za-z0-9._:-]{1,64}$/.test(value);
+}
+
+function remoteButton(button) {
+  const matchButton = /^((?:RED|BLUE))_([123])$/.exec(String(button || '').toUpperCase());
+  if (!matchButton) return null;
+  return { player: matchButton[1], points: Number(matchButton[2]) };
+}
+
+function expectedRemoteToken(deviceId) {
+  return process.env[`SFTS_REMOTE_TOKEN_${deviceId}`] || null;
+}
+
+function rememberRemoteAck(session, sequence, ack) {
+  session.acks.set(sequence, ack);
+  while (session.acks.size > REMOTE_ACK_CACHE_SIZE) {
+    session.acks.delete(session.acks.keys().next().value);
+  }
+}
+
+function remoteAck(ws, sequence, details) {
+  const ack = {
+    type: 'remote_event_ack',
+    deviceId: ws.deviceId,
+    sessionId: ws.sessionId,
+    sequence,
+    ...details
+  };
+  send(ws, ack);
+  return ack;
 }
 
 function scoringIsAllowed() {
@@ -175,8 +232,18 @@ function releaseRole(ws) {
       state();
     }
   }
+  if (ws.role === 'remote' && remoteSockets.get(ws.deviceId) === ws) {
+    remoteSockets.delete(ws.deviceId);
+    if (match.votes[ws.corner]) {
+      delete match.votes[ws.corner];
+      state();
+    }
+  }
   ws.role = 'unknown';
   ws.corner = 0;
+  ws.deviceId = null;
+  ws.sessionId = null;
+  ws.remoteSession = null;
 }
 
 function assignRole(ws, role, corner) {
@@ -364,13 +431,15 @@ function evaluateVotes() {
       if (total >= 3) {
         addPoint(player, points, 'referee', true);
         match.votes = {};
+        const result = { awarded: true, player, points, count: total };
         emit({ type: 'award', player, points, count: total });
         state();
-        return;
+        return result;
       }
     }
   }
   state();
+  return { awarded: false };
 }
 
 function resetTest() {
@@ -380,11 +449,159 @@ function resetTest() {
   state();
 }
 
+function handleRemoteHello(ws, msg) {
+  if (ws.role !== 'unknown') {
+    sendError(ws, 'ROLE_ALREADY_ASSIGNED', 'This connection already has a role');
+    return;
+  }
+
+  const deviceId = String(msg.deviceId || '').toUpperCase();
+  const sessionId = String(msg.sessionId || '');
+  const protocolVersion = Number(msg.protocolVersion);
+  const expectedToken = expectedRemoteToken(deviceId);
+  const allowUnpaired = process.env.SFTS_ALLOW_UNPAIRED_REMOTES === 'true';
+
+  if (!REMOTE_IDS.has(deviceId)) {
+    sendError(ws, 'INVALID_DEVICE', 'Device ID must be C1, C2, C3, or C4');
+    return;
+  }
+  if (protocolVersion !== REMOTE_PROTOCOL_VERSION) {
+    sendError(ws, 'UNSUPPORTED_PROTOCOL', `Expected remote protocol v${REMOTE_PROTOCOL_VERSION}`);
+    return;
+  }
+  if (!validRemoteSessionId(sessionId)) {
+    sendError(ws, 'INVALID_SESSION', 'A valid remote session ID is required');
+    return;
+  }
+  if (!expectedToken && !allowUnpaired) {
+    sendError(ws, 'REMOTE_NOT_CONFIGURED', `No token configured for ${deviceId}`);
+    return;
+  }
+  if (expectedToken && String(msg.token || '') !== expectedToken) {
+    sendError(ws, 'UNAUTHORIZED_REMOTE', 'Remote authentication failed');
+    return;
+  }
+  const existing = remoteSockets.get(deviceId);
+  if (existing && existing !== ws && existing.readyState === 1) {
+    sendError(ws, 'DEVICE_BUSY', `${deviceId} is already connected`);
+    return;
+  }
+
+  const corner = Number(deviceId.slice(1));
+  const previousSession = remoteSessions.get(deviceId);
+  const session = previousSession && previousSession.sessionId === sessionId
+    ? previousSession
+    : { sessionId, lastSequence: 0, acks: new Map() };
+
+  ws.role = 'remote';
+  ws.deviceId = deviceId;
+  ws.corner = corner;
+  ws.sessionId = sessionId;
+  ws.firmware = String(msg.firmware || '').slice(0, 32);
+  ws.remoteSession = session;
+  remoteSockets.set(deviceId, ws);
+  remoteSessions.set(deviceId, session);
+
+  send(ws, {
+    type: 'remote_ready',
+    protocolVersion: REMOTE_PROTOCOL_VERSION,
+    deviceId,
+    corner,
+    sessionId
+  });
+  send(ws, remoteState(ws));
+}
+
+function handleRemoteEvent(ws, msg) {
+  if (ws.role !== 'remote' || !ws.remoteSession) {
+    sendError(ws, 'REMOTE_NOT_AUTHENTICATED', 'Send remote_hello before remote_event');
+    return;
+  }
+
+  const sequence = Number(msg.sequence);
+  if (String(msg.deviceId || '').toUpperCase() !== ws.deviceId || String(msg.sessionId || '') !== ws.sessionId) {
+    sendError(ws, 'REMOTE_ID_MISMATCH', 'Event identity does not match the connected remote');
+    return;
+  }
+  if (!Number.isSafeInteger(sequence) || sequence < 1) {
+    sendError(ws, 'INVALID_SEQUENCE', 'Event sequence must be a positive safe integer');
+    return;
+  }
+
+  const session = ws.remoteSession;
+  const previousAck = session.acks.get(sequence);
+  if (previousAck) {
+    send(ws, previousAck);
+    return;
+  }
+  if (sequence <= session.lastSequence) {
+    const ack = remoteAck(ws, sequence, { accepted: false, reason: 'SEQUENCE_REPLAY' });
+    rememberRemoteAck(session, sequence, ack);
+    return;
+  }
+  session.lastSequence = sequence;
+
+  const button = String(msg.button || '').toUpperCase();
+  if (button === 'CANCEL') {
+    if (match.test.active) {
+      const ack = remoteAck(ws, sequence, { accepted: false, reason: 'TEST_MODE_ACTIVE' });
+      rememberRemoteAck(session, sequence, ack);
+      return;
+    }
+    if (match.phase !== 'ROUND') {
+      const ack = remoteAck(ws, sequence, { accepted: false, reason: 'ROUND_NOT_ACTIVE' });
+      rememberRemoteAck(session, sequence, ack);
+      return;
+    }
+    delete match.votes[ws.corner];
+    state();
+    const ack = remoteAck(ws, sequence, { accepted: true, reason: 'VOTE_CANCELLED', awarded: false });
+    rememberRemoteAck(session, sequence, ack);
+    return;
+  }
+
+  const vote = remoteButton(button);
+  if (!vote) {
+    const ack = remoteAck(ws, sequence, { accepted: false, reason: 'INVALID_BUTTON' });
+    rememberRemoteAck(session, sequence, ack);
+    return;
+  }
+  if (match.test.active) {
+    match.test.presses[`${ws.corner}-${vote.player}-${vote.points}`] = true;
+    emit({ type: 'testPress', corner: ws.corner, player: vote.player, points: vote.points });
+    state();
+    const ack = remoteAck(ws, sequence, { accepted: true, reason: 'TEST_PRESS_RECORDED', test: true, awarded: false });
+    rememberRemoteAck(session, sequence, ack);
+    return;
+  }
+  if (match.phase !== 'ROUND') {
+    const ack = remoteAck(ws, sequence, { accepted: false, reason: 'ROUND_NOT_ACTIVE' });
+    rememberRemoteAck(session, sequence, ack);
+    return;
+  }
+
+  match.votes[ws.corner] = vote;
+  const voteCount = Object.values(match.votes)
+    .filter(item => item.player === vote.player && item.points === vote.points).length;
+  const outcome = evaluateVotes();
+  const ack = remoteAck(ws, sequence, {
+    accepted: true,
+    reason: outcome.awarded ? 'POINT_AWARDED' : 'VOTE_RECORDED',
+    awarded: outcome.awarded,
+    voteCount: outcome.awarded ? outcome.count : voteCount
+  });
+  rememberRemoteAck(session, sequence, ack);
+}
+
 wss.on('connection', ws => {
   ws.role = 'unknown';
   ws.corner = 0;
+  ws.deviceId = null;
+  ws.sessionId = null;
+  ws.remoteSession = null;
   ws.isAlive = true;
   ws.on('pong', () => { ws.isAlive = true; });
+  syncTimer();
   send(ws, { type: 'state', match: deep(match), matchHistory: deep(matchHistory) });
 
   ws.on('message', raw => {
@@ -392,7 +609,24 @@ wss.on('connection', ws => {
     try { msg = JSON.parse(String(raw)); } catch { return; }
     if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return;
 
+    if (msg.type === 'remote_hello') {
+      handleRemoteHello(ws, msg);
+      return;
+    }
+    if (msg.type === 'remote_event') {
+      handleRemoteEvent(ws, msg);
+      return;
+    }
+    if (msg.type === 'remote_ping') {
+      if (ws.role === 'remote') send(ws, { type: 'remote_pong', deviceId: ws.deviceId });
+      else sendError(ws, 'REMOTE_NOT_AUTHENTICATED', 'Send remote_hello before remote_ping');
+      return;
+    }
     if (msg.type === 'role') {
+      if (ws.role !== 'unknown') {
+        sendError(ws, 'ROLE_ALREADY_ASSIGNED', 'This connection already has a role');
+        return;
+      }
       assignRole(ws, msg.role, Number(msg.corner));
       return;
     }

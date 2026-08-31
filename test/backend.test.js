@@ -58,7 +58,11 @@ async function assign(ws, role, corner) {
 before(async () => {
   serverProcess = spawn(process.execPath, ['src/server.js'], {
     cwd: projectRoot,
-    env: { ...process.env, PORT: String(port) },
+    env: {
+      ...process.env,
+      PORT: String(port),
+      SFTS_ALLOW_UNPAIRED_REMOTES: 'true'
+    },
     stdio: ['ignore', 'pipe', 'pipe']
   });
 
@@ -134,6 +138,40 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   host.send(JSON.stringify({ type: 'host', action: 'playPause' }));
   const pausedBreak = await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'BREAK' && !message.match.running);
   assert.equal(pausedBreak.match.red.score, breakState.match.red.score);
+
+  host.send(JSON.stringify({ type: 'host', action: 'resetMatch' }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'ROUND' && message.match.red.score === 0);
+  const remote = await connect();
+  remote.send(JSON.stringify({
+    type: 'remote_hello',
+    protocolVersion: 1,
+    deviceId: 'C4',
+    sessionId: 'test-session-c4',
+    firmware: 'test'
+  }));
+  assert.equal((await waitForMessage(remote, message => message.type === 'remote_ready')).deviceId, 'C4');
+  const compactState = await waitForMessage(remote, message => message.type === 'remote_state');
+  assert.equal(compactState.deviceId, 'C4');
+
+  const remoteEvent = JSON.stringify({
+    type: 'remote_event',
+    deviceId: 'C4',
+    sessionId: 'test-session-c4',
+    sequence: 1,
+    button: 'RED_2'
+  });
+  remote.send(remoteEvent);
+  const firstAck = await waitForMessage(remote, message => message.type === 'remote_event_ack' && message.sequence === 1);
+  assert.equal(firstAck.accepted, true);
+  remote.send(remoteEvent);
+  const duplicateAck = await waitForMessage(remote, message => message.type === 'remote_event_ack' && message.sequence === 1);
+  assert.deepEqual(duplicateAck, firstAck);
+
+  referees[0].send(JSON.stringify({ type: 'ref', action: 'vote', player: 'RED', points: 2 }));
+  referees[1].send(JSON.stringify({ type: 'ref', action: 'vote', player: 'RED', points: 2 }));
+  await waitForMessage(host, message => message.type === 'award' && message.player === 'RED' && message.points === 2);
+  const remoteAwarded = await waitForMessage(remote, message => message.type === 'remote_state' && message.red.score === 2);
+  assert.equal(remoteAwarded.red.score, 2);
 });
 
 test('malformed WebSocket input does not terminate a connection', async () => {
