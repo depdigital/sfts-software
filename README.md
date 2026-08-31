@@ -184,7 +184,7 @@ The arguments are:
 <device-id> <button> <sequence> <websocket-url>
 ```
 
-If token authentication is enabled, set the matching `SFTS_REMOTE_TOKEN_C1` environment variable before running the simulator. The simulator generates a session ID, performs the handshake, sends one event, prints the acknowledgements, and exits. Because the backend removes votes from disconnected remotes, use `--hold` when combining multiple simulator instances into one majority vote:
+If token authentication is enabled, set the matching `SFTS_REMOTE_TOKEN_C1` environment variable before running the simulator. The simulator generates a session ID, performs the handshake, sends one event, prints the acknowledgements, and exits. Use `--duplicate` to resend the same sequence number, or `--then CANCEL` to send a follow-up cancellation in the same session. Because the backend removes votes from disconnected remotes, use `--hold` when combining multiple simulator instances into one majority vote:
 
 ```bash
 npm run simulate:remote -- C1 RED_2 1 ws://127.0.0.1:8080 --hold
