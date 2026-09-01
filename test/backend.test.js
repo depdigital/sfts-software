@@ -391,6 +391,10 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(cssText, /\.bottomArea[\s\S]*z-index: 10/);
   assert.match(cssText, /\.controlGrid button[\s\S]*cursor: pointer/);
   assert.equal(js.status, 200);
+  const jsText = await js.text();
+  assert.match(jsText, /let lastTournament = null/);
+  assert.match(jsText, /lastTournament = msg\.tournament \|\| null/);
+  assert.match(jsText, /renderSchedule\(lastTournament\)/);
 
   const info = await fetch(`http://127.0.0.1:${port}/api/info`);
   assert.equal(info.status, 404);

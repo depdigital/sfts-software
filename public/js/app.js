@@ -2,6 +2,7 @@ let ws;
 let role = 'unknown';
 let hostToken = '';
 let lastState = null;
+let lastTournament = null;
 let historyCache = [];
 let currentRoundRecord = null;
 let audioCtx;
@@ -19,6 +20,7 @@ function connectSocket() {
     }
     if (msg.type === 'state') {
       lastState = msg.match;
+      lastTournament = msg.tournament || null;
       historyCache = msg.matchHistory || [];
       renderState(msg.match);
       renderTournament(msg.tournament);
@@ -148,7 +150,7 @@ function openPlayerSettings() {
   $('playerBlueWeight').value = lastState.blue.weightCategory || '';
   $('playerBlueDistrict').value = lastState.blue.district || '';
   $('playerBlueStateCode').value = lastState.blue.stateCode || '';
-  renderTournament(lastState.tournament);
+  renderTournament(lastTournament);
   $('playerSettingsModal').classList.remove('hidden');
 }
 function closePlayerSettings() { $('playerSettingsModal').classList.add('hidden'); }
@@ -237,7 +239,7 @@ async function uploadPlayerSheet() {
       const details = result.errors && result.errors.length ? `: ${result.errors.join('; ')}` : '';
       throw new Error(`${result.message || 'IMPORT FAILED'}${details}`);
     }
-    if (lastState) lastState.tournament = result.tournament;
+    lastTournament = result.tournament;
     renderTournament(result.tournament);
     toast('SCHEDULE GENERATED');
   } catch (error) {
@@ -248,7 +250,7 @@ async function uploadPlayerSheet() {
 
 function openSchedule() {
   closePlayerSettings();
-  renderSchedule(lastState && lastState.tournament);
+  renderSchedule(lastTournament);
   $('scheduleModal').classList.remove('hidden');
 }
 
