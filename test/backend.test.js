@@ -169,6 +169,21 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   ));
   assert.equal(configuredPlayers.match.red.playerName, 'LEE');
 
+  host.send(JSON.stringify({ type: 'host', action: 'headPoint', player: 'RED' }));
+  await waitForMessage(host, message => message.type === 'scoreSound' && message.player === 'RED' && message.points === 3);
+  const manualRedHead = await waitForMessage(host, message => (
+    message.type === 'state' && message.match.red.score === 3 && message.match.red.stats.plus3 === 1
+  ));
+  assert.equal(manualRedHead.match.red.score, 3);
+  host.send(JSON.stringify({ type: 'host', action: 'headPoint', player: 'BLUE' }));
+  await waitForMessage(host, message => message.type === 'scoreSound' && message.player === 'BLUE' && message.points === 3);
+  const manualBlueHead = await waitForMessage(host, message => (
+    message.type === 'state' && message.match.blue.score === 3 && message.match.blue.stats.plus3 === 1
+  ));
+  assert.equal(manualBlueHead.match.blue.score, 3);
+  host.send(JSON.stringify({ type: 'host', action: 'resetMatch' }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.red.score === 0 && message.match.blue.score === 0);
+
   const referees = [];
   for (let corner = 1; corner <= 4; corner += 1) {
     const referee = await connect();
@@ -364,12 +379,17 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(html, /STRIKE FORCE TAEKWONDO SCORING SYSTEM/);
   assert.match(html, /id="playerSheetFile"/);
   assert.match(html, /id="scheduleModal"/);
+  assert.match(html, /id="redHeadButton"/);
+  assert.match(html, /id="blueHeadButton"/);
   assert.doesNotMatch(html, /onclick="openTestRemotes\(\)"/);
   assert.match(html, /onclick="openTestMode\(\)">TEST REMOTES<\/button>/);
 
   const css = await fetch(`http://127.0.0.1:${port}/css/style.css`);
   const js = await fetch(`http://127.0.0.1:${port}/js/app.js`);
   assert.equal(css.status, 200);
+  const cssText = await css.text();
+  assert.match(cssText, /\.bottomArea[\s\S]*z-index: 10/);
+  assert.match(cssText, /\.controlGrid button[\s\S]*cursor: pointer/);
   assert.equal(js.status, 200);
 
   const info = await fetch(`http://127.0.0.1:${port}/api/info`);

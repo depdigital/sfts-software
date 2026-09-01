@@ -119,6 +119,7 @@ function nameChange(player, value) {
 function playPause() { send({ type: 'host', action: 'playPause' }); }
 function resetRoundTimer() { send({ type: 'host', action: 'resetRoundTimer' }); }
 function manualPoint(player, points) { send({ type: 'host', action: 'point', player, points }); }
+function manualHeadPoint(player) { send({ type: 'host', action: 'headPoint', player }); }
 function manualGam(player) { send({ type: 'host', action: 'gamjeom', player }); }
 
 function editScore(player) {
@@ -500,6 +501,7 @@ window.nameChange = nameChange;
 window.playPause = playPause;
 window.resetRoundTimer = resetRoundTimer;
 window.manualPoint = manualPoint;
+window.manualHeadPoint = manualHeadPoint;
 window.manualGam = manualGam;
 window.editScore = editScore;
 window.editGam = editGam;

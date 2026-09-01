@@ -1440,6 +1440,9 @@ wss.on('connection', ws => {
       if (msg.action === 'point' && !addPoint(msg.player, Number(msg.points), 'manual', true)) {
         sendError(ws, 'ROUND_NOT_ACTIVE', 'Points can only be awarded during a round');
       }
+      if (msg.action === 'headPoint' && !addPoint(msg.player, 3, 'manual-head', true)) {
+        sendError(ws, 'ROUND_NOT_ACTIVE', 'Head points can only be awarded during a round');
+      }
       if (msg.action === 'gamjeom' && !addGamjeom(msg.player)) {
         sendError(ws, 'ROUND_NOT_ACTIVE', 'Gam-jeom can only be awarded during a round');
       }

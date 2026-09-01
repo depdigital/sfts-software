@@ -94,6 +94,8 @@ button { border: 0; cursor: pointer; }
   gap: clamp(10px, 1.2vw, 30px);
   padding-inline: clamp(8px, 2vw, 36px);
   min-height: 0;
+  position: relative;
+  z-index: 0;
 }
 .fighterSide {
   position: relative;
@@ -102,6 +104,7 @@ button { border: 0; cursor: pointer; }
   align-items: center;
   justify-content: flex-start;
   padding-top: 16px;
+  overflow: hidden;
 }
 .redSide { background: linear-gradient(140deg, #f01d1b 0%, #ff521f 100%); }
 .blueSide { background: linear-gradient(140deg, #0f88e2 0%, #11c5f2 100%); }
@@ -196,12 +199,16 @@ button { border: 0; cursor: pointer; }
   gap: clamp(10px, 1.2vw, 30px);
   padding: clamp(8px, 1.5vh, 24px) clamp(10px, 2vw, 36px);
   background: #0d1118;
+  position: relative;
+  z-index: 10;
 }
 .controlGrid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: repeat(2, clamp(60px, 7vh, 110px));
   gap: clamp(8px, 1vw, 18px);
+  position: relative;
+  z-index: 11;
 }
 .controlGrid button {
   color: #fff;
@@ -212,6 +219,9 @@ button { border: 0; cursor: pointer; }
   align-items: center;
   justify-content: center;
   gap: 8px;
+  position: relative;
+  z-index: 12;
+  cursor: pointer;
 }
 .redButtons button { background: #b31e1e; border-left: 5px solid #ff5b46; }
 .blueButtons button { background: #0c73b0; border-right: 5px solid #22c6ff; }
