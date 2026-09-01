@@ -1,3 +1,7 @@
+
+
+
+
 /*
  * SFTS demo remote for the Adafruit ESP32 Feather V2.
  *
@@ -31,11 +35,11 @@
 
 // --------------------------- Test configuration ---------------------------
 
-const char* WIFI_SSID = "REPLACE_WITH_WIFI_SSID";
-const char* WIFI_PASSWORD = "REPLACE_WITH_WIFI_PASSWORD";
+const char* WIFI_SSID = "CLABS";
+const char* WIFI_PASSWORD = "clabs2023!";
 
 // Use the Raspberry Pi or Windows PC LAN address, never localhost on the ESP32.
-const char* SERVER_HOST = "192.168.1.100";
+const char* SERVER_HOST = "192.168.0.106";
 const uint16_t SERVER_PORT = 3000;
 const char* SERVER_PATH = "/";
 
