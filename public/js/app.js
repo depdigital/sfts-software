@@ -22,6 +22,7 @@ function connectSocket() {
       historyCache = msg.matchHistory || [];
       renderState(msg.match);
       renderTournament(msg.tournament);
+      if (!$('scheduleModal').classList.contains('hidden')) renderSchedule(msg.tournament);
     }
     if (msg.type === 'error') toast(msg.message || 'REQUEST FAILED');
     if (msg.type === 'award') {
@@ -30,7 +31,10 @@ function connectSocket() {
     if (msg.type === 'scoreSound') playPointSound(msg.points);
     if (msg.type === 'roundEndSound') playWhistle();
     if (msg.type === 'roundEnd') showRoundSummary(msg.record);
-    if (msg.type === 'matchEnd') showWinnerSlide(msg.winner, msg.match);
+    if (msg.type === 'matchEnd') {
+      if (msg.winner) showWinnerSlide(msg.winner, msg.match);
+      else toast('MATCH TIED — RESOLVE IT IN THE SCHEDULE');
+    }
     if (msg.type === 'testPress') markTest(msg.corner, msg.player, msg.points);
     if (msg.type === 'testReset') resetTestUi();
     if (msg.type === 'announcement') announceText(msg.text, msg.audioUrl);
@@ -276,6 +280,7 @@ function renderSchedule(tournament) {
     <thead><tr><th>BOUT</th><th>GROUP</th><th>GENDER</th><th>WEIGHT</th><th>ROUND</th><th>RED</th><th>BLUE</th><th>WINNER</th><th>STATUS</th><th>ACTIONS</th></tr></thead>
     <tbody>${entries.map(bout => {
       const canLoad = !bout.isBye && (bout.status === 'SCHEDULED' || bout.status === 'IN_PROGRESS');
+      const canAnnounce = !bout.isBye && (bout.status === 'SCHEDULED' || bout.status === 'IN_PROGRESS');
       return `<tr class="${bout.status === 'COMPLETED' ? 'completed' : bout.status === 'IN_PROGRESS' ? 'inProgress' : ''}">
         <td>${bout.boutNo}</td><td>${escapeHtml(bout.groupId)}</td><td>${escapeHtml(bout.gender)}</td>
         <td>${escapeHtml(bout.weightCategory)}</td><td>${bout.round}</td>
@@ -284,7 +289,8 @@ function renderSchedule(tournament) {
         <td>${escapeHtml(bout.status)}</td>
         <td class="scheduleRowActions">
           ${canLoad ? `<button onclick="loadScheduledBout(${bout.boutNo})">LOAD</button>` : ''}
-          ${!bout.isBye ? `<button onclick="announceScheduledBout(${bout.boutNo})">ANNOUNCE</button>` : ''}
+          ${canAnnounce ? `<button onclick="announceScheduledBout(${bout.boutNo})">ANNOUNCE</button>` : ''}
+          ${bout.status === 'TIE_PENDING' ? `<button onclick="resolveScheduledTie(${bout.boutNo}, 'RED')">RED WINS</button><button onclick="resolveScheduledTie(${bout.boutNo}, 'BLUE')">BLUE WINS</button>` : ''}
         </td>
       </tr>`;
     }).join('')}</tbody>
@@ -303,6 +309,11 @@ function printSchedule() {
 
 function announceScheduledBout(boutNo) {
   send({ type: 'host', action: 'announceBout', boutNo });
+}
+
+function resolveScheduledTie(boutNo, winner) {
+  if (!confirm(`Resolve this tied bout in favor of ${winner}?`)) return;
+  send({ type: 'host', action: 'resolveTie', boutNo, winner });
 }
 
 function loadScheduledBout(boutNo) {
@@ -504,6 +515,7 @@ window.closeSchedule = closeSchedule;
 window.downloadTournamentSchedule = downloadTournamentSchedule;
 window.printSchedule = printSchedule;
 window.announceScheduledBout = announceScheduledBout;
+window.resolveScheduledTie = resolveScheduledTie;
 window.loadScheduledBout = loadScheduledBout;
 window.resetCurrentMatch = resetCurrentMatch;
 window.openTimerEditor = openTimerEditor;

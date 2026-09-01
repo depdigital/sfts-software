@@ -10,7 +10,9 @@ import { createTts } from "./tts.js";
 
 const PORT = Number(process.env.PORT || 8080);
 const ROUND_MS_DEFAULT = 60_000;
-const BREAK_MS_DEFAULT = 35_000;
+const BREAK_MS_DEFAULT = Number.isFinite(Number(process.env.SFTS_BREAK_MS))
+  ? Math.max(50, Number(process.env.SFTS_BREAK_MS))
+  : 35_000;
 const MAX_TIMER_MS = 60 * 60 * 1000;
 const TIMER_TICK_MS = 250;
 const HEARTBEAT_MS = 10_000;
@@ -106,7 +108,7 @@ const GENDER_ALIASES = new Map([
 
 function makeTournament() {
   return {
-    format: 'ROUND_ROBIN',
+    format: 'SINGLE_ELIMINATION',
     seed: null,
     generatedAt: null,
     players: [],
@@ -156,6 +158,71 @@ function scheduleAnnouncement(bout) {
   return `Bout ${bout.boutNo}: ${bout.redPlayerName} vs ${bout.bluePlayerName}, ${bout.gender}, ${bout.weightCategory}`;
 }
 
+function bracketSizeFor(playerCount) {
+  let size = 1;
+  while (size < playerCount) size *= 2;
+  return size;
+}
+
+function bracketEntryForPlayer(player) {
+  return player ? { type: 'player', player } : null;
+}
+
+function bracketEntryForBout(boutNo) {
+  return { type: 'bout', boutNo };
+}
+
+function bracketEntryName(entry) {
+  if (!entry) return '';
+  if (entry.type === 'player') return entry.player.name;
+  return `Winner of Bout ${entry.boutNo}`;
+}
+
+function bracketPlayerId(entry) {
+  return entry?.type === 'player' ? entry.player.id : null;
+}
+
+function createBracketBout({ boutNo, group, round, left, right }) {
+  const bout = {
+    boutNo,
+    groupId: group.id,
+    gender: group.gender,
+    weightCategory: group.weightCategory,
+    round,
+    redPlayerId: bracketPlayerId(left),
+    redPlayerName: bracketEntryName(left),
+    redSourceBoutNo: left?.type === 'bout' ? left.boutNo : null,
+    bluePlayerId: bracketPlayerId(right),
+    bluePlayerName: bracketEntryName(right),
+    blueSourceBoutNo: right?.type === 'bout' ? right.boutNo : null,
+    status: left?.type === 'player' && right?.type === 'player' ? 'SCHEDULED' : 'PENDING',
+    winner: null,
+    winnerName: null,
+    tieReason: '',
+    announcement: ''
+  };
+  bout.announcement = scheduleAnnouncement(bout);
+  return bout;
+}
+
+function addBracketBye({ byes, group, round, entry }) {
+  if (!entry) return;
+  const playerId = bracketPlayerId(entry);
+  const playerName = bracketEntryName(entry);
+  if (playerId) group.byePlayerIds.push(playerId);
+  byes.push({
+    groupId: group.id,
+    gender: group.gender,
+    weightCategory: group.weightCategory,
+    round,
+    playerId,
+    playerName,
+    sourceBoutNo: entry.type === 'bout' ? entry.boutNo : null,
+    status: 'BYE',
+    announcement: `${playerName} advances by bye in round ${round}, ${group.gender}, ${group.weightCategory}`
+  });
+}
+
 function generateTournament(players, seed = crypto.randomBytes(8).toString('hex')) {
   const random = seededRandom(seed);
   const grouped = new Map();
@@ -170,11 +237,9 @@ function generateTournament(players, seed = crypto.randomBytes(8).toString('hex'
       const genderOrder = left[0].gender.localeCompare(right[0].gender);
       return genderOrder || left[0].weightCategory.localeCompare(right[0].weightCategory, undefined, { numeric: true });
     });
-  const expectedBouts = groups.reduce((total, [, groupPlayers]) => (
-    total + (groupPlayers.length * Math.max(0, groupPlayers.length - 1)) / 2
-  ), 0);
+  const expectedBouts = groups.reduce((total, [, groupPlayers]) => total + Math.max(0, groupPlayers.length - 1), 0);
   if (expectedBouts > MAX_SCHEDULE_BOUTS) {
-    throw new TournamentImportError(`The generated round-robin schedule would contain ${expectedBouts} bouts; maximum is ${MAX_SCHEDULE_BOUTS}`);
+    throw new TournamentImportError(`The generated single-elimination schedule would contain ${expectedBouts} bouts; maximum is ${MAX_SCHEDULE_BOUTS}`);
   }
   const schedule = [];
   const byes = [];
@@ -183,69 +248,74 @@ function generateTournament(players, seed = crypto.randomBytes(8).toString('hex'
 
   groups.forEach(([, groupPlayers], groupIndex) => {
     const ordered = shuffled(groupPlayers, random);
-    const circle = [...ordered];
-    if (circle.length % 2 === 1) circle.push(null);
-    const rounds = Math.max(1, circle.length - 1);
+    const bracketSize = bracketSizeFor(ordered.length);
     const group = {
       id: `G${String(groupIndex + 1).padStart(3, '0')}`,
       gender: groupPlayers[0].gender,
       weightCategory: groupPlayers[0].weightCategory,
       playerIds: groupPlayers.map(player => player.id),
       byePlayerIds: [],
-      matchCount: 0
+      bracketSize,
+      matchCount: 0,
+      championId: null,
+      championName: null
     };
 
-    for (let round = 1; round <= rounds; round += 1) {
-      const pairCount = circle.length / 2;
-      for (let pair = 0; pair < pairCount; pair += 1) {
-        const first = circle[pair];
-        const second = circle[circle.length - 1 - pair];
-        if (!first || !second) {
-          const bye = first || second;
-          if (bye) {
-            group.byePlayerIds.push(bye.id);
-            byes.push({
-              groupId: group.id,
-              gender: group.gender,
-              weightCategory: group.weightCategory,
-              round,
-              playerId: bye.id,
-              playerName: bye.name,
-              announcement: `${bye.name} receives a bye in round ${round}, ${group.gender}, ${group.weightCategory}`
-            });
-          }
-          continue;
-        }
-        const red = random() < 0.5 ? first : second;
-        const blue = red === first ? second : first;
-        const bout = {
-          boutNo,
-          groupId: group.id,
-          gender: group.gender,
-          weightCategory: group.weightCategory,
-          round,
-          redPlayerId: red.id,
-          redPlayerName: red.name,
-          bluePlayerId: blue.id,
-          bluePlayerName: blue.name,
-          status: 'SCHEDULED',
-          winner: null,
-          winnerName: null,
-          announcement: ''
-        };
-        bout.announcement = scheduleAnnouncement(bout);
-        schedule.push(bout);
-        group.matchCount += 1;
-        boutNo += 1;
+    if (ordered.length === 1) {
+      group.championId = ordered[0].id;
+      group.championName = ordered[0].name;
+      addBracketBye({ byes, group, round: 1, entry: bracketEntryForPlayer(ordered[0]) });
+      tournamentGroups.push(group);
+      return;
+    }
+
+    const byeCount = bracketSize - ordered.length;
+    const slots = [];
+    let playerIndex = 0;
+    for (let pair = 0; pair < bracketSize / 2; pair += 1) {
+      if (pair < byeCount) {
+        slots.push(bracketEntryForPlayer(ordered[playerIndex++]));
+        slots.push(null);
+      } else {
+        slots.push(bracketEntryForPlayer(ordered[playerIndex++]));
+        slots.push(bracketEntryForPlayer(ordered[playerIndex++]));
       }
-      const last = circle.pop();
-      circle.splice(1, 0, last);
+    }
+
+    let round = 1;
+    let entries = slots;
+    while (entries.length > 1) {
+      const nextEntries = [];
+      for (let index = 0; index < entries.length; index += 2) {
+        const left = entries[index];
+        const right = entries[index + 1];
+        if (left && right) {
+          const redFirst = random() < 0.5;
+          const bout = createBracketBout({
+            boutNo,
+            group,
+            round,
+            left: redFirst ? left : right,
+            right: redFirst ? right : left
+          });
+          schedule.push(bout);
+          group.matchCount += 1;
+          nextEntries.push(bracketEntryForBout(boutNo));
+          boutNo += 1;
+        } else {
+          const advancing = left || right;
+          if (advancing) addBracketBye({ byes, group, round, entry: advancing });
+          nextEntries.push(advancing);
+        }
+      }
+      entries = nextEntries;
+      round += 1;
     }
     tournamentGroups.push(group);
   });
 
   return {
-    format: 'ROUND_ROBIN',
+    format: 'SINGLE_ELIMINATION',
     seed,
     generatedAt: new Date().toISOString(),
     players: deep(players),
@@ -454,6 +524,7 @@ function tournamentScheduleRows() {
     'Blue Player': bout.bluePlayerName,
     Status: bout.status,
     Winner: bout.winnerName || bout.winner || '',
+    'Tie Reason': bout.tieReason || '',
     Announcement: bout.announcement
   }));
   const byes = (tournament.byes || []).map(bye => ({
@@ -497,6 +568,61 @@ function findTournamentBout(boutNo) {
   return tournament.schedule.find(bout => bout.boutNo === number) || null;
 }
 
+function refreshTournamentBracket() {
+  for (const bout of tournament.schedule) {
+    for (const playerSide of ['red', 'blue']) {
+      const sourceBoutNo = bout[`${playerSide}SourceBoutNo`];
+      if (!sourceBoutNo) continue;
+      const source = findTournamentBout(sourceBoutNo);
+      const playerIdKey = `${playerSide}PlayerId`;
+      const playerNameKey = `${playerSide}PlayerName`;
+      if (source?.winner) {
+        const player = tournament.players.find(item => item.id === source.winner);
+        bout[playerIdKey] = source.winner;
+        bout[playerNameKey] = source.winnerName || player?.name || `Winner of Bout ${sourceBoutNo}`;
+      } else {
+        bout[playerIdKey] = null;
+        bout[playerNameKey] = source?.status === 'TIE_PENDING'
+          ? `Tie pending in Bout ${sourceBoutNo}`
+          : `Winner of Bout ${sourceBoutNo}`;
+      }
+    }
+
+    if (bout.status === 'PENDING' || bout.status === 'SCHEDULED') {
+      const ready = Boolean(bout.redPlayerId && bout.bluePlayerId);
+      bout.status = ready ? 'SCHEDULED' : 'PENDING';
+      bout.announcement = scheduleAnnouncement(bout);
+    }
+  }
+
+  for (const bye of tournament.byes || []) {
+    if (!bye.sourceBoutNo) continue;
+    const source = findTournamentBout(bye.sourceBoutNo);
+    if (source?.winner) {
+      const player = tournament.players.find(item => item.id === source.winner);
+      bye.playerId = source.winner;
+      bye.playerName = source.winnerName || player?.name || `Winner of Bout ${bye.sourceBoutNo}`;
+    } else {
+      bye.playerId = null;
+      bye.playerName = source?.status === 'TIE_PENDING'
+        ? `Tie pending in Bout ${bye.sourceBoutNo}`
+        : `Winner of Bout ${bye.sourceBoutNo}`;
+    }
+    bye.announcement = `${bye.playerName} advances by bye in round ${bye.round}, ${bye.gender}, ${bye.weightCategory}`;
+  }
+
+  for (const group of tournament.groups) {
+    const groupBouts = tournament.schedule.filter(bout => bout.groupId === group.id);
+    const final = groupBouts.reduce((current, bout) => (
+      !current || bout.round > current.round ? bout : current
+    ), null);
+    if (final?.status === 'COMPLETED' && final.winner) {
+      group.championId = final.winner;
+      group.championName = final.winnerName;
+    }
+  }
+}
+
 function loadTournamentBout(bout) {
   if (tournamentMatchIsBusy()) {
     return { ok: false, code: 'MATCH_BUSY', message: 'Finish or reset the current match before loading a scheduled bout' };
@@ -530,10 +656,41 @@ function completeTournamentBout(winner) {
   if (!tournament.activeBoutNo) return;
   const bout = findTournamentBout(tournament.activeBoutNo);
   if (!bout) return;
+  if (!winner) {
+    bout.status = 'TIE_PENDING';
+    bout.winner = null;
+    bout.winnerName = null;
+    bout.tieReason = 'Manual tie resolution required';
+    bout.announcement = `Tie pending for Bout ${bout.boutNo}: ${bout.redPlayerName} vs ${bout.bluePlayerName}`;
+    refreshTournamentBracket();
+    return { tiePending: true };
+  }
   bout.status = 'COMPLETED';
   bout.winner = winner === 'RED' ? bout.redPlayerId : winner === 'BLUE' ? bout.bluePlayerId : null;
   bout.winnerName = winner === 'RED' ? bout.redPlayerName : winner === 'BLUE' ? bout.bluePlayerName : null;
+  bout.tieReason = '';
   tournament.activeBoutNo = null;
+  refreshTournamentBracket();
+  return { completed: true };
+}
+
+function resolveTournamentTie(bout, winner) {
+  if (tournament.activeBoutNo !== bout.boutNo || bout.status !== 'TIE_PENDING') {
+    return { ok: false, code: 'TIE_UNAVAILABLE', message: 'Only the currently loaded tied bout can be resolved' };
+  }
+  if (winner !== 'RED' && winner !== 'BLUE') {
+    return { ok: false, code: 'INVALID_WINNER', message: 'Tie winner must be RED or BLUE' };
+  }
+  bout.status = 'COMPLETED';
+  bout.winner = winner === 'RED' ? bout.redPlayerId : bout.bluePlayerId;
+  bout.winnerName = winner === 'RED' ? bout.redPlayerName : bout.bluePlayerName;
+  bout.tieReason = 'Manual tie resolution';
+  bout.announcement = scheduleAnnouncement(bout);
+  tournament.activeBoutNo = null;
+  match.matchWinner = winner;
+  match.matchReason = 'TIE RESOLVED';
+  refreshTournamentBracket();
+  return { ok: true };
 }
 
 async function announceTournamentBout(bout) {
@@ -570,15 +727,24 @@ app.post('/api/tournament/import', requireHostRequest, express.raw({ type: '*/*'
 
 app.get('/api/tournament/template.xlsx', requireHostRequest, (req, res) => {
   const workbook = XLSX.utils.book_new();
-  const sheet = XLSX.utils.json_to_sheet([{
-    'Player ID': 'P001',
-    Name: 'Example Player',
-    Gender: 'MALE',
-    'Weight Category': '-58 kg',
-    'State Code': 'DL',
-    District: 'New Delhi',
-    Club: 'Example Club'
-  }]);
+  const sheet = XLSX.utils.json_to_sheet([
+    { 'Player ID': 'M58-01', Name: 'Arjun Mehta', Gender: 'MALE', 'Weight Category': '58 kg', 'State Code': 'DL', District: 'New Delhi', Club: 'SFTS Demo Club' },
+    { 'Player ID': 'M58-02', Name: 'Rohan Singh', Gender: 'MALE', 'Weight Category': '58 kg', 'State Code': 'UP', District: 'Noida', Club: 'SFTS Demo Club' },
+    { 'Player ID': 'M58-03', Name: 'Karan Patel', Gender: 'MALE', 'Weight Category': '58 kg', 'State Code': 'GJ', District: 'Ahmedabad', Club: 'SFTS Demo Club' },
+    { 'Player ID': 'M58-04', Name: 'Vivek Rao', Gender: 'MALE', 'Weight Category': '58 kg', 'State Code': 'KA', District: 'Bengaluru', Club: 'SFTS Demo Club' },
+    { 'Player ID': 'M58-05', Name: 'Aditya Nair', Gender: 'MALE', 'Weight Category': '58 kg', 'State Code': 'KL', District: 'Kochi', Club: 'SFTS Demo Club' },
+    { 'Player ID': 'M58-06', Name: 'Nikhil Das', Gender: 'MALE', 'Weight Category': '58 kg', 'State Code': 'WB', District: 'Kolkata', Club: 'SFTS Demo Club' },
+    { 'Player ID': 'M58-07', Name: 'Manav Shah', Gender: 'MALE', 'Weight Category': '58 kg', 'State Code': 'MH', District: 'Mumbai', Club: 'SFTS Demo Club' },
+    { 'Player ID': 'M58-08', Name: 'Yash Verma', Gender: 'MALE', 'Weight Category': '58 kg', 'State Code': 'RJ', District: 'Jaipur', Club: 'SFTS Demo Club' },
+    { 'Player ID': 'F49-01', Name: 'Ananya Kapoor', Gender: 'FEMALE', 'Weight Category': '49 kg', 'State Code': 'DL', District: 'New Delhi', Club: 'SFTS Demo Club' },
+    { 'Player ID': 'F49-02', Name: 'Ishita Iyer', Gender: 'FEMALE', 'Weight Category': '49 kg', 'State Code': 'TN', District: 'Chennai', Club: 'SFTS Demo Club' },
+    { 'Player ID': 'F49-03', Name: 'Meera Joshi', Gender: 'FEMALE', 'Weight Category': '49 kg', 'State Code': 'MH', District: 'Pune', Club: 'SFTS Demo Club' },
+    { 'Player ID': 'F49-04', Name: 'Kavya Menon', Gender: 'FEMALE', 'Weight Category': '49 kg', 'State Code': 'KL', District: 'Thiruvananthapuram', Club: 'SFTS Demo Club' },
+    { 'Player ID': 'F49-05', Name: 'Diya Bose', Gender: 'FEMALE', 'Weight Category': '49 kg', 'State Code': 'WB', District: 'Kolkata', Club: 'SFTS Demo Club' },
+    { 'Player ID': 'M68-01', Name: 'Aarav Gupta', Gender: 'MALE', 'Weight Category': '68 kg', 'State Code': 'HR', District: 'Gurugram', Club: 'SFTS Demo Club' },
+    { 'Player ID': 'M68-02', Name: 'Dev Malhotra', Gender: 'MALE', 'Weight Category': '68 kg', 'State Code': 'PB', District: 'Ludhiana', Club: 'SFTS Demo Club' },
+    { 'Player ID': 'M68-03', Name: 'Kabir Khan', Gender: 'MALE', 'Weight Category': '68 kg', 'State Code': 'KA', District: 'Mysuru', Club: 'SFTS Demo Club' }
+  ]);
   XLSX.utils.book_append_sheet(workbook, sheet, 'Players');
   const output = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
   res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -879,8 +1045,15 @@ function startNextRound() {
 function resetCurrentMatch() {
   if (tournament.activeBoutNo) {
     const bout = findTournamentBout(tournament.activeBoutNo);
-    if (bout && bout.status === 'IN_PROGRESS') bout.status = 'SCHEDULED';
+    if (bout && (bout.status === 'IN_PROGRESS' || bout.status === 'TIE_PENDING')) {
+      bout.status = 'SCHEDULED';
+      bout.winner = null;
+      bout.winnerName = null;
+      bout.tieReason = '';
+      bout.announcement = scheduleAnnouncement(bout);
+    }
     tournament.activeBoutNo = null;
+    refreshTournamentBracket();
   }
   match = makeMatch(
     match.matchNo,
@@ -1248,7 +1421,25 @@ wss.on('connection', ws => {
           sendError(ws, 'BOUT_NOT_FOUND', 'Scheduled bout not found');
           return;
         }
+        if (bout.status !== 'SCHEDULED' && bout.status !== 'IN_PROGRESS') {
+          sendError(ws, 'BOUT_UNAVAILABLE', 'This bout is not ready to announce');
+          return;
+        }
         void announceTournamentBout(bout);
+        return;
+      }
+      if (msg.action === 'resolveTie') {
+        const bout = findTournamentBout(msg.boutNo);
+        if (!bout) {
+          sendError(ws, 'BOUT_NOT_FOUND', 'Scheduled bout not found');
+          return;
+        }
+        const result = resolveTournamentTie(bout, String(msg.winner || '').toUpperCase());
+        if (!result.ok) {
+          sendError(ws, result.code, result.message);
+          return;
+        }
+        state();
         return;
       }
       if (msg.action === 'testStart') {

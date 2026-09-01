@@ -8,7 +8,7 @@ This repository contains the scoring dashboard, backend remote protocol, and sim
 
 - Import tournament players from `.xlsx`, `.xls`, or `.csv` through **PLAYER SETTINGS**.
 - Validate player data and group competitors by the same gender and weight category.
-- Generate a seeded random round-robin schedule, including bye allocations for odd-sized groups.
+- Generate a seeded random single-elimination bracket for each gender and weight group, including bye allocations.
 - View the complete schedule, load bouts into the normal scoring board, and announce bouts to connected browser displays.
 - Download the schedule as Excel or CSV and print it with the built-in print layout.
 - Download a ready-to-fill Excel template from **PLAYER SETTINGS → DOWNLOAD TEMPLATE**.
@@ -26,7 +26,7 @@ This repository contains the scoring dashboard, backend remote protocol, and sim
 - Round summaries with score, gam-jeom, and point-type statistics.
 - Match winner screen and match numbering.
 - Host-only remote test mode for checking all C1–C4 remotes.
-- Tournament player-sheet import with same-gender, same-weight round-robin scheduling.
+- Tournament player-sheet import with same-gender, same-weight single-elimination scheduling.
 - Tournament schedule viewing, bout loading, announcer messages, Excel/CSV download, and print layout.
 - ESP32 remote protocol with fixed C1–C4 identities, token authentication, acknowledgements, and sequence-based duplicate protection.
 - Node-based remote simulator for backend testing before hardware is available.
@@ -119,9 +119,9 @@ Name | Gender | Weight Category
 
 The optional columns are `Player ID`, `State Code`, `District`, and `Club`. Gender values `MALE`/`M` and `FEMALE`/`F` are accepted. Player IDs are generated when omitted, but supplied IDs must be unique. State codes are validated against the Indian state-code list already used by player settings.
 
-Selecting **IMPORT & GENERATE SCHEDULE** validates the entire sheet before replacing the current tournament list. Players are grouped by exact gender and case-insensitive weight category. Each group receives a seeded random order and a complete round-robin fixture list; every pairing is scheduled once. An odd-sized group receives a bye allocation. The seed is shown with the schedule so the draw can be identified and reproduced from the same player list and seed during a future audit.
+Selecting **IMPORT & GENERATE SCHEDULE** validates the entire sheet before replacing the current tournament list. Players are grouped by exact gender and case-insensitive weight category. Each group receives a seeded random order and a single-elimination bracket. Only the first available matches can be loaded; later matches remain pending until their feeder matches produce winners. Groups receive automatic bye allocations when their player count is not a power of two. The seed is shown with the schedule so the draw can be identified and reproduced from the same player list and seed during a future audit.
 
-The host can view the schedule, load an available bout into the normal scoring board, announce a bout to connected browser displays using generated announcement text, download the complete schedule as Excel or CSV, and print the schedule. Bye allocations are included in the schedule view and downloads. Importing is blocked while an active match contains scores, penalties, votes, a running timer, or remote test mode. Tournament data is held in memory for the current server run.
+The host can view the schedule, load an available bout into the normal scoring board, announce a bout to connected browser displays using generated announcement text, download the complete schedule as Excel or CSV, and print the schedule. Bye allocations are included in the schedule view and downloads. When a match finishes tied, it becomes **TIE_PENDING** and blocks the next bracket match; after the applicable tie-break procedure, the host selects **RED WINS** or **BLUE WINS** in the schedule to advance that player. Importing is blocked while an active match contains scores, penalties, votes, a running timer, or remote test mode. Tournament data is held in memory for the current server run.
 
 ### Local announcements with Piper
 
@@ -153,12 +153,12 @@ The downloadable template is available from **PLAYER SETTINGS → DOWNLOAD TEMPL
 
 ### Player sheet template
 
-The first worksheet should use this header row. `Name`, `Gender`, and `Weight Category` are required; the other columns are optional.
+The first worksheet should use this header row. `Name`, `Gender`, and `Weight Category` are required; the other columns are optional. The application's **DOWNLOAD TEMPLATE** button provides 16 ready-to-import demo players: an 8-player `MALE / 58 kg` bracket, a 5-player `FEMALE / 49 kg` bracket with byes, and a 3-player `MALE / 68 kg` bracket with byes. Replace the demo rows with real players before competition use.
 
 ```csv
 Player ID,Name,Gender,Weight Category,State Code,District,Club
-P001,Example Player,MALE,-58 kg,DL,New Delhi,Example Club
-P002,Another Player,FEMALE,-49 kg,KA,Bengaluru,Example Club
+P001,Example Player,MALE,58 kg,DL,New Delhi,Example Club
+P002,Another Player,FEMALE,49 kg,KA,Bengaluru,Example Club
 ```
 
 Accepted gender values are `MALE` or `M`, and `FEMALE` or `F`. If `Player ID` is blank, the system generates one. Player IDs must be unique when provided. The same template can be pasted into Excel and saved as `.xlsx`, or downloaded directly from the application.
