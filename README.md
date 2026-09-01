@@ -4,6 +4,15 @@ SFTS is a LAN-based taekwondo match scoring application. One host runs the scori
 
 This repository contains the scoring dashboard, backend remote protocol, and simulator for ESP32-based physical remotes. Raspberry Pi appliance deployment and the actual ESP32 firmware are not yet implemented.
 
+## Recently added
+
+- Import tournament players from `.xlsx`, `.xls`, or `.csv` through **PLAYER SETTINGS**.
+- Validate player data and group competitors by the same gender and weight category.
+- Generate a seeded random round-robin schedule, including bye allocations for odd-sized groups.
+- View the complete schedule, load bouts into the normal scoring board, and announce bouts to connected browser displays.
+- Download the schedule as Excel or CSV and print it with the built-in print layout.
+- Download a ready-to-fill Excel template from **PLAYER SETTINGS → DOWNLOAD TEMPLATE**.
+
 ## Current features
 
 - Host scoreboard for red and blue competitors.
@@ -115,6 +124,18 @@ Selecting **IMPORT & GENERATE SCHEDULE** validates the entire sheet before repla
 The host can view the schedule, load an available bout into the normal scoring board, announce a bout to connected browser displays using generated announcement text, download the complete schedule as Excel or CSV, and print the schedule. Bye allocations are included in the schedule view and downloads. Importing is blocked while an active match contains scores, penalties, votes, a running timer, or remote test mode. Tournament data is held in memory for the current server run.
 
 The downloadable template is available from **PLAYER SETTINGS → DOWNLOAD TEMPLATE**. A generated schedule contains bout number, group, gender, weight category, round, red player, blue player, status, winner, and announcement text.
+
+### Player sheet template
+
+The first worksheet should use this header row. `Name`, `Gender`, and `Weight Category` are required; the other columns are optional.
+
+```csv
+Player ID,Name,Gender,Weight Category,State Code,District,Club
+P001,Example Player,MALE,-58 kg,DL,New Delhi,Example Club
+P002,Another Player,FEMALE,-49 kg,KA,Bengaluru,Example Club
+```
+
+Accepted gender values are `MALE` or `M`, and `FEMALE` or `F`. If `Player ID` is blank, the system generates one. Player IDs must be unique when provided. The same template can be pasted into Excel and saved as `.xlsx`, or downloaded directly from the application.
 
 ### 6. Stop the application
 
