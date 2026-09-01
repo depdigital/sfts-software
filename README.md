@@ -12,6 +12,7 @@ This repository contains the scoring dashboard, backend remote protocol, and sim
 - View the complete schedule, load bouts into the normal scoring board, and announce bouts to connected browser displays.
 - Download the schedule as Excel or CSV and print it with the built-in print layout.
 - Download a ready-to-fill Excel template from **PLAYER SETTINGS → DOWNLOAD TEMPLATE**.
+- Save match and tournament state locally with backup recovery after a server restart.
 
 ## Current features
 
@@ -148,6 +149,23 @@ npm start
 ```
 
 The Piper command must accept `--model`, `--output_file`, and text through standard input. Keep the voice model on local storage; no cloud service or network connection is used for speech generation. Piper documentation and voice resources are available from the [Piper project](https://github.com/rhasspy/piper).
+
+## Local state persistence
+
+Match state, match history, tournament players, and tournament bracket progress are saved locally in `data/sfts-state.json`. The folder is ignored by Git and is created automatically. A previous valid snapshot is kept in `data/sfts-state.backup.json`.
+
+The backend coalesces writes so timer ticks do not write continuously to the disk. Important actions are saved immediately through the normal state update flow, and a running timer snapshot is refreshed periodically. On restart, the last saved match and tournament state are restored, but the match is paused for operator safety. The host must press **PLAY** to continue. Pending referee votes, remote connection sessions, and test-mode presses are intentionally cleared and must be re-established.
+
+If the primary snapshot is corrupted, the backup is restored automatically. If both files are invalid, the server starts with a fresh state and logs a warning. To intentionally start a new event, stop the server first and remove the two files inside the configured data directory.
+
+The default data directory can be changed with `SFTS_DATA_DIR`:
+
+```bat
+set "SFTS_DATA_DIR=D:\sfts-data"
+npm start
+```
+
+For PowerShell use `$env:SFTS_DATA_DIR = "D:\sfts-data"`; for Linux/Raspberry Pi use `export SFTS_DATA_DIR=/opt/sfts/data` before `npm start`.
 
 The downloadable template is available from **PLAYER SETTINGS → DOWNLOAD TEMPLATE**. A generated schedule contains bout number, group, gender, weight category, round, red player, blue player, status, winner, and announcement text.
 
@@ -295,19 +313,21 @@ Before using physical remotes in competition, validate Wi-Fi coverage, reconnect
 
 ```text
 src/server.js              Express and WebSocket backend
+src/persistence.js         Versioned local snapshot and backup storage
 src/tts.js                 Optional local Piper TTS adapter and audio cache
 public/index.html          Application markup
 public/js/app.js           Browser-side behavior and WebSocket client
 public/css/style.css       Application styling
 public/assets/             Static image assets
 test/backend.test.js       Backend integration tests
+test/persistence.test.js   Persistence and backup-recovery tests
 package.json               Scripts and dependencies
 ```
 
 ## Limitations
 
-- Match state and match history are memory-only and are lost when the server stops.
-- Tournament player data and generated schedules are also memory-only and are lost when the server stops.
+- Local persistence is file-based; a sudden power loss can leave the application at its last saved snapshot rather than the exact instant of failure.
+- A restarted match is paused and pending remote votes are cleared for safety; the host must resume the match and reconnect the remotes.
 - The current role protocol is intended for a trusted local network; it is not an internet-facing authenticated service.
 - The application is a manual referee-voting system and does not detect strikes through electronic protectors.
 - Physical ESP32 remote firmware has not yet been added; the simulator is the only included remote client.

@@ -1,12 +1,14 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import WebSocket from 'ws';
 import * as XLSX from 'xlsx';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const testDataDir = path.join(projectRoot, 'data', `backend-test-${process.pid}`);
 const port = 19000 + (process.pid % 1000);
 const url = `ws://127.0.0.1:${port}`;
 let serverProcess;
@@ -63,6 +65,7 @@ before(async () => {
       ...process.env,
       PORT: String(port),
       SFTS_ALLOW_UNPAIRED_REMOTES: 'true',
+      SFTS_DATA_DIR: testDataDir,
       SFTS_BREAK_MS: '50'
     },
     stdio: ['ignore', 'pipe', 'pipe']
@@ -91,6 +94,7 @@ after(async () => {
     if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) ws.close();
   }
   if (serverProcess && !serverProcess.killed) serverProcess.kill();
+  await rm(testDataDir, { recursive: true, force: true });
 });
 
 test('WebSocket roles, majority scoring, timer expiry, and phase guards work', async () => {

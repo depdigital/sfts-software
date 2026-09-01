@@ -7,6 +7,7 @@ import { fileURLToPath } from "url";
 import { WebSocketServer } from "ws";
 import * as XLSX from "xlsx";
 import { createTts } from "./tts.js";
+import { createPersistence } from "./persistence.js";
 
 const PORT = Number(process.env.PORT || 8080);
 const ROUND_MS_DEFAULT = 60_000;
@@ -35,6 +36,7 @@ const server = http.createServer(app);
 const wss = new WebSocketServer({ server, maxPayload: MAX_WS_PAYLOAD });
 const publicDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 const tts = createTts();
+const persistence = createPersistence();
 app.use(express.static(publicDir));
 
 app.get('/api/tts/audio/:file', (req, res) => {
@@ -434,8 +436,54 @@ const remoteSockets = new Map();
 const remoteSessions = new Map();
 let timerLastAt = null;
 let lastStateAt = 0;
+let persistenceReady = false;
+let lastTimerPersistAt = 0;
 
 function deep(v) { return JSON.parse(JSON.stringify(v)); }
+
+function persistenceSnapshot() {
+  const savedMatch = deep(match);
+  savedMatch.running = false;
+  savedMatch.votes = {};
+  savedMatch.test = { active: false, presses: {} };
+  return {
+    version: 1,
+    savedAt: new Date().toISOString(),
+    match: savedMatch,
+    matchHistory: deep(matchHistory),
+    tournament: deep(tournament)
+  };
+}
+
+function persistState() {
+  if (!persistenceReady) return;
+  persistence.schedule(persistenceSnapshot());
+  lastTimerPersistAt = Date.now();
+}
+
+function restorePersistedState(snapshot) {
+  match = snapshot.match;
+  match.running = false;
+  match.votes = {};
+  match.test = { active: false, presses: {} };
+  matchHistory = snapshot.matchHistory;
+  tournament = snapshot.tournament;
+  refreshTournamentBracket();
+
+  if (tournament.activeBoutNo) {
+    const active = findTournamentBout(tournament.activeBoutNo);
+    if (!active || (active.status !== 'IN_PROGRESS' && active.status !== 'TIE_PENDING')) {
+      tournament.activeBoutNo = null;
+    }
+  }
+}
+
+const persistedState = await persistence.load();
+if (persistedState) {
+  restorePersistedState(persistedState.snapshot);
+  console.log(`Restored saved state from ${persistedState.source} snapshot`);
+}
+persistenceReady = true;
 function sendText(ws, text, label = 'send') {
   if (!ws || ws.readyState !== 1) return false;
   if (ws.bufferedAmount > MAX_BUFFERED_BYTES) {
@@ -474,7 +522,8 @@ function remoteState(ws) {
     votes: deep(match.votes)
   };
 }
-function state() {
+function state(persist = false) {
+  if (persist) persistState();
   let text = null;
   for (const ws of wss.clients) {
     if (ws.role === 'remote') sendText(ws, JSON.stringify(remoteState(ws)), 'remote state broadcast');
@@ -717,7 +766,7 @@ app.post('/api/tournament/import', requireHostRequest, express.raw({ type: '*/*'
   try {
     const players = importTournamentPlayers(buffer);
     tournament = generateTournament(players);
-    state();
+    state(true);
     res.json({ ok: true, tournament: deep(tournament) });
   } catch (error) {
     const details = error instanceof TournamentImportError ? error.errors : [];
@@ -854,14 +903,14 @@ function releaseRole(ws) {
     refereeSockets.delete(ws.corner);
     if (match.votes[ws.corner]) {
       delete match.votes[ws.corner];
-      state();
+      state(true);
     }
   }
   if (ws.role === 'remote' && remoteSockets.get(ws.deviceId) === ws) {
     remoteSockets.delete(ws.deviceId);
     if (match.votes[ws.corner]) {
       delete match.votes[ws.corner];
-      state();
+      state(true);
     }
   }
   ws.role = 'unknown';
@@ -1000,7 +1049,7 @@ function endRound(winner = null, reason = 'TIME 0:00') {
   match.phase = 'BREAK';
   match.timerMs = match.breakMs;
   setRunning(true);
-  state();
+  state(true);
 }
 
 function finishMatch(winner, reason) {
@@ -1022,7 +1071,7 @@ function finishMatch(winner, reason) {
   });
   matchHistory = matchHistory.slice(0, 50);
   emit({ type: 'matchEnd', winner, reason, match: deep(match) });
-  state();
+  state(true);
 }
 
 function startNextRound() {
@@ -1039,7 +1088,7 @@ function startNextRound() {
   match.blue.gamjeom = 0;
   match.blue.stats = baseStats();
   match.votes = {};
-  state();
+  state(true);
 }
 
 function resetCurrentMatch() {
@@ -1064,7 +1113,7 @@ function resetCurrentMatch() {
     match.blue
   );
   timerLastAt = null;
-  state();
+  state(true);
 }
 
 function newMatch() {
@@ -1077,7 +1126,7 @@ function newMatch() {
     match.blue
   );
   timerLastAt = null;
-  state();
+  state(true);
 }
 
 function updatePlayerSettings(players) {
@@ -1130,12 +1179,12 @@ function evaluateVotes() {
         match.votes = {};
         const result = { awarded: true, player, points, count: total };
         emit({ type: 'award', player, points, count: total });
-        state();
+        state(true);
         return result;
       }
     }
   }
-  state();
+  state(true);
   return { awarded: false };
 }
 
@@ -1143,7 +1192,7 @@ function resetTest() {
   match.test.active = false;
   match.test.presses = {};
   emit({ type: 'testReset' });
-  state();
+  state(true);
 }
 
 function handleRemoteHello(ws, msg) {
@@ -1253,7 +1302,7 @@ function handleRemoteEvent(ws, msg) {
       return;
     }
     delete match.votes[ws.corner];
-    state();
+    state(true);
     const ack = remoteAck(ws, sequence, { accepted: true, reason: 'VOTE_CANCELLED', awarded: false });
     rememberRemoteAck(session, sequence, ack);
     return;
@@ -1439,7 +1488,7 @@ wss.on('connection', ws => {
           sendError(ws, result.code, result.message);
           return;
         }
-        state();
+        state(true);
         return;
       }
       if (msg.action === 'testStart') {
@@ -1453,7 +1502,7 @@ wss.on('connection', ws => {
         resetTest();
         return;
       }
-      state();
+      state(true);
       return;
     }
 
@@ -1477,7 +1526,7 @@ wss.on('connection', ws => {
 
       if (msg.action === 'cancel' && !match.test.active) {
         delete match.votes[ws.corner];
-        state();
+        state(true);
       }
     }
   });
@@ -1491,7 +1540,7 @@ wss.on('connection', ws => {
     if (wasHost && match.running) {
       setRunning(false);
       emit({ type: 'hostDisconnected' });
-      state();
+      state(true);
     }
     if (wasHost && match.test.active) resetTest();
   });
@@ -1500,6 +1549,7 @@ wss.on('connection', ws => {
 setInterval(() => {
   const changed = syncTimer();
   if (changed && Date.now() - lastStateAt >= 900) state();
+  if (match.running && Date.now() - lastTimerPersistAt >= 10_000) persistState();
 }, TIMER_TICK_MS);
 
 setInterval(() => {
@@ -1530,8 +1580,13 @@ server.on('error', error => {
   process.exit();
 });
 
-function shutdown(signal) {
+async function shutdown(signal) {
   console.log(`${signal} received; shutting down`);
+  try {
+    await persistence.flush(persistenceSnapshot());
+  } catch (error) {
+    console.error(`Could not flush saved state during shutdown: ${error.message}`);
+  }
   for (const ws of wss.clients) ws.close(1001, 'Server shutting down');
   wss.close(() => server.close(() => process.exit(0)));
   setTimeout(() => process.exit(1), 3000).unref();
