@@ -768,3 +768,25 @@ button { border: 0; cursor: pointer; }
   #scheduleModal .scheduleTable th,
   #scheduleModal .scheduleTable td { color: #000; background: #fff; padding: 5px; }
 }
+.homeAccessToken {
+  display: grid;
+  gap: 6px;
+  width: min(360px, 88vw);
+  margin: 18px auto 10px;
+  color: #aab4c8;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-align: left;
+}
+
+.homeAccessToken input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #39445b;
+  border-radius: 6px;
+  background: #101522;
+  color: #f3f6ff;
+  font: inherit;
+  letter-spacing: 0.02em;
+}

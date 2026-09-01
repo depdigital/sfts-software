@@ -53,8 +53,8 @@ function connect() {
   });
 }
 
-async function assign(ws, role, corner) {
-  ws.send(JSON.stringify({ type: 'role', role, corner }));
+async function assign(ws, role, corner, accessToken = 'test-host-token') {
+  ws.send(JSON.stringify({ type: 'role', role, corner, accessToken }));
   return waitForMessage(ws, message => message.type === 'roleAccepted' || message.type === 'error');
 }
 
@@ -66,7 +66,8 @@ before(async () => {
       PORT: String(port),
       SFTS_ALLOW_UNPAIRED_REMOTES: 'true',
       SFTS_DATA_DIR: testDataDir,
-      SFTS_BREAK_MS: '50'
+      SFTS_BREAK_MS: '50',
+      SFTS_HOST_TOKEN: 'test-host-token'
     },
     stdio: ['ignore', 'pipe', 'pipe']
   });
@@ -98,6 +99,9 @@ after(async () => {
 });
 
 test('WebSocket roles, majority scoring, timer expiry, and phase guards work', async () => {
+  const unauthorizedHost = await connect();
+  assert.equal((await assign(unauthorizedHost, 'host', 0, 'wrong-token')).code, 'HOST_UNAUTHORIZED');
+  unauthorizedHost.close();
   const host = await connect();
   const hostRole = await assign(host, 'host');
   assert.equal(hostRole.type, 'roleAccepted');
@@ -286,6 +290,12 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   const loadedBout = await waitForMessage(host, message => message.type === 'state' && message.tournament.activeBoutNo === 1);
   assert.equal(loadedBout.match.red.playerName, firstBout.redPlayerName);
   assert.equal(loadedBout.match.blue.playerName, firstBout.bluePlayerName);
+  const blockedImport = await fetch(`http://127.0.0.1:${port}/api/tournament/import`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'X-SFTS-Host-Token': hostRole.hostToken },
+    body: workbookBuffer
+  });
+  assert.equal(blockedImport.status, 409);
   host.send(JSON.stringify({ type: 'host', action: 'resetMatch' }));
   await waitForMessage(host, message => message.type === 'state' && message.tournament.activeBoutNo === null);
 
@@ -315,7 +325,7 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   const initialBoutTwo = bracketBody.tournament.schedule.find(bout => bout.boutNo === 2);
 
   host.send(JSON.stringify({ type: 'host', action: 'loadBout', boutNo: 1 }));
-  await waitForMessage(host, message => message.type === 'state' && message.tournament.activeBoutNo === 1);
+  const firstBracketLoad = await waitForMessage(host, message => message.type === 'state' && message.tournament.activeBoutNo === 1);
   host.send(JSON.stringify({ type: 'host', action: 'editScore', player: 'RED', value: 15 }));
   await waitForMessage(host, message => message.type === 'roundEnd' && message.record.winner === 'RED');
   await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'ROUND' && message.match.round === 2);
@@ -330,7 +340,8 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   assert.ok(advancedBout.redSourceBoutNo === 1 || advancedBout.blueSourceBoutNo === 1);
 
   host.send(JSON.stringify({ type: 'host', action: 'loadBout', boutNo: 2 }));
-  await waitForMessage(host, message => message.type === 'state' && message.tournament.activeBoutNo === 2);
+  const secondBracketLoad = await waitForMessage(host, message => message.type === 'state' && message.tournament.activeBoutNo === 2);
+  assert.ok(secondBracketLoad.match.matchNo > firstBracketLoad.match.matchNo);
   for (let round = 1; round <= 3; round += 1) {
     host.send(JSON.stringify({ type: 'host', action: 'editScore', player: 'RED', value: 1 }));
     host.send(JSON.stringify({ type: 'host', action: 'editScore', player: 'BLUE', value: 1 }));

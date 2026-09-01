@@ -111,7 +111,7 @@ function parseTime(value) {
 
 function openHost() {
   role = 'host';
-  send({ type: 'role', role: 'host' });
+  send({ type: 'role', role: 'host', accessToken: $('hostAccessToken')?.value.trim() || '' });
   showScreen('host');
 }
 

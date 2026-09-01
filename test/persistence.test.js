@@ -55,7 +55,8 @@ async function startServer(port, dataDir) {
       PORT: String(port),
       SFTS_DATA_DIR: dataDir,
       SFTS_BREAK_MS: '50',
-      SFTS_ALLOW_UNPAIRED_REMOTES: 'true'
+      SFTS_ALLOW_UNPAIRED_REMOTES: 'true',
+      SFTS_HOST_TOKEN: 'test-host-token'
     },
     stdio: ['ignore', 'pipe', 'pipe']
   });
@@ -91,17 +92,28 @@ function snapshot(label) {
     version: 1,
     savedAt: label,
     match: {
-      red: {},
-      blue: {},
+      matchNo: 1,
+      round: 1,
+      configuredRoundMs: 60000,
+      timerMs: 60000,
+      breakMs: 35000,
+      running: false,
+      phase: 'ROUND',
+      red: { name: 'HONG', playerName: '', weightCategory: '', stateCode: '', district: '', score: 0, gamjeom: 0, stats: { plus1: 0, plus2: 0, plus3: 0 } },
+      blue: { name: 'CHUNG', playerName: '', weightCategory: '', stateCode: '', district: '', score: 0, gamjeom: 0, stats: { plus1: 0, plus2: 0, plus3: 0 } },
       roundHistory: [],
-      votes: {}
+      votes: {},
+      matchWinner: null,
+      matchReason: '',
+      test: { active: false, presses: {} }
     },
     matchHistory: [],
     tournament: {
       players: [],
       groups: [],
       schedule: [],
-      byes: []
+      byes: [],
+      activeBoutNo: null
     }
   };
 }
@@ -130,6 +142,21 @@ test('local persistence writes a backup and restores it when the primary is corr
   }
 });
 
+test('local persistence prevents two server instances sharing one data folder', async () => {
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), 'sfts-persistence-lock-'));
+  try {
+    const first = createPersistence({ dataDir });
+    const second = createPersistence({ dataDir });
+    await first.acquire();
+    await assert.rejects(second.acquire(), /another server process|could not acquire/);
+    await first.release();
+    await second.acquire();
+    await second.release();
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
 test('server restores match history and tournament progress after restart', async () => {
   const dataDir = await mkdtemp(path.join(os.tmpdir(), 'sfts-server-persistence-'));
   const port = 22000 + (process.pid % 1000);
@@ -139,7 +166,7 @@ test('server restores match history and tournament progress after restart', asyn
   try {
     serverProcess = await startServer(port, dataDir);
     host = await connect(url);
-    host.send(JSON.stringify({ type: 'role', role: 'host' }));
+    host.send(JSON.stringify({ type: 'role', role: 'host', accessToken: 'test-host-token' }));
     const role = await waitForMessage(host, message => message.type === 'roleAccepted');
     await waitForMessage(host, message => message.type === 'state');
 
@@ -175,7 +202,7 @@ test('server restores match history and tournament progress after restart', asyn
 
     serverProcess = await startServer(port, dataDir);
     const restoredHost = await connect(url);
-    restoredHost.send(JSON.stringify({ type: 'role', role: 'host' }));
+    restoredHost.send(JSON.stringify({ type: 'role', role: 'host', accessToken: 'test-host-token' }));
     await waitForMessage(restoredHost, message => message.type === 'roleAccepted');
     const restored = await waitForMessage(restoredHost, message => message.type === 'state');
     assert.equal(restored.matchHistory.length, 1);

@@ -25,6 +25,9 @@ const MAX_SCHEDULE_BOUTS = 5000;
 const REMOTE_PROTOCOL_VERSION = 1;
 const REMOTE_IDS = new Set(['C1', 'C2', 'C3', 'C4']);
 const REMOTE_ACK_CACHE_SIZE = 100;
+const WS_MESSAGE_LIMIT = 120;
+const WS_MESSAGE_WINDOW_MS = 1000;
+const VOTE_SETTLE_MS = 750;
 const INDIAN_STATE_CODES = new Set([
   'AN', 'AP', 'AR', 'AS', 'BR', 'CH', 'CG', 'DD', 'DL', 'DN', 'GA', 'GJ',
   'HR', 'HP', 'JK', 'JH', 'KA', 'KL', 'LA', 'LD', 'MP', 'MH', 'MN', 'ML',
@@ -33,10 +36,14 @@ const INDIAN_STATE_CODES = new Set([
 
 const app = express();
 const server = http.createServer(app);
+server.requestTimeout = 30_000;
+server.headersTimeout = 10_000;
+server.keepAliveTimeout = 5_000;
 const wss = new WebSocketServer({ server, maxPayload: MAX_WS_PAYLOAD });
 const publicDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
 const tts = createTts();
 const persistence = createPersistence();
+const hostAccessToken = String(process.env.SFTS_HOST_TOKEN || '').trim() || crypto.randomBytes(24).toString('hex');
 app.use(express.static(publicDir));
 
 app.get('/api/tts/audio/:file', (req, res) => {
@@ -438,6 +445,7 @@ let timerLastAt = null;
 let lastStateAt = 0;
 let persistenceReady = false;
 let lastTimerPersistAt = 0;
+let voteSettleGuard = null;
 
 function deep(v) { return JSON.parse(JSON.stringify(v)); }
 
@@ -476,6 +484,13 @@ function restorePersistedState(snapshot) {
       tournament.activeBoutNo = null;
     }
   }
+}
+
+try {
+  await persistence.acquire();
+} catch (error) {
+  console.error(`Could not lock the local data directory: ${error.message}`);
+  process.exit(1);
 }
 
 const persistedState = await persistence.load();
@@ -599,7 +614,7 @@ function scheduleWorkbook() {
 }
 
 function tournamentMatchIsBusy() {
-  return match.test.active || match.running || match.phase === 'BREAK' || (
+  return Boolean(tournament.activeBoutNo) || match.test.active || match.running || match.phase === 'BREAK' || (
     match.phase === 'ROUND' && (
       match.roundHistory.length > 0 ||
       match.red.score > 0 ||
@@ -688,13 +703,14 @@ function loadTournamentBout(bout) {
     return { ok: false, code: 'BOUT_INVALID', message: 'The scheduled players could not be found' };
   }
   match = makeMatch(
-    match.matchNo,
+    match.phase === 'MATCH_END' ? match.matchNo + 1 : match.matchNo,
     red.name,
     blue.name,
     match.configuredRoundMs,
     { ...red, playerName: red.name },
     { ...blue, playerName: blue.name }
   );
+  clearVoteSettleGuard();
   timerLastAt = null;
   bout.status = 'IN_PROGRESS';
   tournament.activeBoutNo = bout.boutNo;
@@ -735,6 +751,12 @@ function resolveTournamentTie(bout, winner) {
   bout.winnerName = winner === 'RED' ? bout.redPlayerName : bout.bluePlayerName;
   bout.tieReason = 'Manual tie resolution';
   bout.announcement = scheduleAnnouncement(bout);
+  const historyEntry = matchHistory[0];
+  if (historyEntry && historyEntry.matchNo === match.matchNo && historyEntry.winner === null) {
+    historyEntry.winner = winner;
+    historyEntry.winnerName = playerDisplayName(side(winner));
+    historyEntry.reason = 'TIE RESOLVED';
+  }
   tournament.activeBoutNo = null;
   match.matchWinner = winner;
   match.matchReason = 'TIE RESOLVED';
@@ -921,8 +943,18 @@ function releaseRole(ws) {
   ws.hostToken = null;
 }
 
-function assignRole(ws, role, corner) {
+function tokenMatches(actual, expected) {
+  const actualBuffer = Buffer.from(String(actual || ''));
+  const expectedBuffer = Buffer.from(String(expected || ''));
+  return actualBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
+function assignRole(ws, role, corner, accessToken) {
   if (role === 'host') {
+    if (!tokenMatches(accessToken, hostAccessToken)) {
+      sendError(ws, 'HOST_UNAUTHORIZED', 'A valid host access token is required');
+      return false;
+    }
     if (hostSocket && hostSocket !== ws && hostSocket.readyState === 1) {
       sendError(ws, 'HOST_BUSY', 'Another host is already connected');
       return false;
@@ -939,6 +971,11 @@ function assignRole(ws, role, corner) {
 
   if (role !== 'referee' || !Number.isInteger(corner) || corner < 1 || corner > 4) {
     sendError(ws, 'INVALID_ROLE', 'Choose a valid host or referee corner');
+    return false;
+  }
+  const refereeToken = process.env[`SFTS_REFEREE_TOKEN_C${corner}`] || hostAccessToken;
+  if (!tokenMatches(accessToken, refereeToken)) {
+    sendError(ws, 'REFEREE_UNAUTHORIZED', `A valid access token is required for corner C${corner}`);
     return false;
   }
   const existing = refereeSockets.get(corner);
@@ -1088,6 +1125,7 @@ function startNextRound() {
   match.blue.gamjeom = 0;
   match.blue.stats = baseStats();
   match.votes = {};
+  clearVoteSettleGuard();
   state(true);
 }
 
@@ -1112,11 +1150,16 @@ function resetCurrentMatch() {
     match.red,
     match.blue
   );
+  clearVoteSettleGuard();
   timerLastAt = null;
   state(true);
 }
 
 function newMatch() {
+  if (tournament.activeBoutNo) {
+    const bout = findTournamentBout(tournament.activeBoutNo);
+    if (bout?.status === 'TIE_PENDING') return false;
+  }
   match = makeMatch(
     match.matchNo + 1,
     match.red.name,
@@ -1125,8 +1168,10 @@ function newMatch() {
     match.red,
     match.blue
   );
+  clearVoteSettleGuard();
   timerLastAt = null;
   state(true);
+  return true;
 }
 
 function updatePlayerSettings(players) {
@@ -1175,6 +1220,7 @@ function evaluateVotes() {
     for (const points of [1,2,3]) {
       const total = Object.values(match.votes).filter(v => v.player === player && v.points === points).length;
       if (total >= 3) {
+        voteSettleGuard = { player, points, expiresAt: Date.now() + VOTE_SETTLE_MS };
         addPoint(player, points, 'referee', true);
         match.votes = {};
         const result = { awarded: true, player, points, count: total };
@@ -1186,6 +1232,25 @@ function evaluateVotes() {
   }
   state(true);
   return { awarded: false };
+}
+
+function recordRefereeVote(corner, vote) {
+  if (voteSettleGuard) {
+    if (Date.now() >= voteSettleGuard.expiresAt) {
+      voteSettleGuard = null;
+    } else if (vote.player === voteSettleGuard.player && vote.points === voteSettleGuard.points) {
+      return { awarded: false, ignored: true, count: 3 };
+    }
+  }
+  match.votes[corner] = vote;
+  const count = Object.values(match.votes)
+    .filter(item => item.player === vote.player && item.points === vote.points).length;
+  const outcome = evaluateVotes();
+  return { ...outcome, count };
+}
+
+function clearVoteSettleGuard() {
+  voteSettleGuard = null;
 }
 
 function resetTest() {
@@ -1328,15 +1393,12 @@ function handleRemoteEvent(ws, msg) {
     return;
   }
 
-  match.votes[ws.corner] = vote;
-  const voteCount = Object.values(match.votes)
-    .filter(item => item.player === vote.player && item.points === vote.points).length;
-  const outcome = evaluateVotes();
+  const outcome = recordRefereeVote(ws.corner, vote);
   const ack = remoteAck(ws, sequence, {
     accepted: true,
-    reason: outcome.awarded ? 'POINT_AWARDED' : 'VOTE_RECORDED',
+    reason: outcome.ignored ? 'LATE_VOTE_IGNORED' : outcome.awarded ? 'POINT_AWARDED' : 'VOTE_RECORDED',
     awarded: outcome.awarded,
-    voteCount: outcome.awarded ? outcome.count : voteCount
+    voteCount: outcome.count
   });
   rememberRemoteAck(session, sequence, ack);
 }
@@ -1348,11 +1410,24 @@ wss.on('connection', ws => {
   ws.sessionId = null;
   ws.remoteSession = null;
   ws.hostToken = null;
+  ws.messageWindowStartedAt = Date.now();
+  ws.messageCount = 0;
   ws.isAlive = true;
   ws.on('pong', () => { ws.isAlive = true; });
   syncTimer();
 
   ws.on('message', raw => {
+    const now = Date.now();
+    if (now - ws.messageWindowStartedAt >= WS_MESSAGE_WINDOW_MS) {
+      ws.messageWindowStartedAt = now;
+      ws.messageCount = 0;
+    }
+    ws.messageCount += 1;
+    if (ws.messageCount > WS_MESSAGE_LIMIT) {
+      sendError(ws, 'RATE_LIMITED', 'Too many messages; slow down and reconnect');
+      ws.close(1008, 'Rate limit exceeded');
+      return;
+    }
     let msg;
     try { msg = JSON.parse(String(raw)); } catch { return; }
     if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return;
@@ -1376,7 +1451,7 @@ wss.on('connection', ws => {
         sendError(ws, 'ROLE_ALREADY_ASSIGNED', 'This connection already has a role');
         return;
       }
-      assignRole(ws, msg.role, Number(msg.corner));
+      assignRole(ws, msg.role, Number(msg.corner), msg.accessToken);
       return;
     }
 
@@ -1453,7 +1528,9 @@ wss.on('connection', ws => {
           sendError(ws, 'MATCH_NOT_ENDED', 'A new match can only start after match end');
           return;
         }
-        newMatch();
+        if (!newMatch()) {
+          sendError(ws, 'TIE_PENDING', 'Resolve the tied tournament bout before starting a new match');
+        }
       }
       if (msg.action === 'loadBout') {
         const bout = findTournamentBout(msg.boutNo);
@@ -1522,8 +1599,7 @@ wss.on('connection', ws => {
           return;
         }
         if (match.phase !== 'ROUND') return;
-        match.votes[ws.corner] = { player, points };
-        evaluateVotes();
+        recordRefereeVote(ws.corner, { player, points });
         return;
       }
 
@@ -1590,6 +1666,7 @@ async function shutdown(signal) {
   } catch (error) {
     console.error(`Could not flush saved state during shutdown: ${error.message}`);
   }
+  await persistence.release();
   for (const ws of wss.clients) ws.close(1001, 'Server shutting down');
   wss.close(() => server.close(() => process.exit(0)));
   setTimeout(() => process.exit(1), 3000).unref();
@@ -1602,4 +1679,5 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`Taekwondo Scorer v3 running on port ${PORT}`);
   console.log(`Local: http://localhost:${PORT}`);
   console.log(`Wi-Fi:  http://${getLocalIPv4()}:${PORT}`);
+  console.log(`Host access token: ${hostAccessToken}`);
 });

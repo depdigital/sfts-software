@@ -1,336 +1,163 @@
 # SFTS Taekwondo Scoring System
 
-SFTS is a LAN-based taekwondo match scoring application. One host runs the scoring server and scoreboard, while dedicated C1–C4 ESP32 remotes submit votes in real time.
+SFTS is a local-network scoring system for taekwondo matches. It runs on one computer or Raspberry Pi, shows the scoreboard in a browser, and accepts votes from up to four ESP32 referee remotes.
 
-This repository contains the scoring dashboard, backend remote protocol, and simulator for ESP32-based physical remotes. Raspberry Pi appliance deployment and the actual ESP32 firmware are not yet implemented.
+## Network layout
 
-## Recently added
+```text
+ESP32 remotes --Wi-Fi--> Wi-Fi router --Ethernet--> Raspberry Pi (SFTS server)
+                                                   |
+                                           Host scoreboard browser
+```
 
-- Import tournament players from `.xlsx`, `.xls`, or `.csv` through **PLAYER SETTINGS**.
-- Validate player data and group competitors by the same gender and weight category.
-- Generate a seeded random single-elimination bracket for each gender and weight group, including bye allocations.
-- View the complete schedule, load bouts into the normal scoring board, and announce bouts to connected browser displays.
-- Download the schedule as Excel or CSV and print it with the built-in print layout.
-- Download a ready-to-fill Excel template from **PLAYER SETTINGS → DOWNLOAD TEMPLATE**.
-- Save match and tournament state locally with backup recovery after a server restart.
+The event does not need internet. The dashboard, JavaScript, CSS, logo, tournament tools, saved data, and optional speech files are local. Internet is only needed if you still need to install/download software or voice files.
 
-## Current features
+## What it can do
 
-- Host scoreboard for red and blue competitors.
-- Up to four physical remote corners, C1–C4.
-- One connected host and one connected remote per corner.
-- 3-of-4 majority voting for +1, +2, and +3 points.
-- Host controls for points, gam-jeom, score editing, names, and timer control.
-- Best-of-three match flow.
-- 60-second default rounds and 35-second breaks.
-- Automatic round ending after timer expiry, a 15-point gap, or five gam-jeom.
-- Round summaries with score, gam-jeom, and point-type statistics.
-- Match winner screen and match numbering.
-- Host-only remote test mode for checking all C1–C4 remotes.
-- Tournament player-sheet import with same-gender, same-weight single-elimination scheduling.
-- Tournament schedule viewing, bout loading, announcer messages, Excel/CSV download, and print layout.
-- ESP32 remote protocol with fixed C1–C4 identities, token authentication, acknowledgements, and sequence-based duplicate protection.
-- Node-based remote simulator for backend testing before hardware is available.
-- In-memory history of the last 50 completed matches.
+- Best-of-three scoring with +1, +2, +3, gam-jeom, timer, breaks, and winner display.
+- Four-corner referee voting. Three matching votes award a point.
+- Tournament player import from Excel/CSV, grouped by gender and weight category.
+- Random single-elimination brackets with byes and result-based next matches.
+- Tie-pending matches that must be resolved before the bracket continues.
+- Schedule viewing, announcements, Excel/CSV download, and printing.
+- Local state recovery after restart, with a backup snapshot.
+- Optional local Piper text-to-speech; browser speech is only a fallback.
+- Remote acknowledgements, replay protection, fixed corner IDs, access tokens, heartbeats, and message limits.
 
-## Backend reliability
+## Install and run
 
-The backend uses Express and WebSocket communication through a single Node.js process.
-
-The current backend includes:
-
-- WebSocket ping/pong heartbeats and disconnected-client cleanup.
-- Vote removal when a referee disconnects.
-- Host and referee-corner connection exclusivity.
-- Input validation and malformed-message protection.
-- WebSocket payload and slow-client limits.
-- Timestamp-based timer tracking to reduce timer drift, with timer expiry checked before processing incoming commands.
-- Protection against scoring outside an active round.
-- Authenticated ESP32 remote handshakes with fixed corner assignment.
-- Role-scoped WebSocket delivery: ESP32 remotes receive compact state only; full match history is sent only to host/referee browsers.
-- Remote event acknowledgements and replay protection.
-- Remote test mode clears pending votes and pauses the timer so a hardware check cannot carry stale votes into scoring.
-- Tournament file actions require the active host session and are limited to 500 player rows and 5,000 generated bouts per import.
-- Graceful shutdown handling.
-- Automated HTTP and WebSocket integration tests.
-
-## Requirements
-
-- Node.js 18 or newer recommended.
-- A host computer or Raspberry Pi connected to a local network.
-- Referee devices on the same Wi-Fi network.
-
-The current version does not require internet access after dependencies have been installed.
-
-## How to run
-
-### 1. Install dependencies
-
-Open a terminal in the project directory:
+Install Node.js 18 or newer, then open a terminal in this folder:
 
 ```bash
 npm install
-```
-
-### 2. Run the backend tests
-
-```bash
 npm test
-```
-
-The tests verify the HTTP server, WebSocket remote protocol, vote cleanup, timer expiry, phase restrictions, and malformed input handling.
-
-### 3. Start the application
-
-```bash
 npm start
 ```
 
-The server listens on port `8080` by default and prints the available local and Wi-Fi URLs.
+Open `http://localhost:8080` on the host computer. The server also prints its LAN address. Other devices must use that LAN address, for example `http://192.168.1.20:8080`.
 
-### 4. Open the host scoreboard
+The server prints a **Host access token** when it starts. Enter that token on the dashboard home screen before selecting **LAUNCH SCOREBOARD**. For a fixed token, set it before starting:
 
-On the host computer, open:
-
-```text
-http://localhost:8080
-```
-
-Select **MAIN SCOREBOARD**, then use the host controls to configure the match.
-
-### 5. Test the physical remotes
-
-1. Put the host computer and all ESP32 remotes on the same local Wi-Fi network.
-2. Start the server on the host and note the printed **Wi-Fi** URL. Configure each remote with the host address, for example `ws://192.168.0.106:8080`; never use `localhost` on an ESP32.
-3. From the host landing screen, select **MAIN SCOREBOARD**, open **SETTINGS**, then select **TEST REMOTES**.
-4. Press all six scoring buttons on each remote: `RED_1`, `RED_2`, `RED_3`, `BLUE_1`, `BLUE_2`, and `BLUE_3`.
-5. A successful press is acknowledged by the backend and lights the matching control. All six unique buttons mark that corner as passed.
-
-Test mode pauses the match timer, clears pending votes, and records button presses without changing scores. Select **EXIT TEST** before starting a round.
-
-For a quick pre-hardware check, use the simulator commands below. For a real hardware check, also confirm the ESP32 reconnects after a Wi-Fi interruption and that a press is not counted twice when its acknowledgement is retried.
-
-## Tournament player sheet and schedule
-
-Open **PLAYER SETTINGS** from the host scoreboard. The upload accepts `.xlsx`, `.xls`, and `.csv` files. The first worksheet must contain these required columns:
-
-```text
-Name | Gender | Weight Category
-```
-
-The optional columns are `Player ID`, `State Code`, `District`, and `Club`. Gender values `MALE`/`M` and `FEMALE`/`F` are accepted. Player IDs are generated when omitted, but supplied IDs must be unique. State codes are validated against the Indian state-code list already used by player settings.
-
-Selecting **IMPORT & GENERATE SCHEDULE** validates the entire sheet before replacing the current tournament list. Players are grouped by exact gender and case-insensitive weight category. Each group receives a seeded random order and a single-elimination bracket. Only the first available matches can be loaded; later matches remain pending until their feeder matches produce winners. Groups receive automatic bye allocations when their player count is not a power of two. The seed is shown with the schedule so the draw can be identified and reproduced from the same player list and seed during a future audit.
-
-The host can view the schedule, load an available bout into the normal scoring board, announce a bout to connected browser displays using generated announcement text, download the complete schedule as Excel or CSV, and print the schedule. Bye allocations are included in the schedule view and downloads. When a match finishes tied, it becomes **TIE_PENDING** and blocks the next bracket match; after the applicable tie-break procedure, the host selects **RED WINS** or **BLUE WINS** in the schedule to advance that player. Importing is blocked while an active match contains scores, penalties, votes, a running timer, or remote test mode. Tournament data is held in memory for the current server run.
-
-### Local announcements with Piper
-
-Announcements can use a locally installed Piper voice instead of the browser's default robotic voice. The backend generates a WAV file on the PC or Raspberry Pi, caches repeated announcements in `data/tts/`, and sends the audio URL to connected displays. If Piper is unavailable or not configured, the browser speech fallback remains active.
-
-Install Piper and download an ONNX voice model on the test PC, then start the server with these Windows Command Prompt settings:
+Windows Command Prompt:
 
 ```bat
-set SFTS_TTS_ENGINE=piper
-set SFTS_TTS_COMMAND=piper.exe
-set SFTS_TTS_MODEL=C:\path\to\voice.onnx
+set SFTS_HOST_TOKEN=put-a-long-private-token-here
 npm start
 ```
 
-If Piper is not on `PATH`, set `SFTS_TTS_COMMAND` to its complete executable path. The model path may also be absolute. For PowerShell, use `$env:SFTS_TTS_ENGINE = "piper"`, `$env:SFTS_TTS_COMMAND = "piper.exe"`, and `$env:SFTS_TTS_MODEL = "C:\path\to\voice.onnx"` before `npm start`.
+PowerShell:
 
-The same configuration works on Linux/Raspberry Pi after installing the ARM-compatible Piper executable and changing the command, for example:
+```powershell
+$env:SFTS_HOST_TOKEN = "put-a-long-private-token-here"
+npm start
+```
+
+Keep the token private. Only use the server on the closed local event network; do not expose its port to the internet.
+
+## ESP32 remotes
+
+Configure every remote with:
+
+- The Raspberry Pi’s LAN IP, not `localhost`.
+- WebSocket port `8080` by default.
+- A fixed device ID: `C1`, `C2`, `C3`, or `C4`.
+- A unique session ID for each boot/session.
+- The matching remote token.
+
+Set remote tokens before starting the server:
+
+```bat
+set SFTS_REMOTE_TOKEN_C1=private-token-for-c1
+set SFTS_REMOTE_TOKEN_C2=private-token-for-c2
+set SFTS_REMOTE_TOKEN_C3=private-token-for-c3
+set SFTS_REMOTE_TOKEN_C4=private-token-for-c4
+npm start
+```
+
+The remote sends `RED_1`, `RED_2`, `RED_3`, `BLUE_1`, `BLUE_2`, `BLUE_3`, or `CANCEL`. The server sends an acknowledgement for every event. Retrying the same sequence number does not score twice.
+
+For local development only, unpaired remotes can be allowed with `SFTS_ALLOW_UNPAIRED_REMOTES=true`. Do not use that setting during a real event.
+
+Use **SETTINGS → TEST REMOTES** to check all six buttons on each corner. Test mode pauses the timer, clears pending votes, and does not change the score.
+
+## Tournament workflow
+
+1. Open **PLAYER SETTINGS**.
+2. Download the template or prepare your own sheet.
+3. Upload it and select **IMPORT & GENERATE SCHEDULE**.
+4. Open **VIEW SCHEDULE**.
+5. Load only a bout marked **SCHEDULED**.
+6. Finish the match. The winner automatically advances to the next bracket bout.
+7. If the match is tied, select **RED WINS** or **BLUE WINS** after the official tie-break decision.
+8. Download or print the schedule and use **ANNOUNCE** when required.
+
+Import is blocked while a match is active, has scores/penalties/votes, is in a break, or has a loaded tournament bout. This prevents the current match from being replaced accidentally.
+
+## Excel player template
+
+The first worksheet must have these required columns:
+
+```csv
+Player ID,Name,Gender,Weight Category,State Code,District,Club
+M58-01,Arjun Mehta,MALE,58 kg,DL,New Delhi,SFTS Demo Club
+M58-02,Rohan Singh,MALE,58 kg,UP,Noida,SFTS Demo Club
+F49-01,Ananya Kapoor,FEMALE,49 kg,MH,Pune,SFTS Demo Club
+```
+
+`Name`, `Gender`, and `Weight Category` are required. The other columns are optional. Use `MALE` or `M`, and `FEMALE` or `F`. Player IDs must be unique; if blank, the system creates one. Use formats such as `58 kg`, `49 kg`, or `68 kg`. Players are never paired across gender or weight category.
+
+The **DOWNLOAD TEMPLATE** button contains dummy players in several groups so byes and multiple brackets can be tested safely.
+
+## Saved data and safe restart
+
+The server saves local data in the `data` folder:
+
+- `sfts-state.json` — current match, history, and tournament progress.
+- `sfts-state.backup.json` — previous valid snapshot.
+- `sfts-state.lock` — prevents two servers using the same data folder.
+
+Important actions are saved immediately; timer snapshots are saved periodically. On restart, the match is paused and temporary votes/test presses are cleared. The host must reconnect and press **PLAY**. If the main file is damaged, the backup is used automatically.
+
+To use another data folder:
+
+```bat
+set SFTS_DATA_DIR=D:\sfts-data
+npm start
+```
+
+Stop the server before deleting state files to start a new event.
+
+## Local announcements with Piper
+
+Piper is optional. Keep its executable and ONNX voice model on the same PC/Raspberry Pi. Example on Windows PowerShell:
+
+```powershell
+$env:SFTS_TTS_ENGINE = "piper"
+$env:SFTS_TTS_COMMAND = "C:\tools\piper\piper.exe"
+$env:SFTS_TTS_MODEL = "C:\tools\piper\voice.onnx"
+npm start
+```
+
+Example on Raspberry Pi/Linux:
 
 ```bash
 export SFTS_TTS_ENGINE=piper
-export SFTS_TTS_COMMAND=piper
+export SFTS_TTS_COMMAND=/opt/piper/piper
 export SFTS_TTS_MODEL=/opt/sfts/voices/voice.onnx
 npm start
 ```
 
-The Piper command must accept `--model`, `--output_file`, and text through standard input. Keep the voice model on local storage; no cloud service or network connection is used for speech generation. Piper documentation and voice resources are available from the [Piper project](https://github.com/rhasspy/piper).
+If Piper is not found, the browser uses its built-in speech voice. No cloud speech service is used.
 
-## Local state persistence
-
-Match state, match history, tournament players, and tournament bracket progress are saved locally in `data/sfts-state.json`. The folder is ignored by Git and is created automatically. A previous valid snapshot is kept in `data/sfts-state.backup.json`.
-
-The backend coalesces writes so timer ticks do not write continuously to the disk. Important actions are saved immediately through the normal state update flow, and a running timer snapshot is refreshed periodically. On restart, the last saved match and tournament state are restored, but the match is paused for operator safety. The host must press **PLAY** to continue. Pending referee votes, remote connection sessions, and test-mode presses are intentionally cleared and must be re-established.
-
-If the primary snapshot is corrupted, the backup is restored automatically. If both files are invalid, the server starts with a fresh state and logs a warning. To intentionally start a new event, stop the server first and remove the two files inside the configured data directory.
-
-The default data directory can be changed with `SFTS_DATA_DIR`:
-
-```bat
-set "SFTS_DATA_DIR=D:\sfts-data"
-npm start
-```
-
-For PowerShell use `$env:SFTS_DATA_DIR = "D:\sfts-data"`; for Linux/Raspberry Pi use `export SFTS_DATA_DIR=/opt/sfts/data` before `npm start`.
-
-The downloadable template is available from **PLAYER SETTINGS → DOWNLOAD TEMPLATE**. A generated schedule contains bout number, group, gender, weight category, round, red player, blue player, status, winner, and announcement text.
-
-### Player sheet template
-
-The first worksheet should use this header row. `Name`, `Gender`, and `Weight Category` are required; the other columns are optional. The application's **DOWNLOAD TEMPLATE** button provides 16 ready-to-import demo players: an 8-player `MALE / 58 kg` bracket, a 5-player `FEMALE / 49 kg` bracket with byes, and a 3-player `MALE / 68 kg` bracket with byes. Replace the demo rows with real players before competition use.
-
-```csv
-Player ID,Name,Gender,Weight Category,State Code,District,Club
-P001,Example Player,MALE,58 kg,DL,New Delhi,Example Club
-P002,Another Player,FEMALE,49 kg,KA,Bengaluru,Example Club
-```
-
-Accepted gender values are `MALE` or `M`, and `FEMALE` or `F`. If `Player ID` is blank, the system generates one. Player IDs must be unique when provided. The same template can be pasted into Excel and saved as `.xlsx`, or downloaded directly from the application.
-
-### 6. Stop the application
-
-Press `Ctrl+C` in the terminal running the server.
-
-### Optional: change the port
-
-Windows Command Prompt:
-
-```bat
-set PORT=8081
-npm start
-```
-
-PowerShell:
-
-```powershell
-$env:PORT = "8081"
-npm start
-```
-
-PowerShell environment variables must use the `$env:` prefix. Commands such as `set PORT=8081` do not configure the process environment in PowerShell.
-
-Linux/macOS/Raspberry Pi:
+## Useful commands
 
 ```bash
-export PORT=8081
-npm start
-```
-
-## ESP32 remote backend
-
-The backend accepts ESP32-style WebSocket clients using protocol version `1`.
-
-Each remote must identify itself with a fixed device ID (`C1`, `C2`, `C3`, or `C4`), a session ID, and, when configured, a token. The device ID determines the referee corner; it cannot be selected by the client after connection. The server binds to `0.0.0.0`, so the ESP32 connects to the host's LAN/Wi-Fi address and the selected TCP port.
-
-The connection flow is:
-
-```text
-WebSocket connect → remote_hello → remote_ready → remote_state
-                                      └→ remote_event → remote_event_ack
-```
-
-Before authentication, the server does not send dashboard state or match broadcasts. After `remote_ready`, an ESP32 receives only compact `remote_state` updates, `remote_event_ack` responses, and `remote_pong` responses. `remote_state` excludes match history and browser-only events.
-
-An event uses the following fields:
-
-```json
-{
-  "type": "remote_event",
-  "deviceId": "C1",
-  "sessionId": "boot-1234",
-  "sequence": 1,
-  "button": "RED_2"
-}
-```
-
-`button` must be `RED_1`, `RED_2`, `RED_3`, `BLUE_1`, `BLUE_2`, `BLUE_3`, or `CANCEL`. `sequence` must be a positive, strictly increasing safe integer for the current session. Re-sending a cached sequence returns the original acknowledgement without scoring twice. A new session ID starts a new sequence stream; a reconnect using the same session ID preserves the server's replay state.
-
-Each scoring remote contributes one vote for its corner. A new vote replaces that corner's previous vote, `CANCEL` removes it, and disconnecting removes it. A point is awarded when at least three of the four corners select the same player and point value. Events received during a break, match end, or test mode are acknowledged as rejected or test presses and do not score.
-
-### Configure remote tokens
-
-For normal use, configure one token per remote before starting the server.
-
-Windows Command Prompt:
-
-```bat
-set SFTS_REMOTE_TOKEN_C1=replace-with-c1-token
-set SFTS_REMOTE_TOKEN_C2=replace-with-c2-token
-set SFTS_REMOTE_TOKEN_C3=replace-with-c3-token
-set SFTS_REMOTE_TOKEN_C4=replace-with-c4-token
-npm start
-```
-
-For local development without tokens only, explicitly enable unpaired remotes.
-
-Windows Command Prompt:
-
-```bat
-set SFTS_ALLOW_UNPAIRED_REMOTES=true
-npm start
-```
-
-PowerShell:
-
-```powershell
-$env:SFTS_ALLOW_UNPAIRED_REMOTES = "true"
-npm start
-```
-
-Do not enable unpaired remotes on a competition or shared network.
-
-### Run the remote simulator
-
-With the server running, simulate one remote event:
-
-```bash
+npm test
 npm run simulate:remote -- C1 RED_2 1 ws://127.0.0.1:8080
 ```
 
-The arguments are:
+The simulator is useful before ESP32 hardware is available. Run separate simulator terminals for C1, C2, and C3 to test a majority vote.
 
-```text
-<device-id> <button> <sequence> <websocket-url>
-```
+## Important limits
 
-If token authentication is enabled, set the matching `SFTS_REMOTE_TOKEN_C1` environment variable before running the simulator. The simulator generates a session ID, performs the handshake, sends one event, prints the acknowledgements, and exits. Use `--duplicate` to resend the same sequence number, or `--then CANCEL` to send a follow-up cancellation in the same session. Because the backend removes votes from disconnected remotes, use `--hold` when combining multiple simulator instances into one majority vote:
-
-```bash
-npm run simulate:remote -- C1 RED_2 1 ws://127.0.0.1:8080 --hold
-npm run simulate:remote -- C2 RED_2 1 ws://127.0.0.1:8080 --hold
-npm run simulate:remote -- C3 RED_2 1 ws://127.0.0.1:8080 --hold
-```
-
-Run each command in its own terminal. After the third connected remote submits the same button, the point should be awarded. Press `Ctrl+C` in each simulator terminal when finished.
-
-## Raspberry Pi direction
-
-The application can be run on a Raspberry Pi as a Node.js server, and the backend remote protocol is ready for ESP32 integration. The current repository does not yet include an appliance setup, kiosk configuration, service file, or ESP32 firmware. The backend already provides acknowledgements, sequence numbers, duplicate-event protection, fixed corner pairing, and token authentication. Battery reporting, remote connection status in the dashboard, TLS, and automatic service recovery still need to be added for a production appliance.
-
-The planned deployment is:
-
-```text
-ESP32 referee remotes → dedicated local Wi-Fi → Raspberry Pi → scoreboard display
-```
-
-Before using physical remotes in competition, validate Wi-Fi coverage, reconnect behavior, power/battery life, host failure handling, and the federation's scoring rules with the actual hardware and operators.
-
-## Project structure
-
-```text
-src/server.js              Express and WebSocket backend
-src/persistence.js         Versioned local snapshot and backup storage
-src/tts.js                 Optional local Piper TTS adapter and audio cache
-public/index.html          Application markup
-public/js/app.js           Browser-side behavior and WebSocket client
-public/css/style.css       Application styling
-public/assets/             Static image assets
-test/backend.test.js       Backend integration tests
-test/persistence.test.js   Persistence and backup-recovery tests
-package.json               Scripts and dependencies
-```
-
-## Limitations
-
-- Local persistence is file-based; a sudden power loss can leave the application at its last saved snapshot rather than the exact instant of failure.
-- A restarted match is paused and pending remote votes are cleared for safety; the host must resume the match and reconnect the remotes.
-- The current role protocol is intended for a trusted local network; it is not an internet-facing authenticated service.
-- The application is a manual referee-voting system and does not detect strikes through electronic protectors.
-- Physical ESP32 remote firmware has not yet been added; the simulator is the only included remote client.
-- The host dashboard does not yet show a live connected/offline indicator for each remote or battery level.
-- It is not a replacement for certified World Taekwondo Protector and Scoring System equipment.
-- Tournament rules and scoring behavior must be verified with the relevant federation before real competition use.
+This repository contains the server, dashboard, and simulator; ESP32 firmware is separate. The system is designed for a trusted LAN and is not an internet-facing service. Confirm the scoring and tie-break rules with the event officials before competition use.
