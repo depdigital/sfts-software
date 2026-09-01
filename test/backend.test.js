@@ -93,9 +93,9 @@ after(async () => {
 
 test('WebSocket roles, majority scoring, timer expiry, and phase guards work', async () => {
   const host = await connect();
+  assert.equal((await assign(host, 'host')).type, 'roleAccepted');
   const initial = await waitForMessage(host, message => message.type === 'state');
   assert.equal(initial.match.phase, 'ROUND');
-  assert.equal((await assign(host, 'host')).type, 'roleAccepted');
 
   host.send(JSON.stringify({
     type: 'host',
@@ -126,6 +126,14 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
     referees.push(referee);
     assert.equal((await assign(referee, 'referee', corner)).type, 'roleAccepted');
   }
+
+  referees[3].send(JSON.stringify({ type: 'ref', action: 'vote', player: 'BLUE', points: 1 }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.votes['4']);
+  host.send(JSON.stringify({ type: 'host', action: 'testStart' }));
+  const testState = await waitForMessage(host, message => message.type === 'state' && message.match.test.active);
+  assert.deepEqual(testState.match.votes, {});
+  host.send(JSON.stringify({ type: 'host', action: 'testStop' }));
+  await waitForMessage(host, message => message.type === 'state' && !message.match.test.active);
 
   const duplicateCorner = await connect();
   const duplicateResult = await assign(duplicateCorner, 'referee', 1);
@@ -184,6 +192,7 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
     firmware: 'test'
   }));
   assert.equal((await waitForMessage(remote, message => message.type === 'remote_ready')).deviceId, 'C4');
+  assert.equal(remote.messages.some(message => message.type === 'state'), false);
   const compactState = await waitForMessage(remote, message => message.type === 'remote_state');
   assert.equal(compactState.deviceId, 'C4');
 
@@ -214,8 +223,15 @@ test('malformed WebSocket input does not terminate a connection', async () => {
   client.send(JSON.stringify(null));
   client.send(JSON.stringify({ type: 'unknown' }));
   client.send(JSON.stringify({ type: 'host', action: 'point', player: 'INVALID', points: 99 }));
-  const state = await waitForMessage(client, message => message.type === 'state');
-  assert.ok(state.match);
+  client.send(JSON.stringify({
+    type: 'remote_hello',
+    protocolVersion: 1,
+    deviceId: 'C1',
+    sessionId: 'malformed-input-test'
+  }));
+  assert.equal((await waitForMessage(client, message => message.type === 'remote_ready')).deviceId, 'C1');
+  const state = await waitForMessage(client, message => message.type === 'remote_state');
+  assert.equal(state.deviceId, 'C1');
   assert.equal(client.readyState, WebSocket.OPEN);
 });
 

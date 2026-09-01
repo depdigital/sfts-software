@@ -92,6 +92,11 @@ let lastStateAt = 0;
 function deep(v) { return JSON.parse(JSON.stringify(v)); }
 function sendText(ws, text, label = 'send') {
   if (!ws || ws.readyState !== 1) return false;
+  if (ws.bufferedAmount > MAX_BUFFERED_BYTES) {
+    console.error(`Closing slow WebSocket client during ${label}`);
+    ws.terminate();
+    return false;
+  }
   try {
     ws.send(text, error => {
       if (error) console.error(`WebSocket ${label} failed:`, error.message);
@@ -105,16 +110,8 @@ function sendText(ws, text, label = 'send') {
 function send(ws, message) {
   return sendText(ws, JSON.stringify(message));
 }
-function broadcast(text, label) {
-  for (const ws of wss.clients) {
-    if (ws.readyState !== 1) continue;
-    if (ws.bufferedAmount > MAX_BUFFERED_BYTES) {
-      console.error(`Closing slow WebSocket client during ${label}`);
-      ws.terminate();
-      continue;
-    }
-    sendText(ws, text, label);
-  }
+function fullState() {
+  return { type: "state", match: deep(match), matchHistory: deep(matchHistory) };
 }
 function remoteState(ws) {
   return {
@@ -132,18 +129,20 @@ function remoteState(ws) {
   };
 }
 function state() {
-  const payload = { type: "state", match: deep(match), matchHistory: deep(matchHistory) };
-  const text = JSON.stringify(payload);
+  let text = null;
   for (const ws of wss.clients) {
     if (ws.role === 'remote') sendText(ws, JSON.stringify(remoteState(ws)), 'remote state broadcast');
-    else sendText(ws, text, 'state broadcast');
+    else if (ws.role === 'host' || ws.role === 'referee') {
+      text ||= JSON.stringify(fullState());
+      sendText(ws, text, 'state broadcast');
+    }
   }
   lastStateAt = Date.now();
 }
 function emit(message) {
   const text = JSON.stringify(message);
   for (const ws of wss.clients) {
-    if (ws.role !== 'remote') sendText(ws, text, 'broadcast');
+    if (ws.role === 'host' || ws.role === 'referee') sendText(ws, text, 'broadcast');
   }
 }
 
@@ -200,7 +199,7 @@ function scoringIsAllowed() {
   return match.phase === 'ROUND' && !match.test.active;
 }
 
-function syncTimer(now = Date.now()) {
+function syncTimer(now = performance.now()) {
   if (!match.running || timerLastAt === null) return false;
   const elapsed = Math.max(0, now - timerLastAt);
   if (!elapsed) return false;
@@ -230,7 +229,7 @@ function setRunning(running) {
   }
   if (match.timerMs <= 0) return;
   match.running = true;
-  timerLastAt = Date.now();
+  timerLastAt = performance.now();
 }
 
 function releaseRole(ws) {
@@ -267,6 +266,7 @@ function assignRole(ws, role, corner) {
     ws.role = 'host';
     ws.corner = 0;
     send(ws, { type: 'roleAccepted', role: 'host' });
+    send(ws, fullState());
     return true;
   }
 
@@ -284,6 +284,7 @@ function assignRole(ws, role, corner) {
   ws.role = 'referee';
   ws.corner = corner;
   send(ws, { type: 'roleAccepted', role: 'referee', corner });
+  send(ws, fullState());
   return true;
 }
 
@@ -520,9 +521,9 @@ function handleRemoteHello(ws, msg) {
     return;
   }
 
-  const deviceId = String(msg.deviceId || '').toUpperCase();
-  const sessionId = String(msg.sessionId || '');
-  const protocolVersion = Number(msg.protocolVersion);
+  const deviceId = typeof msg.deviceId === 'string' ? msg.deviceId.toUpperCase() : '';
+  const sessionId = typeof msg.sessionId === 'string' ? msg.sessionId : '';
+  const protocolVersion = msg.protocolVersion;
   const expectedToken = expectedRemoteToken(deviceId);
   const allowUnpaired = process.env.SFTS_ALLOW_UNPAIRED_REMOTES === 'true';
 
@@ -583,8 +584,10 @@ function handleRemoteEvent(ws, msg) {
     return;
   }
 
-  const sequence = Number(msg.sequence);
-  if (String(msg.deviceId || '').toUpperCase() !== ws.deviceId || String(msg.sessionId || '') !== ws.sessionId) {
+  const sequence = msg.sequence;
+  const deviceId = typeof msg.deviceId === 'string' ? msg.deviceId.toUpperCase() : '';
+  const sessionId = typeof msg.sessionId === 'string' ? msg.sessionId : '';
+  if (deviceId !== ws.deviceId || sessionId !== ws.sessionId) {
     sendError(ws, 'REMOTE_ID_MISMATCH', 'Event identity does not match the connected remote');
     return;
   }
@@ -667,12 +670,12 @@ wss.on('connection', ws => {
   ws.isAlive = true;
   ws.on('pong', () => { ws.isAlive = true; });
   syncTimer();
-  send(ws, { type: 'state', match: deep(match), matchHistory: deep(matchHistory) });
 
   ws.on('message', raw => {
     let msg;
     try { msg = JSON.parse(String(raw)); } catch { return; }
     if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return;
+    syncTimer();
 
     if (msg.type === 'remote_hello') {
       handleRemoteHello(ws, msg);
@@ -772,6 +775,7 @@ wss.on('connection', ws => {
         setRunning(false);
         match.test.active = true;
         match.test.presses = {};
+        match.votes = {};
         emit({ type: 'testReset' });
       }
       if (msg.action === 'testStop') {

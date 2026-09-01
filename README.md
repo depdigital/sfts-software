@@ -32,11 +32,12 @@ The current backend includes:
 - Host and referee-corner connection exclusivity.
 - Input validation and malformed-message protection.
 - WebSocket payload and slow-client limits.
-- Timestamp-based timer tracking to reduce timer drift.
+- Timestamp-based timer tracking to reduce timer drift, with timer expiry checked before processing incoming commands.
 - Protection against scoring outside an active round.
 - Authenticated ESP32 remote handshakes with fixed corner assignment.
-- Compact remote-specific state messages that avoid sending match history to small devices.
+- Role-scoped WebSocket delivery: ESP32 remotes receive compact state only; full match history is sent only to host/referee browsers.
 - Remote event acknowledgements and replay protection.
+- Remote test mode clears pending votes and pauses the timer so a hardware check cannot carry stale votes into scoring.
 - Graceful shutdown handling.
 - Automated HTTP and WebSocket integration tests.
 
@@ -86,7 +87,15 @@ Select **MAIN SCOREBOARD**, then use the host controls to configure the match.
 
 ### 5. Test the physical remotes
 
-From the landing screen, select **TEST REMOTES**. This opens the host-only remote test screen and checks all six scoring buttons for each C1–C4 remote. A remote or simulator press lights the matching control; all six successful presses mark that corner as passed.
+1. Put the host computer and all ESP32 remotes on the same local Wi-Fi network.
+2. Start the server on the host and note the printed **Wi-Fi** URL. Configure each remote with the host address, for example `ws://192.168.0.106:8080`; never use `localhost` on an ESP32.
+3. From the host landing screen, select **MAIN SCOREBOARD**, open **SETTINGS**, then select **TEST REMOTES**.
+4. Press all six scoring buttons on each remote: `RED_1`, `RED_2`, `RED_3`, `BLUE_1`, `BLUE_2`, and `BLUE_3`.
+5. A successful press is acknowledged by the backend and lights the matching control. All six unique buttons mark that corner as passed.
+
+Test mode pauses the match timer, clears pending votes, and records button presses without changing scores. Select **EXIT TEST** before starting a round.
+
+For a quick pre-hardware check, use the simulator commands below. For a real hardware check, also confirm the ESP32 reconnects after a Wi-Fi interruption and that a press is not counted twice when its acknowledgement is retried.
 
 ### 6. Stop the application
 
@@ -121,15 +130,32 @@ npm start
 
 The backend accepts ESP32-style WebSocket clients using protocol version `1`.
 
-Each remote must identify itself with a fixed device ID (`C1`, `C2`, `C3`, or `C4`), a session ID, and a token. The device ID determines the referee corner; it cannot be selected by the client after connection.
+Each remote must identify itself with a fixed device ID (`C1`, `C2`, `C3`, or `C4`), a session ID, and, when configured, a token. The device ID determines the referee corner; it cannot be selected by the client after connection. The server binds to `0.0.0.0`, so the ESP32 connects to the host's LAN/Wi-Fi address and the selected TCP port.
 
 The connection flow is:
 
 ```text
-remote_hello → remote_ready → remote_event → remote_event_ack
+WebSocket connect → remote_hello → remote_ready → remote_state
+                                      └→ remote_event → remote_event_ack
 ```
 
-An event uses a monotonically increasing sequence number and a button name such as `RED_1`, `RED_2`, `RED_3`, `BLUE_1`, `BLUE_2`, `BLUE_3`, or `CANCEL`. Re-sending the same sequence number returns the original acknowledgement without scoring twice.
+Before authentication, the server does not send dashboard state or match broadcasts. After `remote_ready`, an ESP32 receives only compact `remote_state` updates, `remote_event_ack` responses, and `remote_pong` responses. `remote_state` excludes match history and browser-only events.
+
+An event uses the following fields:
+
+```json
+{
+  "type": "remote_event",
+  "deviceId": "C1",
+  "sessionId": "boot-1234",
+  "sequence": 1,
+  "button": "RED_2"
+}
+```
+
+`button` must be `RED_1`, `RED_2`, `RED_3`, `BLUE_1`, `BLUE_2`, `BLUE_3`, or `CANCEL`. `sequence` must be a positive, strictly increasing safe integer for the current session. Re-sending a cached sequence returns the original acknowledgement without scoring twice. A new session ID starts a new sequence stream; a reconnect using the same session ID preserves the server's replay state.
+
+Each scoring remote contributes one vote for its corner. A new vote replaces that corner's previous vote, `CANCEL` removes it, and disconnecting removes it. A point is awarded when at least three of the four corners select the same player and point value. Events received during a break, match end, or test mode are acknowledged as rejected or test presses and do not score.
 
 ### Configure remote tokens
 
@@ -189,7 +215,7 @@ Run each command in its own terminal. After the third connected remote submits t
 
 ## Raspberry Pi direction
 
-The application can be run on a Raspberry Pi as a Node.js server, and the backend remote protocol is ready for integration. The current repository does not yet include an appliance setup, kiosk configuration, service file, or ESP32 firmware.
+The application can be run on a Raspberry Pi as a Node.js server, and the backend remote protocol is ready for ESP32 integration. The current repository does not yet include an appliance setup, kiosk configuration, service file, or ESP32 firmware. The backend already provides acknowledgements, sequence numbers, duplicate-event protection, fixed corner pairing, and token authentication. Battery reporting, remote connection status in the dashboard, TLS, and automatic service recovery still need to be added for a production appliance.
 
 The planned deployment is:
 
@@ -197,7 +223,7 @@ The planned deployment is:
 ESP32 referee remotes → dedicated local Wi-Fi → Raspberry Pi → scoreboard display
 ```
 
-Before using physical remotes in competition, the communication protocol should add acknowledgements, sequence numbers, duplicate-event protection, pairing, battery reporting, and a clear offline/failure indication.
+Before using physical remotes in competition, validate Wi-Fi coverage, reconnect behavior, power/battery life, host failure handling, and the federation's scoring rules with the actual hardware and operators.
 
 ## Project structure
 
@@ -216,6 +242,7 @@ package.json               Scripts and dependencies
 - Match state and match history are memory-only and are lost when the server stops.
 - The current role protocol is intended for a trusted local network; it is not an internet-facing authenticated service.
 - The application is a manual referee-voting system and does not detect strikes through electronic protectors.
-- Physical ESP32 remote firmware has not yet been added.
+- Physical ESP32 remote firmware has not yet been added; the simulator is the only included remote client.
+- The host dashboard does not yet show a live connected/offline indicator for each remote or battery level.
 - It is not a replacement for certified World Taekwondo Protector and Scoring System equipment.
 - Tournament rules and scoring behavior must be verified with the relevant federation before real competition use.
