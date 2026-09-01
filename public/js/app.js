@@ -514,10 +514,10 @@ function resetTestUi() {
 function markTest(corner, player, points, button = '') {
   const joy = $(`joy${corner}`);
   if (!joy) return;
-  const buttonId = button || `${player}_${points === 3 ? '3A' : points}`;
+  const buttonId = button || `${player}_${points}`;
   const item = joy.querySelector(`[data-key="${buttonId.replace('_', '-')}"]`);
   if (item) item.classList.add(player === 'RED' ? 'litRed' : 'litBlue');
-  const all = ['RED-1','RED-2','RED-3A','RED-3B','BLUE-1','BLUE-2','BLUE-3A','BLUE-3B'];
+  const all = ['RED-1','RED-2','RED-3','RED-TECHNICAL','BLUE-1','BLUE-2','BLUE-3','BLUE-TECHNICAL'];
   const done = all.every(key => {
     const el = joy.querySelector(`[data-key="${key}"]`);
     return el && (el.classList.contains('litRed') || el.classList.contains('litBlue'));

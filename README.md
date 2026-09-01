@@ -87,7 +87,7 @@ set SFTS_REMOTE_TOKEN_C4=private-token-for-c4
 npm start
 ```
 
-The remote sends `RED_1`, `RED_2`, `RED_3A`, `RED_3B`, `BLUE_1`, `BLUE_2`, `BLUE_3A`, `BLUE_3B`, or `CANCEL`. It also sends its Wi-Fi RSSI and battery percentage in a `remote_status` message. The two `+3` buttons may look the same, but must use different internal IDs so the hardware test can verify both physical buttons. The server sends an acknowledgement for every event. Retrying the same sequence number does not score twice.
+The remote sends `RED_1`, `RED_2`, `RED_3`, `RED_TECHNICAL`, `BLUE_1`, `BLUE_2`, `BLUE_3`, `BLUE_TECHNICAL`, or `CANCEL`. It also sends its Wi-Fi RSSI and battery percentage in a `remote_status` message. The `TECHNICAL` button is a modifier: press it with the same corner's +2 or +3 within one second to award +4 or +6. `TECHNICAL` with +1 is rejected, and a technical press by itself awards no points. The server sends an acknowledgement for every event. Retrying the same sequence number does not score twice.
 
 For local development only, unpaired remotes can be allowed with `SFTS_ALLOW_UNPAIRED_REMOTES=true`. Do not use that setting during a real event.
 

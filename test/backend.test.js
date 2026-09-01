@@ -292,7 +292,7 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   host.send(JSON.stringify({ type: 'host', action: 'setRemoteMode', count: 2 }));
   await waitForMessage(host, message => message.type === 'state' && message.match.remoteCount === 2);
   remote.send(JSON.stringify({
-    type: 'remote_event', deviceId: 'C4', sessionId: 'test-session-c4', sequence: 2, button: 'RED_3B'
+    type: 'remote_event', deviceId: 'C4', sessionId: 'test-session-c4', sequence: 2, button: 'RED_TECHNICAL'
   }));
   const disabledRemote = await waitForMessage(remote, message => message.type === 'remote_event_ack' && message.sequence === 2);
   assert.equal(disabledRemote.reason, 'REMOTE_DISABLED');
@@ -308,6 +308,38 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   await waitForMessage(host, message => message.type === 'award' && message.player === 'RED' && message.points === 2);
   const remoteAwarded = await waitForMessage(remote, message => message.type === 'remote_state' && message.red.score === 2);
   assert.equal(remoteAwarded.red.score, 2);
+
+  referees[0].send(JSON.stringify({ type: 'ref', action: 'vote', player: 'RED', points: 1 }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.votes['1']);
+  referees[0].close();
+  await waitForMessage(host, message => message.type === 'state' && !message.match.votes['1']);
+  const technicalRemote = await connect();
+  technicalRemote.send(JSON.stringify({
+    type: 'remote_hello', protocolVersion: 1, deviceId: 'C1', sessionId: 'test-session-c1', firmware: 'test'
+  }));
+  assert.equal((await waitForMessage(technicalRemote, message => message.type === 'remote_ready')).deviceId, 'C1');
+  await waitForMessage(technicalRemote, message => message.type === 'remote_state');
+  host.send(JSON.stringify({ type: 'host', action: 'resetMatch' }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.red.score === 0);
+  host.send(JSON.stringify({ type: 'host', action: 'setRemoteMode', count: 1 }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.remoteCount === 1);
+  technicalRemote.send(JSON.stringify({
+    type: 'remote_event', deviceId: 'C1', sessionId: 'test-session-c1', sequence: 1, button: 'RED_TECHNICAL'
+  }));
+  const technicalPending = await waitForMessage(technicalRemote, message => message.type === 'remote_event_ack' && message.sequence === 1);
+  assert.equal(technicalPending.reason, 'TECHNICAL_PENDING');
+  technicalRemote.send(JSON.stringify({
+    type: 'remote_event', deviceId: 'C1', sessionId: 'test-session-c1', sequence: 2, button: 'RED_2'
+  }));
+  const technicalVote = await waitForMessage(technicalRemote, message => message.type === 'remote_event_ack' && message.sequence === 2);
+  assert.equal(technicalVote.technical, true);
+  await waitForMessage(host, message => message.type === 'award' && message.player === 'RED' && message.points === 4);
+  const technicalAwarded = await waitForMessage(technicalRemote, message => message.type === 'remote_state' && message.red.score === 4);
+  assert.equal(technicalAwarded.red.score, 4);
+  technicalRemote.close();
+  await waitForMessage(host, message => message.type === 'state' && message.remotes?.find(remoteStatus => (
+    remoteStatus.deviceId === 'C1' && remoteStatus.connected === false
+  )));
 
   host.send(JSON.stringify({ type: 'host', action: 'resetMatch' }));
   await waitForMessage(host, message => message.type === 'state' && message.match.red.score === 0);

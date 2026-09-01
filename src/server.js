@@ -28,6 +28,7 @@ const REMOTE_ACK_CACHE_SIZE = 100;
 const WS_MESSAGE_LIMIT = 120;
 const WS_MESSAGE_WINDOW_MS = 1000;
 const VOTE_SETTLE_MS = 750;
+const TECHNICAL_COMBO_WINDOW_MS = 1000;
 const KIOSK_MODE = process.env.SFTS_KIOSK_MODE === 'true';
 const INDIAN_STATE_CODES = new Set([
   'AN', 'AP', 'AR', 'AS', 'BR', 'CH', 'CG', 'DD', 'DL', 'DN', 'GA', 'GJ',
@@ -451,6 +452,8 @@ const remoteStatuses = new Map([...REMOTE_IDS].map(deviceId => [deviceId, {
   battery: null,
   lastSeenAt: null
 }]));
+const remoteTechnicalPending = new Map();
+const remoteLastBasePress = new Map();
 let timerLastAt = null;
 let lastStateAt = 0;
 let persistenceReady = false;
@@ -736,6 +739,7 @@ function loadTournamentBout(bout) {
     { ...blue, playerName: blue.name }
   );
   match.remoteCount = Math.min(4, Math.max(1, Number(remoteCount) || 4));
+  clearAllRemoteCombinations();
   clearVoteSettleGuard();
   timerLastAt = null;
   bout.status = 'IN_PROGRESS';
@@ -891,6 +895,40 @@ function normalizeBattery(value) {
   return Number.isFinite(battery) && battery >= 0 && battery <= 100 ? Math.round(battery) : null;
 }
 
+function clearRemoteCombination(corner) {
+  const pending = remoteTechnicalPending.get(corner);
+  if (pending?.timer) clearTimeout(pending.timer);
+  remoteTechnicalPending.delete(corner);
+  remoteLastBasePress.delete(corner);
+}
+
+function clearAllRemoteCombinations() {
+  for (const corner of new Set([...remoteTechnicalPending.keys(), ...remoteLastBasePress.keys()])) {
+    clearRemoteCombination(corner);
+  }
+}
+
+function rememberTechnicalPress(corner, player) {
+  clearRemoteCombination(corner);
+  const pending = { player, expiresAt: Date.now() + TECHNICAL_COMBO_WINDOW_MS };
+  pending.timer = setTimeout(() => {
+    if (remoteTechnicalPending.get(corner) === pending) remoteTechnicalPending.delete(corner);
+  }, TECHNICAL_COMBO_WINDOW_MS);
+  pending.timer.unref?.();
+  remoteTechnicalPending.set(corner, pending);
+}
+
+function rememberBasePress(corner, vote) {
+  const previous = remoteLastBasePress.get(corner);
+  if (previous?.timer) clearTimeout(previous.timer);
+  const pending = { player: vote.player, points: vote.points, timestamp: Date.now() };
+  pending.timer = setTimeout(() => {
+    if (remoteLastBasePress.get(corner) === pending) remoteLastBasePress.delete(corner);
+  }, TECHNICAL_COMBO_WINDOW_MS);
+  pending.timer.unref?.();
+  remoteLastBasePress.set(corner, pending);
+}
+
 function updateRemoteStatus(ws, fields = {}, broadcast = true) {
   const status = remoteStatuses.get(ws.deviceId);
   if (!status) return;
@@ -929,10 +967,12 @@ function handleRemoteStatus(ws, msg) {
 }
 
 function remoteButton(button) {
-  const matchButton = /^((?:RED|BLUE))_(3A|3B|[12]|3)$/.exec(String(button || '').toUpperCase());
+  const matchButton = /^((?:RED|BLUE))_(TECHNICAL|[123])$/.exec(String(button || '').toUpperCase());
   if (!matchButton) return null;
-  const buttonId = matchButton[2] === '3' ? '3A' : matchButton[2];
-  return { player: matchButton[1], points: Number(buttonId[0]), button: `${matchButton[1]}_${buttonId}` };
+  if (matchButton[2] === 'TECHNICAL') {
+    return { player: matchButton[1], points: null, technical: true, button: `${matchButton[1]}_TECHNICAL` };
+  }
+  return { player: matchButton[1], points: Number(matchButton[2]), technical: false, button: `${matchButton[1]}_${matchButton[2]}` };
 }
 
 function expectedRemoteToken(deviceId) {
@@ -1006,6 +1046,7 @@ function releaseRole(ws) {
   }
   if (ws.role === 'remote' && remoteSockets.get(ws.deviceId) === ws) {
     remoteSockets.delete(ws.deviceId);
+    clearRemoteCombination(ws.corner);
     const status = remoteStatuses.get(ws.deviceId);
     if (status) {
       status.connected = false;
@@ -1099,7 +1140,8 @@ function checkPointGap() {
 }
 
 function addPoint(player, points, source = "manual", countAsHit = true) {
-  if (!validPlayer(player) || !validPoints(points) || !scoringIsAllowed()) return false;
+  const technicalAward = source === 'referee-technical' && [4, 6].includes(points);
+  if (!validPlayer(player) || (!validPoints(points) && !technicalAward) || !scoringIsAllowed()) return false;
   side(player).score += points;
   if (countAsHit) addHitStat(player, points);
   emit({ type: 'scoreSound', player, points, source });
@@ -1150,6 +1192,7 @@ function endRound(winner = null, reason = 'TIME 0:00') {
     red: deep(match.red),
     blue: deep(match.blue)
   };
+  clearAllRemoteCombinations();
   match.roundHistory.push(record);
   match.votes = {};
 
@@ -1212,6 +1255,7 @@ function startNextRound() {
   match.blue.gamjeom = 0;
   match.blue.stats = baseStats();
   match.votes = {};
+  clearAllRemoteCombinations();
   clearVoteSettleGuard();
   state(true);
 }
@@ -1239,6 +1283,7 @@ function resetCurrentMatch() {
     match.blue
   );
   match.remoteCount = Math.min(4, Math.max(1, Number(remoteCount) || 4));
+  clearAllRemoteCombinations();
   clearVoteSettleGuard();
   timerLastAt = null;
   state(true);
@@ -1259,6 +1304,7 @@ function newMatch() {
     match.blue
   );
   match.remoteCount = Math.min(4, Math.max(1, Number(remoteCount) || 4));
+  clearAllRemoteCombinations();
   clearVoteSettleGuard();
   timerLastAt = null;
   state(true);
@@ -1309,14 +1355,25 @@ function playerDisplayName(player) {
 function evaluateVotes() {
   const requiredVotes = Math.floor(match.remoteCount / 2) + 1;
   for (const player of ['RED', 'BLUE']) {
-    for (const points of [1,2,3]) {
+    for (const points of [1, 2, 3, 4, 6]) {
       const total = Object.values(match.votes).filter(v => v.player === player && v.points === points).length;
       if (total >= requiredVotes) {
-        voteSettleGuard = { player, points, expiresAt: Date.now() + VOTE_SETTLE_MS };
-        addPoint(player, points, 'referee', true);
+        const winningVote = Object.values(match.votes).find(v => v.player === player && v.points === points);
+        const technical = Boolean(winningVote?.technical);
+        voteSettleGuard = { player, points, technical, expiresAt: Date.now() + VOTE_SETTLE_MS };
+        addPoint(player, points, technical ? 'referee-technical' : 'referee', !technical);
+        if (technical) addHitStat(player, winningVote.basePoints);
         match.votes = {};
-        const result = { awarded: true, player, points, count: total, requiredVotes };
-        emit({ type: 'award', player, points, count: total, requiredVotes });
+        const result = {
+          awarded: true,
+          player,
+          points,
+          basePoints: winningVote.basePoints || points,
+          technical,
+          count: total,
+          requiredVotes
+        };
+        emit({ type: 'award', ...result });
         state(true);
         return result;
       }
@@ -1330,7 +1387,8 @@ function recordRefereeVote(corner, vote) {
   if (voteSettleGuard) {
     if (Date.now() >= voteSettleGuard.expiresAt) {
       voteSettleGuard = null;
-    } else if (vote.player === voteSettleGuard.player && vote.points === voteSettleGuard.points) {
+    } else if (vote.player === voteSettleGuard.player && vote.points === voteSettleGuard.points &&
+      Boolean(vote.technical) === Boolean(voteSettleGuard.technical)) {
       return { awarded: false, ignored: true, count: 3 };
     }
   }
@@ -1339,6 +1397,21 @@ function recordRefereeVote(corner, vote) {
     .filter(item => item.player === vote.player && item.points === vote.points).length;
   const outcome = evaluateVotes();
   return { ...outcome, count };
+}
+
+function completeRemoteVote(ws, sequence, vote) {
+  const outcome = recordRefereeVote(ws.corner, vote);
+  const ack = remoteAck(ws, sequence, {
+    accepted: true,
+    reason: outcome.ignored ? 'LATE_VOTE_IGNORED' : outcome.awarded ? 'POINT_AWARDED' : 'VOTE_RECORDED',
+    awarded: outcome.awarded,
+    points: vote.points,
+    basePoints: vote.basePoints || vote.points,
+    technical: Boolean(vote.technical),
+    voteCount: outcome.count
+  });
+  rememberRemoteAck(ws.remoteSession, sequence, ack);
+  return outcome;
 }
 
 function clearVoteSettleGuard() {
@@ -1368,6 +1441,7 @@ function setRemoteCount(value) {
 function resetTest() {
   match.test.active = false;
   match.test.presses = {};
+  clearAllRemoteCombinations();
   emit({ type: 'testReset' });
   state(true);
 }
@@ -1502,6 +1576,7 @@ function handleRemoteEvent(ws, msg) {
       rememberRemoteAck(session, sequence, ack);
       return;
     }
+    clearRemoteCombination(ws.corner);
     delete match.votes[ws.corner];
     state(true);
     const ack = remoteAck(ws, sequence, { accepted: true, reason: 'VOTE_CANCELLED', awarded: false });
@@ -1529,14 +1604,57 @@ function handleRemoteEvent(ws, msg) {
     return;
   }
 
-  const outcome = recordRefereeVote(ws.corner, vote);
-  const ack = remoteAck(ws, sequence, {
-    accepted: true,
-    reason: outcome.ignored ? 'LATE_VOTE_IGNORED' : outcome.awarded ? 'POINT_AWARDED' : 'VOTE_RECORDED',
-    awarded: outcome.awarded,
-    voteCount: outcome.count
+  if (vote.technical) {
+    const base = remoteLastBasePress.get(ws.corner);
+    const existingVote = match.votes[ws.corner];
+    if (base && existingVote && base.player === vote.player && existingVote.player === vote.player &&
+        existingVote.points === base.points && !existingVote.technical && Date.now() - base.timestamp <= TECHNICAL_COMBO_WINDOW_MS) {
+      clearRemoteCombination(ws.corner);
+      completeRemoteVote(ws, sequence, {
+        player: vote.player,
+        points: base.points * 2,
+        basePoints: base.points,
+        technical: true,
+        button: vote.button
+      });
+      return;
+    }
+    rememberTechnicalPress(ws.corner, vote.player);
+    const ack = remoteAck(ws, sequence, { accepted: true, reason: 'TECHNICAL_PENDING', awarded: false, technical: true });
+    rememberRemoteAck(session, sequence, ack);
+    return;
+  }
+
+  const technical = remoteTechnicalPending.get(ws.corner);
+  if (technical && technical.player === vote.player) {
+    if (vote.points === 2 || vote.points === 3) {
+      clearRemoteCombination(ws.corner);
+      completeRemoteVote(ws, sequence, {
+        player: vote.player,
+        points: vote.points * 2,
+        basePoints: vote.points,
+        technical: true,
+        button: `${vote.player}_TECHNICAL_${vote.points}`
+      });
+      return;
+    }
+    clearRemoteCombination(ws.corner);
+    const ack = remoteAck(ws, sequence, {
+      accepted: false,
+      reason: 'TECHNICAL_REQUIRES_PLUS_2_OR_PLUS_3',
+      awarded: false
+    });
+    rememberRemoteAck(session, sequence, ack);
+    return;
+  }
+
+  if (technical) clearRemoteCombination(ws.corner);
+  const outcome = completeRemoteVote(ws, sequence, {
+    ...vote,
+    basePoints: vote.points,
+    technical: false
   });
-  rememberRemoteAck(session, sequence, ack);
+  if ((vote.points === 2 || vote.points === 3) && !outcome.awarded) rememberBasePress(ws.corner, vote);
 }
 
 wss.on('connection', ws => {
@@ -1746,7 +1864,7 @@ wss.on('connection', ws => {
 
       if (msg.action === 'vote' && validPlayer(player) && validPoints(points)) {
         if (match.test.active) {
-          const button = `${player}_${points === 3 ? '3A' : points}`;
+          const button = `${player}_${points}`;
           match.test.presses[`${ws.corner}-${button}`] = true;
           emit({ type: 'testPress', corner: ws.corner, player, points, button });
           state();
