@@ -34,6 +34,7 @@ function connectSocket() {
       lastTournament = msg.tournament || null;
       historyCache = msg.matchHistory || [];
       renderState(msg.match);
+      renderRemoteStatuses(msg.remotes);
       renderTournament(msg.tournament);
       if (!$('scheduleModal').classList.contains('hidden')) renderSchedule(msg.tournament);
     }
@@ -55,7 +56,7 @@ function connectSocket() {
       if (msg.winner) showWinnerSlide(msg.winner, msg.match);
       else toast('MATCH TIED — RESOLVE IT IN THE SCHEDULE');
     }
-    if (msg.type === 'testPress') markTest(msg.corner, msg.player, msg.points);
+    if (msg.type === 'testPress') markTest(msg.corner, msg.player, msg.points, msg.button);
     if (msg.type === 'testReset') resetTestUi();
     if (msg.type === 'announcement') announceText(msg.text, msg.audioUrl);
   };
@@ -90,6 +91,7 @@ function showScreen(id) {
 
 function renderState(match) {
   if (!match) return;
+  renderRemoteMode(match.remoteCount);
   $('redName').textContent = 'HONG';
   $('blueName').textContent = 'CHUNG';
   $('redMeta').textContent = playerMetaText(match.red);
@@ -102,7 +104,8 @@ function renderState(match) {
   $('timer').textContent = formatTime(match.timerMs);
   $('roundText').textContent = match.phase === 'MATCH_END' ? 'MATCH END' : `ROUND ${match.round}`;
   $('playBtn').textContent = match.running ? '❚❚ PAUSE' : '▶ PLAY';
-  $('voteStrip').textContent = [1,2,3,4].map(c => {
+  const activeRemoteCount = Math.min(4, Math.max(1, Number(match.remoteCount) || 4));
+  $('voteStrip').textContent = [1,2,3,4].slice(0, activeRemoteCount).map(c => {
     const v = match.votes[c];
     return `C${c} ${v ? v.player[0] + '+' + v.points : '—'}`;
   }).join('   ');
@@ -474,6 +477,32 @@ function closeTestMode() {
   send({ type: 'host', action: 'testStop' });
   showScreen('host');
 }
+function changeRemoteMode(value) {
+  send({ type: 'host', action: 'setRemoteMode', count: Number(value) });
+}
+function renderRemoteMode(count) {
+  const activeCount = Math.min(4, Math.max(1, Number(count) || 4));
+  const select = $('remoteMode');
+  if (select) select.value = String(activeCount);
+  for (let corner = 1; corner <= 4; corner += 1) {
+    const card = $(`joy${corner}`);
+    if (card) card.classList.toggle('hidden', corner > activeCount);
+  }
+}
+function renderRemoteStatuses(remotes) {
+  const statuses = Array.isArray(remotes) ? remotes : [];
+  for (let corner = 1; corner <= 4; corner += 1) {
+    const info = $(`remoteInfo${corner}`);
+    if (!info) continue;
+    const status = statuses.find(item => Number(item.corner) === corner);
+    const connected = status?.connected === true;
+    const rssi = Number.isInteger(status?.rssi) ? `${status.rssi} dBm` : '—';
+    const battery = Number.isFinite(status?.battery) ? `${status.battery}%` : '—';
+    info.textContent = `${connected ? 'CONNECTED' : 'DISCONNECTED'} · RSSI ${rssi} · BATTERY ${battery}`;
+    info.classList.toggle('connected', connected);
+    info.classList.toggle('disconnected', !connected);
+  }
+}
 function resetTestUi() {
   for (let i = 1; i <= 4; i++) {
     const joy = $(`joy${i}`);
@@ -482,12 +511,13 @@ function resetTestUi() {
     joy.querySelectorAll('i').forEach(el => el.classList.remove('litRed', 'litBlue'));
   }
 }
-function markTest(corner, player, points) {
+function markTest(corner, player, points, button = '') {
   const joy = $(`joy${corner}`);
   if (!joy) return;
-  const item = joy.querySelector(`[data-key="${player}-${points}"]`);
+  const buttonId = button || `${player}_${points === 3 ? '3A' : points}`;
+  const item = joy.querySelector(`[data-key="${buttonId.replace('_', '-')}"]`);
   if (item) item.classList.add(player === 'RED' ? 'litRed' : 'litBlue');
-  const all = ['RED-1','RED-2','RED-3','BLUE-1','BLUE-2','BLUE-3'];
+  const all = ['RED-1','RED-2','RED-3A','RED-3B','BLUE-1','BLUE-2','BLUE-3A','BLUE-3B'];
   const done = all.every(key => {
     const el = joy.querySelector(`[data-key="${key}"]`);
     return el && (el.classList.contains('litRed') || el.classList.contains('litBlue'));
@@ -561,3 +591,4 @@ window.closeRoundOverlay = closeRoundOverlay;
 window.startNewMatch = startNewMatch;
 window.openTestMode = openTestMode;
 window.closeTestMode = closeTestMode;
+window.changeRemoteMode = changeRemoteMode;

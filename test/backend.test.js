@@ -263,6 +263,15 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   assert.equal(remote.messages.some(message => message.type === 'state'), false);
   const compactState = await waitForMessage(remote, message => message.type === 'remote_state');
   assert.equal(compactState.deviceId, 'C4');
+  remote.send(JSON.stringify({
+    type: 'remote_status', deviceId: 'C4', sessionId: 'test-session-c4', rssi: -55, battery: 82
+  }));
+  const telemetryState = await waitForMessage(host, message => (
+    message.type === 'state' && message.remotes?.find(remoteStatus => remoteStatus.deviceId === 'C4')?.rssi === -55
+  ));
+  const c4Status = telemetryState.remotes.find(remoteStatus => remoteStatus.deviceId === 'C4');
+  assert.equal(c4Status.rssi, -55);
+  assert.equal(c4Status.battery, 82);
 
   const remoteEvent = JSON.stringify({
     type: 'remote_event',
@@ -277,6 +286,22 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   remote.send(remoteEvent);
   const duplicateAck = await waitForMessage(remote, message => message.type === 'remote_event_ack' && message.sequence === 1);
   assert.deepEqual(duplicateAck, firstAck);
+
+  host.send(JSON.stringify({ type: 'host', action: 'resetMatch' }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.red.score === 0);
+  host.send(JSON.stringify({ type: 'host', action: 'setRemoteMode', count: 2 }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.remoteCount === 2);
+  remote.send(JSON.stringify({
+    type: 'remote_event', deviceId: 'C4', sessionId: 'test-session-c4', sequence: 2, button: 'RED_3B'
+  }));
+  const disabledRemote = await waitForMessage(remote, message => message.type === 'remote_event_ack' && message.sequence === 2);
+  assert.equal(disabledRemote.reason, 'REMOTE_DISABLED');
+  host.send(JSON.stringify({ type: 'host', action: 'setRemoteMode', count: 4 }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.remoteCount === 4);
+  remote.send(JSON.stringify({
+    type: 'remote_event', deviceId: 'C4', sessionId: 'test-session-c4', sequence: 3, button: 'RED_2'
+  }));
+  await waitForMessage(remote, message => message.type === 'remote_event_ack' && message.sequence === 3 && message.reason === 'VOTE_RECORDED');
 
   referees[0].send(JSON.stringify({ type: 'ref', action: 'vote', player: 'RED', points: 2 }));
   referees[1].send(JSON.stringify({ type: 'ref', action: 'vote', player: 'RED', points: 2 }));
@@ -363,6 +388,13 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
     message.tournament.schedule.find(bout => bout.boutNo === 2)?.status === 'COMPLETED'
   ));
   assert.equal(tieResolved.tournament.schedule.find(bout => bout.boutNo === 2).winnerName, initialBoutTwo.bluePlayerName);
+  remote.close();
+  const disconnectedState = await waitForMessage(host, message => (
+    message.type === 'state' && message.remotes?.find(remoteStatus => (
+      remoteStatus.deviceId === 'C4' && remoteStatus.connected === false && remoteStatus.lastSeenAt !== null
+    ))
+  ));
+  assert.equal(disconnectedState.remotes.find(remoteStatus => remoteStatus.deviceId === 'C4').battery, 82);
 });
 
 test('malformed WebSocket input does not terminate a connection', async () => {
@@ -393,7 +425,10 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(html, /id="redHeadButton"/);
   assert.match(html, /id="blueHeadButton"/);
   assert.doesNotMatch(html, /onclick="openTestRemotes\(\)"/);
-  assert.match(html, /onclick="openTestMode\(\)">TEST REMOTES<\/button>/);
+  assert.match(html, /onclick="openTestMode\(\)">REMOTE SETTINGS<\/button>/);
+  assert.match(html, /id="remoteMode"/);
+  assert.match(html, />\s*BACK\s*<\/button>/);
+  assert.match(html, /id="remoteInfo1"/);
 
   const css = await fetch(`http://127.0.0.1:${port}/css/style.css`);
   const js = await fetch(`http://127.0.0.1:${port}/js/app.js`);
@@ -408,6 +443,7 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(jsText, /renderSchedule\(lastTournament\)/);
   assert.match(jsText, /ws\.onclose/);
   assert.match(jsText, /reconnectDelay/);
+  assert.match(jsText, /renderRemoteStatuses/);
   assert.match(html, /id="hostAccessToken"/);
 
   const info = await fetch(`http://127.0.0.1:${port}/api/info`);

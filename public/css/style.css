@@ -542,7 +542,8 @@ button { border: 0; cursor: pointer; }
 .testHeader {
   height: 84px;
   display: grid;
-  grid-template-columns: 220px 1fr 180px;
+  grid-template-columns: 220px 1fr 180px 120px;
+  column-gap: 28px;
   align-items: center;
   padding: 8px 16px;
   background: #0e131b;
@@ -563,6 +564,25 @@ button { border: 0; cursor: pointer; }
   background: #313a48;
   color: #fff;
   font-weight: 900;
+}
+.remoteModeControl {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  color: #c4cddd;
+  font-size: 12px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+.remoteModeControl select {
+  width: 135px;
+  padding: 8px 6px;
+  border: 1px solid #465269;
+  border-radius: 6px;
+  background: #19212e;
+  color: #fff;
+  font-weight: 800;
 }
 .testHelp {
   text-align: center;
@@ -585,6 +605,15 @@ button { border: 0; cursor: pointer; }
   text-align: center;
   margin: 0 0 10px;
 }
+.remoteTelemetry {
+  margin: -2px 0 10px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .03em;
+}
+.remoteTelemetry.connected { color: #63f38d; }
+.remoteTelemetry.disconnected { color: #ff9b9b; }
 .joystickBody {
   display: grid;
   grid-template-columns: 1fr 110px 1fr;
@@ -736,6 +765,10 @@ button { border: 0; cursor: pointer; }
   .roundGrid { grid-template-columns: 1fr; }
   .historyItem { grid-template-columns: 1fr; }
   .joystickGrid { grid-template-columns: 1fr; }
+  .testHeader { grid-template-columns: 1fr 1fr; height: auto; gap: 8px; column-gap: 14px; }
+  .testLogo { width: 140px; max-width: 100%; }
+  .testHeaderTitle { font-size: 22px; }
+  .remoteModeControl, .exitTestButton { grid-row: 2; }
   .playerSettingsGrid { grid-template-columns: 1fr; }
   .tournamentImportActions,
   .scheduleActions { display: grid; grid-template-columns: 1fr; }

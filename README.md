@@ -87,11 +87,13 @@ set SFTS_REMOTE_TOKEN_C4=private-token-for-c4
 npm start
 ```
 
-The remote sends `RED_1`, `RED_2`, `RED_3`, `BLUE_1`, `BLUE_2`, `BLUE_3`, or `CANCEL`. The server sends an acknowledgement for every event. Retrying the same sequence number does not score twice.
+The remote sends `RED_1`, `RED_2`, `RED_3A`, `RED_3B`, `BLUE_1`, `BLUE_2`, `BLUE_3A`, `BLUE_3B`, or `CANCEL`. It also sends its Wi-Fi RSSI and battery percentage in a `remote_status` message. The two `+3` buttons may look the same, but must use different internal IDs so the hardware test can verify both physical buttons. The server sends an acknowledgement for every event. Retrying the same sequence number does not score twice.
 
 For local development only, unpaired remotes can be allowed with `SFTS_ALLOW_UNPAIRED_REMOTES=true`. Do not use that setting during a real event.
 
-Use **SETTINGS → TEST REMOTES** to check all six buttons on each corner. Test mode pauses the timer, clears pending votes, and does not change the score.
+Use **SETTINGS → REMOTE SETTINGS** to choose 1–4 active remotes and check all eight buttons on each enabled corner. The required matching vote count is 1, 2, 2, or 3 for modes 1, 2, 3, or 4. Test mode pauses the timer, clears pending votes, and does not change the score.
+
+Each corner card shows `CONNECTED` or `DISCONNECTED`, the latest RSSI in dBm, and the latest battery percentage. A remote that has never reported telemetry shows `—` for that value.
 
 ## Tournament workflow
 

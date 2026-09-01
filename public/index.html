@@ -111,7 +111,7 @@
         <button onclick="resetCurrentMatch()">RESET CURRENT MATCH</button>
         <button onclick="openTimerEditor()">EDIT TIMER</button>
         <button onclick="openHistory()">MATCH HISTORY</button>
-        <button onclick="openTestMode()">TEST REMOTES</button>
+        <button onclick="openTestMode()">REMOTE SETTINGS</button>
         <button onclick="closeSettings()">CLOSE</button>
       </div>
     </section>
@@ -368,69 +368,81 @@
     <section id="testMode" class="screen hidden testModeScreen">
       <header class="testHeader">
         <img src="/assets/sfts-logo.jpg" class="testLogo" alt="SFTS" />
-        <div class="testHeaderTitle">TEST REMOTES</div>
+        <div class="testHeaderTitle">REMOTE SETTINGS</div>
+        <label class="remoteModeControl"><span>MODE</span>
+          <select id="remoteMode" onchange="changeRemoteMode(this.value)">
+            <option value="1">1 REMOTE</option>
+            <option value="2">2 REMOTES</option>
+            <option value="3">3 REMOTES</option>
+            <option value="4">4 REMOTES</option>
+          </select>
+        </label>
         <button class="exitTestButton" onclick="closeTestMode()">
-          EXIT TEST
+          BACK
         </button>
       </header>
       <p class="testHelp">
-        Press all six buttons on each remote corner. Each press lights up below.
-        When all six buttons work, a ✓ appears on that remote.
+        Press all eight buttons on each enabled remote corner. Each press lights up below.
+        When all eight buttons work, a ✓ appears on that remote.
       </p>
       <div class="joystickGrid">
         <div id="joy1" class="joystickCard">
           <h3>CORNER 1</h3>
+          <div id="remoteInfo1" class="remoteTelemetry disconnected">DISCONNECTED · RSSI — · BATTERY —</div>
           <div class="joystickBody">
             <div class="joyButtons redJoyBtns">
               <i data-key="RED-1">+1</i><i data-key="RED-2">+2</i
-              ><i data-key="RED-3">+3</i>
+              ><i data-key="RED-3A">+3</i><i data-key="RED-3B">+3</i>
             </div>
             <div class="joyCenter">🎮<span class="joyCheck">✓</span></div>
             <div class="joyButtons blueJoyBtns">
               <i data-key="BLUE-1">+1</i><i data-key="BLUE-2">+2</i
-              ><i data-key="BLUE-3">+3</i>
+              ><i data-key="BLUE-3A">+3</i><i data-key="BLUE-3B">+3</i>
             </div>
           </div>
         </div>
         <div id="joy2" class="joystickCard">
           <h3>CORNER 2</h3>
+          <div id="remoteInfo2" class="remoteTelemetry disconnected">DISCONNECTED · RSSI — · BATTERY —</div>
           <div class="joystickBody">
             <div class="joyButtons redJoyBtns">
               <i data-key="RED-1">+1</i><i data-key="RED-2">+2</i
-              ><i data-key="RED-3">+3</i>
+              ><i data-key="RED-3A">+3</i><i data-key="RED-3B">+3</i>
             </div>
             <div class="joyCenter">🎮<span class="joyCheck">✓</span></div>
             <div class="joyButtons blueJoyBtns">
               <i data-key="BLUE-1">+1</i><i data-key="BLUE-2">+2</i
-              ><i data-key="BLUE-3">+3</i>
+              ><i data-key="BLUE-3A">+3</i><i data-key="BLUE-3B">+3</i>
             </div>
           </div>
         </div>
         <div id="joy3" class="joystickCard">
           <h3>CORNER 3</h3>
+          <div id="remoteInfo3" class="remoteTelemetry disconnected">DISCONNECTED · RSSI — · BATTERY —</div>
           <div class="joystickBody">
             <div class="joyButtons redJoyBtns">
               <i data-key="RED-1">+1</i><i data-key="RED-2">+2</i
-              ><i data-key="RED-3">+3</i>
+              ><i data-key="RED-3A">+3</i><i data-key="RED-3B">+3</i>
             </div>
             <div class="joyCenter">🎮<span class="joyCheck">✓</span></div>
             <div class="joyButtons blueJoyBtns">
               <i data-key="BLUE-1">+1</i><i data-key="BLUE-2">+2</i
-              ><i data-key="BLUE-3">+3</i>
+              ><i data-key="BLUE-3A">+3</i><i data-key="BLUE-3B">+3</i>
             </div>
           </div>
         </div>
         <div id="joy4" class="joystickCard">
           <h3>CORNER 4</h3>
+          <div id="remoteInfo4" class="remoteTelemetry disconnected">DISCONNECTED · RSSI — · BATTERY —</div>
           <div class="joystickBody">
             <div class="joyButtons redJoyBtns">
               <i data-key="RED-1">+1</i><i data-key="RED-2">+2</i
-              ><i data-key="RED-3">+3</i>
+              ><i data-key="RED-3A">+3</i><i data-key="RED-3B">+3</i>
             </div>
             <div class="joyCenter">🎮<span class="joyCheck">✓</span></div>
             <div class="joyButtons blueJoyBtns">
               <i data-key="BLUE-1">+1</i><i data-key="BLUE-2">+2</i
-              ><i data-key="BLUE-3">+3</i>
+              ><i data-key="BLUE-3A">+3</i><i data-key="BLUE-3B">+3</i>
             </div>
           </div>
         </div>

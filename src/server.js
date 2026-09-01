@@ -96,6 +96,7 @@ function makeMatch(
     configuredRoundMs: roundMs,
     timerMs: roundMs,
     breakMs: BREAK_MS_DEFAULT,
+    remoteCount: 4,
     running: false,
     phase: "ROUND", // ROUND | BREAK | MATCH_END
     red: makeSide(redName, redProfile),
@@ -442,6 +443,14 @@ let hostSocket = null;
 const refereeSockets = new Map();
 const remoteSockets = new Map();
 const remoteSessions = new Map();
+const remoteStatuses = new Map([...REMOTE_IDS].map(deviceId => [deviceId, {
+  deviceId,
+  corner: Number(deviceId.slice(1)),
+  connected: false,
+  rssi: null,
+  battery: null,
+  lastSeenAt: null
+}]));
 let timerLastAt = null;
 let lastStateAt = 0;
 let persistenceReady = false;
@@ -472,6 +481,9 @@ function persistState() {
 
 function restorePersistedState(snapshot) {
   match = snapshot.match;
+  match.remoteCount = Number.isInteger(match.remoteCount) && match.remoteCount >= 1 && match.remoteCount <= 4
+    ? match.remoteCount
+    : 4;
   match.running = false;
   match.votes = {};
   match.test = { active: false, presses: {} };
@@ -521,7 +533,13 @@ function send(ws, message) {
   return sendText(ws, JSON.stringify(message));
 }
 function fullState() {
-  return { type: "state", match: deep(match), matchHistory: deep(matchHistory), tournament: deep(tournament) };
+  return {
+    type: "state",
+    match: deep(match),
+    matchHistory: deep(matchHistory),
+    tournament: deep(tournament),
+    remotes: [...remoteStatuses.values()].map(status => deep(status))
+  };
 }
 function remoteState(ws) {
   return {
@@ -533,6 +551,11 @@ function remoteState(ws) {
     phase: match.phase,
     timerMs: Math.max(0, Math.ceil(match.timerMs)),
     running: match.running,
+    activeRemoteCount: match.remoteCount,
+    requiredVotes: Math.floor(match.remoteCount / 2) + 1,
+    connected: Boolean(remoteStatuses.get(ws.deviceId)?.connected),
+    rssi: remoteStatuses.get(ws.deviceId)?.rssi ?? null,
+    battery: remoteStatuses.get(ws.deviceId)?.battery ?? null,
     red: { score: match.red.score, gamjeom: match.red.gamjeom },
     blue: { score: match.blue.score, gamjeom: match.blue.gamjeom },
     votes: deep(match.votes)
@@ -703,6 +726,7 @@ function loadTournamentBout(bout) {
   if (!red || !blue) {
     return { ok: false, code: 'BOUT_INVALID', message: 'The scheduled players could not be found' };
   }
+  const remoteCount = match.remoteCount;
   match = makeMatch(
     match.phase === 'MATCH_END' ? match.matchNo + 1 : match.matchNo,
     red.name,
@@ -711,6 +735,7 @@ function loadTournamentBout(bout) {
     { ...red, playerName: red.name },
     { ...blue, playerName: blue.name }
   );
+  match.remoteCount = Math.min(4, Math.max(1, Number(remoteCount) || 4));
   clearVoteSettleGuard();
   timerLastAt = null;
   bout.status = 'IN_PROGRESS';
@@ -854,10 +879,60 @@ function validRemoteSessionId(value) {
   return typeof value === 'string' && /^[A-Za-z0-9._:-]{1,64}$/.test(value);
 }
 
+function normalizeRssi(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const rssi = Number(value);
+  return Number.isInteger(rssi) && rssi >= -127 && rssi <= 0 ? rssi : null;
+}
+
+function normalizeBattery(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const battery = Number(value);
+  return Number.isFinite(battery) && battery >= 0 && battery <= 100 ? Math.round(battery) : null;
+}
+
+function updateRemoteStatus(ws, fields = {}, broadcast = true) {
+  const status = remoteStatuses.get(ws.deviceId);
+  if (!status) return;
+  status.connected = true;
+  status.lastSeenAt = Date.now();
+  if (Object.prototype.hasOwnProperty.call(fields, 'rssi')) status.rssi = normalizeRssi(fields.rssi);
+  if (Object.prototype.hasOwnProperty.call(fields, 'battery')) status.battery = normalizeBattery(fields.battery);
+  if (broadcast) state();
+}
+
+function handleRemoteStatus(ws, msg) {
+  if (ws.role !== 'remote' || !ws.remoteSession) {
+    sendError(ws, 'REMOTE_NOT_AUTHENTICATED', 'Send remote_hello before remote_status');
+    return;
+  }
+  const deviceId = typeof msg.deviceId === 'string' ? msg.deviceId.toUpperCase() : '';
+  const sessionId = typeof msg.sessionId === 'string' ? msg.sessionId : '';
+  if (deviceId !== ws.deviceId || sessionId !== ws.sessionId) {
+    sendError(ws, 'REMOTE_ID_MISMATCH', 'Status identity does not match the connected remote');
+    return;
+  }
+  const hasRssi = Object.prototype.hasOwnProperty.call(msg, 'rssi');
+  const hasBattery = Object.prototype.hasOwnProperty.call(msg, 'battery');
+  const rssi = normalizeRssi(msg.rssi);
+  const battery = normalizeBattery(msg.battery);
+  if ((!hasRssi && !hasBattery) || (hasRssi && msg.rssi !== null && rssi === null) ||
+      (hasBattery && msg.battery !== null && battery === null)) {
+    sendError(ws, 'INVALID_TELEMETRY', 'RSSI must be an integer from -127 to 0 and battery must be 0 to 100');
+    return;
+  }
+  const telemetry = {};
+  if (hasRssi) telemetry.rssi = rssi;
+  if (hasBattery) telemetry.battery = battery;
+  updateRemoteStatus(ws, telemetry);
+  send(ws, { type: 'remote_status_ack', deviceId: ws.deviceId, sessionId: ws.sessionId, accepted: true });
+}
+
 function remoteButton(button) {
-  const matchButton = /^((?:RED|BLUE))_([123])$/.exec(String(button || '').toUpperCase());
+  const matchButton = /^((?:RED|BLUE))_(3A|3B|[12]|3)$/.exec(String(button || '').toUpperCase());
   if (!matchButton) return null;
-  return { player: matchButton[1], points: Number(matchButton[2]) };
+  const buttonId = matchButton[2] === '3' ? '3A' : matchButton[2];
+  return { player: matchButton[1], points: Number(buttonId[0]), button: `${matchButton[1]}_${buttonId}` };
 }
 
 function expectedRemoteToken(deviceId) {
@@ -931,9 +1006,16 @@ function releaseRole(ws) {
   }
   if (ws.role === 'remote' && remoteSockets.get(ws.deviceId) === ws) {
     remoteSockets.delete(ws.deviceId);
+    const status = remoteStatuses.get(ws.deviceId);
+    if (status) {
+      status.connected = false;
+      status.lastSeenAt = Date.now();
+    }
     if (match.votes[ws.corner]) {
       delete match.votes[ws.corner];
       state(true);
+    } else {
+      state();
     }
   }
   ws.role = 'unknown';
@@ -1147,6 +1229,7 @@ function resetCurrentMatch() {
     tournament.activeBoutNo = null;
     refreshTournamentBracket();
   }
+  const remoteCount = match.remoteCount;
   match = makeMatch(
     match.matchNo,
     match.red.name,
@@ -1155,6 +1238,7 @@ function resetCurrentMatch() {
     match.red,
     match.blue
   );
+  match.remoteCount = Math.min(4, Math.max(1, Number(remoteCount) || 4));
   clearVoteSettleGuard();
   timerLastAt = null;
   state(true);
@@ -1165,6 +1249,7 @@ function newMatch() {
     const bout = findTournamentBout(tournament.activeBoutNo);
     if (bout?.status === 'TIE_PENDING') return false;
   }
+  const remoteCount = match.remoteCount;
   match = makeMatch(
     match.matchNo + 1,
     match.red.name,
@@ -1173,6 +1258,7 @@ function newMatch() {
     match.red,
     match.blue
   );
+  match.remoteCount = Math.min(4, Math.max(1, Number(remoteCount) || 4));
   clearVoteSettleGuard();
   timerLastAt = null;
   state(true);
@@ -1221,15 +1307,16 @@ function playerDisplayName(player) {
 }
 
 function evaluateVotes() {
+  const requiredVotes = Math.floor(match.remoteCount / 2) + 1;
   for (const player of ['RED', 'BLUE']) {
     for (const points of [1,2,3]) {
       const total = Object.values(match.votes).filter(v => v.player === player && v.points === points).length;
-      if (total >= 3) {
+      if (total >= requiredVotes) {
         voteSettleGuard = { player, points, expiresAt: Date.now() + VOTE_SETTLE_MS };
         addPoint(player, points, 'referee', true);
         match.votes = {};
-        const result = { awarded: true, player, points, count: total };
-        emit({ type: 'award', player, points, count: total });
+        const result = { awarded: true, player, points, count: total, requiredVotes };
+        emit({ type: 'award', player, points, count: total, requiredVotes });
         state(true);
         return result;
       }
@@ -1256,6 +1343,26 @@ function recordRefereeVote(corner, vote) {
 
 function clearVoteSettleGuard() {
   voteSettleGuard = null;
+}
+
+function setRemoteCount(value) {
+  const remoteCount = Number(value);
+  if (!Number.isInteger(remoteCount) || remoteCount < 1 || remoteCount > 4) {
+    return { ok: false, code: 'INVALID_REMOTE_MODE', message: 'Remote mode must be between 1 and 4 remotes' };
+  }
+  const matchHasProgress = match.running || match.roundHistory.length > 0 ||
+    match.red.score > 0 || match.blue.score > 0 || match.red.gamjeom > 0 || match.blue.gamjeom > 0 ||
+    Object.keys(match.votes).length > 0;
+  if (matchHasProgress && !match.test.active) {
+    return { ok: false, code: 'REMOTE_MODE_LOCKED', message: 'Set the remote mode before scoring starts or use remote test mode' };
+  }
+  match.remoteCount = remoteCount;
+  match.votes = {};
+  if (match.test.active) {
+    match.test.presses = {};
+    emit({ type: 'testReset' });
+  }
+  return { ok: true };
 }
 
 function resetTest() {
@@ -1297,6 +1404,23 @@ function handleRemoteHello(ws, msg) {
     sendError(ws, 'UNAUTHORIZED_REMOTE', 'Remote authentication failed');
     return;
   }
+  const helloTelemetry = {};
+  if (Object.prototype.hasOwnProperty.call(msg, 'rssi')) {
+    const rssi = normalizeRssi(msg.rssi);
+    if (msg.rssi !== null && rssi === null) {
+      sendError(ws, 'INVALID_TELEMETRY', 'RSSI must be an integer from -127 to 0');
+      return;
+    }
+    helloTelemetry.rssi = rssi;
+  }
+  if (Object.prototype.hasOwnProperty.call(msg, 'battery')) {
+    const battery = normalizeBattery(msg.battery);
+    if (msg.battery !== null && battery === null) {
+      sendError(ws, 'INVALID_TELEMETRY', 'Battery must be a percentage from 0 to 100');
+      return;
+    }
+    helloTelemetry.battery = battery;
+  }
   const existing = remoteSockets.get(deviceId);
   if (existing && existing !== ws && existing.readyState === 1) {
     sendError(ws, 'DEVICE_BUSY', `${deviceId} is already connected`);
@@ -1317,6 +1441,7 @@ function handleRemoteHello(ws, msg) {
   ws.remoteSession = session;
   remoteSockets.set(deviceId, ws);
   remoteSessions.set(deviceId, session);
+  updateRemoteStatus(ws, helloTelemetry, false);
 
   send(ws, {
     type: 'remote_ready',
@@ -1326,6 +1451,7 @@ function handleRemoteHello(ws, msg) {
     sessionId
   });
   send(ws, remoteState(ws));
+  state();
 }
 
 function handleRemoteEvent(ws, msg) {
@@ -1360,6 +1486,11 @@ function handleRemoteEvent(ws, msg) {
   session.lastSequence = sequence;
 
   const button = String(msg.button || '').toUpperCase();
+  if (ws.corner > match.remoteCount) {
+    const ack = remoteAck(ws, sequence, { accepted: false, reason: 'REMOTE_DISABLED', awarded: false });
+    rememberRemoteAck(session, sequence, ack);
+    return;
+  }
   if (button === 'CANCEL') {
     if (match.test.active) {
       const ack = remoteAck(ws, sequence, { accepted: false, reason: 'TEST_MODE_ACTIVE' });
@@ -1385,8 +1516,8 @@ function handleRemoteEvent(ws, msg) {
     return;
   }
   if (match.test.active) {
-    match.test.presses[`${ws.corner}-${vote.player}-${vote.points}`] = true;
-    emit({ type: 'testPress', corner: ws.corner, player: vote.player, points: vote.points });
+    match.test.presses[`${ws.corner}-${vote.button}`] = true;
+    emit({ type: 'testPress', corner: ws.corner, player: vote.player, points: vote.points, button: vote.button });
     state();
     const ack = remoteAck(ws, sequence, { accepted: true, reason: 'TEST_PRESS_RECORDED', test: true, awarded: false });
     rememberRemoteAck(session, sequence, ack);
@@ -1446,8 +1577,16 @@ wss.on('connection', ws => {
       handleRemoteEvent(ws, msg);
       return;
     }
+    if (msg.type === 'remote_status') {
+      handleRemoteStatus(ws, msg);
+      return;
+    }
     if (msg.type === 'remote_ping') {
-      if (ws.role === 'remote') send(ws, { type: 'remote_pong', deviceId: ws.deviceId });
+      if (ws.role === 'remote') {
+        const hasTelemetry = Object.prototype.hasOwnProperty.call(msg, 'rssi') || Object.prototype.hasOwnProperty.call(msg, 'battery');
+        updateRemoteStatus(ws, hasTelemetry ? msg : {}, hasTelemetry);
+        send(ws, { type: 'remote_pong', deviceId: ws.deviceId });
+      }
       else sendError(ws, 'REMOTE_NOT_AUTHENTICATED', 'Send remote_hello before remote_ping');
       return;
     }
@@ -1577,6 +1716,13 @@ wss.on('connection', ws => {
         state(true);
         return;
       }
+      if (msg.action === 'setRemoteMode') {
+        const result = setRemoteCount(msg.count);
+        if (!result.ok) {
+          sendError(ws, result.code, result.message);
+          return;
+        }
+      }
       if (msg.action === 'testStart') {
         setRunning(false);
         match.test.active = true;
@@ -1594,13 +1740,15 @@ wss.on('connection', ws => {
 
     if (msg.type === 'ref') {
       if (ws.role !== 'referee' || ws.corner < 1 || ws.corner > 4) return;
+      if (ws.corner > match.remoteCount) return;
       const player = msg.player;
       const points = Number(msg.points);
 
       if (msg.action === 'vote' && validPlayer(player) && validPoints(points)) {
         if (match.test.active) {
-          match.test.presses[`${ws.corner}-${player}-${points}`] = true;
-          emit({ type: 'testPress', corner: ws.corner, player, points });
+          const button = `${player}_${points === 3 ? '3A' : points}`;
+          match.test.presses[`${ws.corner}-${button}`] = true;
+          emit({ type: 'testPress', corner: ws.corner, player, points, button });
           state();
           return;
         }
