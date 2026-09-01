@@ -123,6 +123,32 @@ Selecting **IMPORT & GENERATE SCHEDULE** validates the entire sheet before repla
 
 The host can view the schedule, load an available bout into the normal scoring board, announce a bout to connected browser displays using generated announcement text, download the complete schedule as Excel or CSV, and print the schedule. Bye allocations are included in the schedule view and downloads. Importing is blocked while an active match contains scores, penalties, votes, a running timer, or remote test mode. Tournament data is held in memory for the current server run.
 
+### Local announcements with Piper
+
+Announcements can use a locally installed Piper voice instead of the browser's default robotic voice. The backend generates a WAV file on the PC or Raspberry Pi, caches repeated announcements in `data/tts/`, and sends the audio URL to connected displays. If Piper is unavailable or not configured, the browser speech fallback remains active.
+
+Install Piper and download an ONNX voice model on the test PC, then start the server with these Windows Command Prompt settings:
+
+```bat
+set SFTS_TTS_ENGINE=piper
+set SFTS_TTS_COMMAND=piper.exe
+set SFTS_TTS_MODEL=C:\path\to\voice.onnx
+npm start
+```
+
+If Piper is not on `PATH`, set `SFTS_TTS_COMMAND` to its complete executable path. The model path may also be absolute. For PowerShell, use `$env:SFTS_TTS_ENGINE = "piper"`, `$env:SFTS_TTS_COMMAND = "piper.exe"`, and `$env:SFTS_TTS_MODEL = "C:\path\to\voice.onnx"` before `npm start`.
+
+The same configuration works on Linux/Raspberry Pi after installing the ARM-compatible Piper executable and changing the command, for example:
+
+```bash
+export SFTS_TTS_ENGINE=piper
+export SFTS_TTS_COMMAND=piper
+export SFTS_TTS_MODEL=/opt/sfts/voices/voice.onnx
+npm start
+```
+
+The Piper command must accept `--model`, `--output_file`, and text through standard input. Keep the voice model on local storage; no cloud service or network connection is used for speech generation. Piper documentation and voice resources are available from the [Piper project](https://github.com/rhasspy/piper).
+
 The downloadable template is available from **PLAYER SETTINGS → DOWNLOAD TEMPLATE**. A generated schedule contains bout number, group, gender, weight category, round, red player, blue player, status, winner, and announcement text.
 
 ### Player sheet template
@@ -269,6 +295,7 @@ Before using physical remotes in competition, validate Wi-Fi coverage, reconnect
 
 ```text
 src/server.js              Express and WebSocket backend
+src/tts.js                 Optional local Piper TTS adapter and audio cache
 public/index.html          Application markup
 public/js/app.js           Browser-side behavior and WebSocket client
 public/css/style.css       Application styling

@@ -6,6 +6,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { WebSocketServer } from "ws";
 import * as XLSX from "xlsx";
+import { createTts } from "./tts.js";
 
 const PORT = Number(process.env.PORT || 8080);
 const ROUND_MS_DEFAULT = 60_000;
@@ -31,7 +32,20 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, maxPayload: MAX_WS_PAYLOAD });
 const publicDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
+const tts = createTts();
 app.use(express.static(publicDir));
+
+app.get('/api/tts/audio/:file', (req, res) => {
+  const audioFile = tts.audioPath(req.params.file);
+  if (!audioFile) {
+    res.status(404).end();
+    return;
+  }
+  res.type('audio/wav');
+  res.sendFile(audioFile, error => {
+    if (error && !res.headersSent) res.status(error.statusCode || 404).end();
+  });
+});
 
 function getLocalIPv4() {
   for (const list of Object.values(os.networkInterfaces())) {
@@ -520,6 +534,21 @@ function completeTournamentBout(winner) {
   bout.winner = winner === 'RED' ? bout.redPlayerId : winner === 'BLUE' ? bout.bluePlayerId : null;
   bout.winnerName = winner === 'RED' ? bout.redPlayerName : winner === 'BLUE' ? bout.bluePlayerName : null;
   tournament.activeBoutNo = null;
+}
+
+async function announceTournamentBout(bout) {
+  let audio = null;
+  try {
+    audio = await tts.synthesize(bout.announcement);
+  } catch (error) {
+    console.error('Local TTS failed:', error.message);
+  }
+  emit({
+    type: 'announcement',
+    boutNo: bout.boutNo,
+    text: bout.announcement,
+    ...(audio ? { audioUrl: `/api/tts/audio/${audio.fileName}` } : {})
+  });
 }
 
 app.post('/api/tournament/import', requireHostRequest, express.raw({ type: '*/*', limit: MAX_IMPORT_BYTES }), (req, res) => {
@@ -1219,7 +1248,8 @@ wss.on('connection', ws => {
           sendError(ws, 'BOUT_NOT_FOUND', 'Scheduled bout not found');
           return;
         }
-        emit({ type: 'announcement', boutNo: bout.boutNo, text: bout.announcement });
+        void announceTournamentBout(bout);
+        return;
       }
       if (msg.action === 'testStart') {
         setRunning(false);

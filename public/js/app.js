@@ -5,6 +5,7 @@ let lastState = null;
 let historyCache = [];
 let currentRoundRecord = null;
 let audioCtx;
+let announcementAudio = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -32,7 +33,7 @@ function connectSocket() {
     if (msg.type === 'matchEnd') showWinnerSlide(msg.winner, msg.match);
     if (msg.type === 'testPress') markTest(msg.corner, msg.player, msg.points);
     if (msg.type === 'testReset') resetTestUi();
-    if (msg.type === 'announcement') announceText(msg.text);
+    if (msg.type === 'announcement') announceText(msg.text, msg.audioUrl);
   };
 }
 connectSocket();
@@ -56,8 +57,8 @@ function showScreen(id) {
 
 function renderState(match) {
   if (!match) return;
-  $('redName').textContent = match.red.playerName || match.red.name || 'HONG';
-  $('blueName').textContent = match.blue.playerName || match.blue.name || 'CHUNG';
+  $('redName').textContent = 'HONG';
+  $('blueName').textContent = 'CHUNG';
   $('redMeta').textContent = playerMetaText(match.red);
   $('blueMeta').textContent = playerMetaText(match.blue);
   $('redScore').textContent = match.red.score;
@@ -309,13 +310,42 @@ function loadScheduledBout(boutNo) {
   closeSchedule();
 }
 
-function announceText(text) {
+function browserAnnounce(text) {
+  if (!('speechSynthesis' in window)) return;
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+}
+
+function announceText(text, audioUrl = '') {
   if (!text) return;
   toast(text);
-  if ('speechSynthesis' in window) {
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+  if (announcementAudio) {
+    announcementAudio.pause();
+    announcementAudio.currentTime = 0;
+    announcementAudio = null;
   }
+  if (audioUrl && typeof Audio === 'function') {
+    const audio = new Audio(audioUrl);
+    let fallbackUsed = false;
+    const fallback = () => {
+      if (fallbackUsed) return;
+      fallbackUsed = true;
+      browserAnnounce(text);
+    };
+    audio.addEventListener('error', fallback, { once: true });
+    audio.addEventListener('ended', () => {
+      if (announcementAudio === audio) announcementAudio = null;
+    }, { once: true });
+    announcementAudio = audio;
+    try {
+      const playPromise = audio.play();
+      if (playPromise && typeof playPromise.catch === 'function') playPromise.catch(fallback);
+    } catch {
+      fallback();
+    }
+    return;
+  }
+  browserAnnounce(text);
 }
 function resetCurrentMatch() {
   if (confirm('Reset the current match?')) send({ type: 'host', action: 'resetMatch' });
