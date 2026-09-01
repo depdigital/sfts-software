@@ -1,6 +1,11 @@
-let ws;
 let role = 'unknown';
 let hostToken = '';
+let hostAccessToken = '';
+let requestedRole = null;
+let requestedCorner = 0;
+let ws = null;
+let reconnectTimer = null;
+let reconnectDelay = 500;
 let lastState = null;
 let lastTournament = null;
 let historyCache = [];
@@ -12,6 +17,12 @@ const $ = (id) => document.getElementById(id);
 
 function connectSocket() {
   ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
+  ws.onopen = () => {
+    reconnectDelay = 500;
+    if (requestedRole) {
+      send({ type: 'role', role: requestedRole, corner: requestedCorner, accessToken: hostAccessToken });
+    }
+  };
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
     if (msg.type === 'roleAccepted') {
@@ -26,7 +37,14 @@ function connectSocket() {
       renderTournament(msg.tournament);
       if (!$('scheduleModal').classList.contains('hidden')) renderSchedule(msg.tournament);
     }
-    if (msg.type === 'error') toast(msg.message || 'REQUEST FAILED');
+    if (msg.type === 'error') {
+      if (msg.code === 'HOST_UNAUTHORIZED') {
+        requestedRole = null;
+        role = 'unknown';
+        showScreen('home');
+      }
+      toast(msg.message || 'REQUEST FAILED');
+    }
     if (msg.type === 'award') {
       toast(`MAJORITY ${msg.player} +${msg.points} (${msg.count}/4)`);
     }
@@ -41,6 +59,15 @@ function connectSocket() {
     if (msg.type === 'testReset') resetTestUi();
     if (msg.type === 'announcement') announceText(msg.text, msg.audioUrl);
   };
+  ws.onclose = () => {
+    if (reconnectTimer) return;
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      reconnectDelay = Math.min(reconnectDelay * 2, 5000);
+      connectSocket();
+    }, reconnectDelay);
+  };
+  ws.onerror = () => {};
 }
 connectSocket();
 
@@ -111,7 +138,10 @@ function parseTime(value) {
 
 function openHost() {
   role = 'host';
-  send({ type: 'role', role: 'host', accessToken: $('hostAccessToken')?.value.trim() || '' });
+  requestedRole = 'host';
+  requestedCorner = 0;
+  hostAccessToken = $('hostAccessToken')?.value.trim() || '';
+  send({ type: 'role', role: 'host', accessToken: hostAccessToken });
   showScreen('host');
 }
 

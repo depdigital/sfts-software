@@ -56,7 +56,8 @@ async function startServer(port, dataDir) {
       SFTS_DATA_DIR: dataDir,
       SFTS_BREAK_MS: '50',
       SFTS_ALLOW_UNPAIRED_REMOTES: 'true',
-      SFTS_HOST_TOKEN: 'test-host-token'
+      SFTS_HOST_TOKEN: 'test-host-token',
+      SFTS_KIOSK_MODE: 'true'
     },
     stdio: ['ignore', 'pipe', 'pipe']
   });
@@ -166,7 +167,7 @@ test('server restores match history and tournament progress after restart', asyn
   try {
     serverProcess = await startServer(port, dataDir);
     host = await connect(url);
-    host.send(JSON.stringify({ type: 'role', role: 'host', accessToken: 'test-host-token' }));
+    host.send(JSON.stringify({ type: 'role', role: 'host' }));
     const role = await waitForMessage(host, message => message.type === 'roleAccepted');
     await waitForMessage(host, message => message.type === 'state');
 
@@ -202,7 +203,7 @@ test('server restores match history and tournament progress after restart', asyn
 
     serverProcess = await startServer(port, dataDir);
     const restoredHost = await connect(url);
-    restoredHost.send(JSON.stringify({ type: 'role', role: 'host', accessToken: 'test-host-token' }));
+    restoredHost.send(JSON.stringify({ type: 'role', role: 'host' }));
     await waitForMessage(restoredHost, message => message.type === 'roleAccepted');
     const restored = await waitForMessage(restoredHost, message => message.type === 'state');
     assert.equal(restored.matchHistory.length, 1);

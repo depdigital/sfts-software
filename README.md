@@ -54,6 +54,19 @@ npm start
 
 Keep the token private. Only use the server on the closed local event network; do not expose its port to the internet.
 
+### Kiosk mode
+
+For a Raspberry Pi kiosk, enable kiosk mode and open the dashboard at `http://127.0.0.1:8080`. The local kiosk browser is authorized automatically, so the operator does not type a token. Other computers still need the host token.
+
+Windows test:
+
+```powershell
+$env:SFTS_KIOSK_MODE = "true"
+npm start
+```
+
+Use kiosk mode only when the browser is running on the same machine as the server. On the Pi, put `SFTS_KIOSK_MODE=true` in the service configuration. The dashboard reconnects automatically if the server restarts and requests a fresh host session.
+
 ## ESP32 remotes
 
 Configure every remote with:
@@ -126,6 +139,8 @@ npm start
 ```
 
 Stop the server before deleting state files to start a new event.
+
+When the server is restarted, the dashboard reconnects automatically. The match remains paused until the host presses **PLAY**. ESP32 remotes must reconnect and send a new handshake/session before scoring; old pending votes are not restored.
 
 ## Local announcements with Piper
 

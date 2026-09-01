@@ -28,6 +28,7 @@ const REMOTE_ACK_CACHE_SIZE = 100;
 const WS_MESSAGE_LIMIT = 120;
 const WS_MESSAGE_WINDOW_MS = 1000;
 const VOTE_SETTLE_MS = 750;
+const KIOSK_MODE = process.env.SFTS_KIOSK_MODE === 'true';
 const INDIAN_STATE_CODES = new Set([
   'AN', 'AP', 'AR', 'AS', 'BR', 'CH', 'CG', 'DD', 'DL', 'DN', 'GA', 'GJ',
   'HR', 'HP', 'JK', 'JH', 'KA', 'KL', 'LA', 'LD', 'MP', 'MH', 'MN', 'ML',
@@ -949,9 +950,13 @@ function tokenMatches(actual, expected) {
   return actualBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
 }
 
-function assignRole(ws, role, corner, accessToken) {
+function isLoopbackAddress(address) {
+  return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
+}
+
+function assignRole(ws, role, corner, accessToken, kioskAuthorized = false) {
   if (role === 'host') {
-    if (!tokenMatches(accessToken, hostAccessToken)) {
+    if (!kioskAuthorized && !tokenMatches(accessToken, hostAccessToken)) {
       sendError(ws, 'HOST_UNAUTHORIZED', 'A valid host access token is required');
       return false;
     }
@@ -1451,7 +1456,8 @@ wss.on('connection', ws => {
         sendError(ws, 'ROLE_ALREADY_ASSIGNED', 'This connection already has a role');
         return;
       }
-      assignRole(ws, msg.role, Number(msg.corner), msg.accessToken);
+      const kioskAuthorized = KIOSK_MODE && msg.role === 'host' && isLoopbackAddress(ws._socket?.remoteAddress);
+      assignRole(ws, msg.role, Number(msg.corner), msg.accessToken, kioskAuthorized);
       return;
     }
 
@@ -1680,4 +1686,5 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`Local: http://localhost:${PORT}`);
   console.log(`Wi-Fi:  http://${getLocalIPv4()}:${PORT}`);
   console.log(`Host access token: ${hostAccessToken}`);
+  if (KIOSK_MODE) console.log('Kiosk mode: localhost host access is enabled');
 });
