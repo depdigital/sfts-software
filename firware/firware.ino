@@ -4,7 +4,8 @@
  * Wiring:
  *   - Connect one side of every momentary button to the GPIO below.
  *   - Connect the other side of every button to GND.
- *   - The sketch enables the ESP32's internal pull-up resistors.
+ *   - Keep the fitted external 10K pull-up from each GPIO to 3.3V.
+ *   - Internal pull-ups are deliberately disabled in this sketch.
  *
  * The button GPIOs below are broken out on the Feather ESP32 V2 and support
  * GPIO interrupts on the ESP32 Arduino core. The map deliberately avoids:
@@ -73,13 +74,15 @@ ButtonDefinition buttons[] = {
 };
 
 constexpr size_t BUTTON_COUNT = sizeof(buttons) / sizeof(buttons[0]);
+static_assert(BUTTON_COUNT == 8, "The demo remote must have exactly eight buttons");
 
 // ------------------------------- Runtime state ----------------------------
 
 WebSocketsClient webSocket;
 portMUX_TYPE buttonMux = portMUX_INITIALIZER_UNLOCKED;
 volatile uint32_t pendingButtonMask = 0;
-uint32_t lastButtonAt[BUTTON_COUNT] = {};
+uint32_t lastButtonEventAt[BUTTON_COUNT] = {};
+bool buttonDebouncePrimed[BUTTON_COUNT] = {};
 uint32_t nextSequence = 0;
 uint32_t lastStatusAt = 0;
 uint32_t lastWiFiAttemptAt = 0;
@@ -246,13 +249,11 @@ String makeSessionId() {
 
 void setup() {
   Serial.begin(115200);
-  delay(250);
-
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, LOW);
 
   for (size_t i = 0; i < BUTTON_COUNT; ++i) {
-    pinMode(buttons[i].pin, INPUT_PULLUP);
+    pinMode(buttons[i].pin, INPUT);
     attachInterruptArg(buttons[i].pin, buttonInterrupt, &buttons[i], FALLING);
   }
 
@@ -268,7 +269,7 @@ void setup() {
   webSocket.enableHeartbeat(15000, 3000, 2);
 
   Serial.println("SFTS ESP32 Feather V2 demo started");
-  Serial.println("Buttons use INPUT_PULLUP and FALLING-edge interrupts");
+  Serial.println("Buttons use external 10K pull-ups, INPUT, and FALLING-edge interrupts");
 }
 
 void loop() {
@@ -281,8 +282,9 @@ void loop() {
   const uint32_t pending = takePendingButtons();
   for (size_t i = 0; i < BUTTON_COUNT; ++i) {
     if (!(pending & (1UL << buttons[i].index))) continue;
-    if (now - lastButtonAt[i] < DEBOUNCE_MS) continue;
-    lastButtonAt[i] = now;
+    if (buttonDebouncePrimed[i] && now - lastButtonEventAt[i] < DEBOUNCE_MS) continue;
+    buttonDebouncePrimed[i] = true;
+    lastButtonEventAt[i] = now;
     sendButtonEvent(buttons[i]);
   }
 }
