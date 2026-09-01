@@ -1,9 +1,11 @@
 import express from "express";
+import crypto from "node:crypto";
 import http from "http";
 import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
 import { WebSocketServer } from "ws";
+import * as XLSX from "xlsx";
 
 const PORT = Number(process.env.PORT || 8080);
 const ROUND_MS_DEFAULT = 60_000;
@@ -13,6 +15,9 @@ const TIMER_TICK_MS = 250;
 const HEARTBEAT_MS = 10_000;
 const MAX_WS_PAYLOAD = 64 * 1024;
 const MAX_BUFFERED_BYTES = 1024 * 1024;
+const MAX_IMPORT_BYTES = 4 * 1024 * 1024;
+const MAX_TOURNAMENT_PLAYERS = 500;
+const MAX_SCHEDULE_BOUTS = 5000;
 const REMOTE_PROTOCOL_VERSION = 1;
 const REMOTE_IDS = new Set(['C1', 'C2', 'C3', 'C4']);
 const REMOTE_ACK_CACHE_SIZE = 100;
@@ -80,8 +85,265 @@ function makeMatch(
   };
 }
 
+const GENDER_ALIASES = new Map([
+  ['M', 'MALE'], ['MALE', 'MALE'], ['MAN', 'MALE'], ['MEN', 'MALE'],
+  ['F', 'FEMALE'], ['FEMALE', 'FEMALE'], ['WOMAN', 'FEMALE'], ['WOMEN', 'FEMALE']
+]);
+
+function makeTournament() {
+  return {
+    format: 'ROUND_ROBIN',
+    seed: null,
+    generatedAt: null,
+    players: [],
+    groups: [],
+    schedule: [],
+    byes: [],
+    activeBoutNo: null
+  };
+}
+
+function normalizeGender(value) {
+  const normalized = String(value || '').trim().toUpperCase();
+  return GENDER_ALIASES.get(normalized) || '';
+}
+
+function normalizeColumn(value) {
+  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function hashSeed(seed) {
+  let value = 2166136261;
+  for (const char of String(seed)) {
+    value ^= char.charCodeAt(0);
+    value = Math.imul(value, 16777619);
+  }
+  return value >>> 0;
+}
+
+function seededRandom(seed) {
+  let value = hashSeed(seed);
+  return () => {
+    value = (Math.imul(value, 1664525) + 1013904223) >>> 0;
+    return value / 4294967296;
+  };
+}
+
+function shuffled(items, random) {
+  const result = [...items];
+  for (let index = result.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(random() * (index + 1));
+    [result[index], result[swapIndex]] = [result[swapIndex], result[index]];
+  }
+  return result;
+}
+
+function scheduleAnnouncement(bout) {
+  return `Bout ${bout.boutNo}: ${bout.redPlayerName} vs ${bout.bluePlayerName}, ${bout.gender}, ${bout.weightCategory}`;
+}
+
+function generateTournament(players, seed = crypto.randomBytes(8).toString('hex')) {
+  const random = seededRandom(seed);
+  const grouped = new Map();
+  for (const player of players) {
+    const key = `${player.gender}|${player.weightCategory.toLowerCase()}`;
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(player);
+  }
+
+  const groups = [...grouped.entries()]
+    .sort(([, left], [, right]) => {
+      const genderOrder = left[0].gender.localeCompare(right[0].gender);
+      return genderOrder || left[0].weightCategory.localeCompare(right[0].weightCategory, undefined, { numeric: true });
+    });
+  const expectedBouts = groups.reduce((total, [, groupPlayers]) => (
+    total + (groupPlayers.length * Math.max(0, groupPlayers.length - 1)) / 2
+  ), 0);
+  if (expectedBouts > MAX_SCHEDULE_BOUTS) {
+    throw new TournamentImportError(`The generated round-robin schedule would contain ${expectedBouts} bouts; maximum is ${MAX_SCHEDULE_BOUTS}`);
+  }
+  const schedule = [];
+  const byes = [];
+  const tournamentGroups = [];
+  let boutNo = 1;
+
+  groups.forEach(([, groupPlayers], groupIndex) => {
+    const ordered = shuffled(groupPlayers, random);
+    const circle = [...ordered];
+    if (circle.length % 2 === 1) circle.push(null);
+    const rounds = Math.max(1, circle.length - 1);
+    const group = {
+      id: `G${String(groupIndex + 1).padStart(3, '0')}`,
+      gender: groupPlayers[0].gender,
+      weightCategory: groupPlayers[0].weightCategory,
+      playerIds: groupPlayers.map(player => player.id),
+      byePlayerIds: [],
+      matchCount: 0
+    };
+
+    for (let round = 1; round <= rounds; round += 1) {
+      const pairCount = circle.length / 2;
+      for (let pair = 0; pair < pairCount; pair += 1) {
+        const first = circle[pair];
+        const second = circle[circle.length - 1 - pair];
+        if (!first || !second) {
+          const bye = first || second;
+          if (bye) {
+            group.byePlayerIds.push(bye.id);
+            byes.push({
+              groupId: group.id,
+              gender: group.gender,
+              weightCategory: group.weightCategory,
+              round,
+              playerId: bye.id,
+              playerName: bye.name,
+              announcement: `${bye.name} receives a bye in round ${round}, ${group.gender}, ${group.weightCategory}`
+            });
+          }
+          continue;
+        }
+        const red = random() < 0.5 ? first : second;
+        const blue = red === first ? second : first;
+        const bout = {
+          boutNo,
+          groupId: group.id,
+          gender: group.gender,
+          weightCategory: group.weightCategory,
+          round,
+          redPlayerId: red.id,
+          redPlayerName: red.name,
+          bluePlayerId: blue.id,
+          bluePlayerName: blue.name,
+          status: 'SCHEDULED',
+          winner: null,
+          winnerName: null,
+          announcement: ''
+        };
+        bout.announcement = scheduleAnnouncement(bout);
+        schedule.push(bout);
+        group.matchCount += 1;
+        boutNo += 1;
+      }
+      const last = circle.pop();
+      circle.splice(1, 0, last);
+    }
+    tournamentGroups.push(group);
+  });
+
+  return {
+    format: 'ROUND_ROBIN',
+    seed,
+    generatedAt: new Date().toISOString(),
+    players: deep(players),
+    groups: tournamentGroups,
+    schedule,
+    byes,
+    activeBoutNo: null
+  };
+}
+
+class TournamentImportError extends Error {
+  constructor(message, errors = []) {
+    super(message);
+    this.name = 'TournamentImportError';
+    this.errors = errors;
+  }
+}
+
+const TOURNAMENT_COLUMN_ALIASES = {
+  id: new Set(['id', 'playerid', 'competitorid', 'registrationid']),
+  name: new Set(['name', 'playername', 'competitor', 'competitorname']),
+  gender: new Set(['gender', 'sex']),
+  weightCategory: new Set(['weight', 'weightcategory', 'weightclass', 'category']),
+  stateCode: new Set(['state', 'statecode']),
+  district: new Set(['district', 'city']),
+  club: new Set(['club', 'clubname', 'team', 'teamname'])
+};
+
+function importTournamentPlayers(buffer) {
+  let workbook;
+  try {
+    workbook = XLSX.read(buffer, {
+      type: 'buffer',
+      cellFormula: false,
+      cellNF: false,
+      cellStyles: false,
+      bookVBA: false,
+      dense: true,
+      sheetRows: MAX_TOURNAMENT_PLAYERS + 2
+    });
+  } catch {
+    throw new TournamentImportError('The uploaded file is not a readable Excel or CSV file');
+  }
+
+  const firstSheet = workbook.SheetNames[0];
+  if (!firstSheet) throw new TournamentImportError('The workbook does not contain a worksheet');
+  const rows = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet], {
+    header: 1,
+    defval: '',
+    raw: false,
+    blankrows: false
+  });
+  if (!rows.length) throw new TournamentImportError('The worksheet is empty');
+
+  const headers = rows[0].map(normalizeColumn);
+  const columns = {};
+  for (const [field, aliases] of Object.entries(TOURNAMENT_COLUMN_ALIASES)) {
+    const index = headers.findIndex(header => aliases.has(header));
+    if (index >= 0) columns[field] = index;
+  }
+  const missing = ['name', 'gender', 'weightCategory'].filter(field => columns[field] === undefined);
+  if (missing.length) {
+    throw new TournamentImportError(`Missing required column(s): ${missing.join(', ')}`);
+  }
+
+  const players = [];
+  const errors = [];
+  const ids = new Set();
+  const dataRows = rows.slice(1);
+  if (dataRows.length > MAX_TOURNAMENT_PLAYERS) {
+    errors.push(`The file contains more than ${MAX_TOURNAMENT_PLAYERS} player rows`);
+  }
+
+  dataRows.slice(0, MAX_TOURNAMENT_PLAYERS).forEach((row, index) => {
+    const rowNumber = index + 2;
+    const value = field => String(row[columns[field]] ?? '').trim();
+    if (row.every(cell => String(cell ?? '').trim() === '')) return;
+
+    const name = value('name').slice(0, 64);
+    const gender = normalizeGender(value('gender'));
+    const weightCategory = value('weightCategory').slice(0, 32);
+    const rawId = value('id');
+    const id = (rawId || `P${String(players.length + 1).padStart(3, '0')}`).slice(0, 40);
+    const stateCode = value('stateCode').toUpperCase();
+
+    if (!name) errors.push(`Row ${rowNumber}: player name is required`);
+    if (!gender) errors.push(`Row ${rowNumber}: gender must be MALE/M or FEMALE/F`);
+    if (!weightCategory) errors.push(`Row ${rowNumber}: weight category is required`);
+    if (ids.has(id.toLowerCase())) errors.push(`Row ${rowNumber}: duplicate player ID ${id}`);
+    if (stateCode && !INDIAN_STATE_CODES.has(stateCode)) errors.push(`Row ${rowNumber}: invalid state code ${stateCode}`);
+    if (!name || !gender || !weightCategory || ids.has(id.toLowerCase()) || (stateCode && !INDIAN_STATE_CODES.has(stateCode))) return;
+
+    ids.add(id.toLowerCase());
+    players.push({
+      id,
+      name,
+      gender,
+      weightCategory,
+      stateCode,
+      district: value('district').slice(0, 48),
+      club: value('club').slice(0, 64)
+    });
+  });
+
+  if (errors.length) throw new TournamentImportError('The player sheet could not be imported', errors.slice(0, 30));
+  if (!players.length) throw new TournamentImportError('The worksheet does not contain any player rows');
+  return players;
+}
+
 let match = makeMatch();
 let matchHistory = [];
+let tournament = makeTournament();
 let hostSocket = null;
 const refereeSockets = new Map();
 const remoteSockets = new Map();
@@ -111,7 +373,7 @@ function send(ws, message) {
   return sendText(ws, JSON.stringify(message));
 }
 function fullState() {
-  return { type: "state", match: deep(match), matchHistory: deep(matchHistory) };
+  return { type: "state", match: deep(match), matchHistory: deep(matchHistory), tournament: deep(tournament) };
 }
 function remoteState(ws) {
   return {
@@ -149,6 +411,165 @@ function emit(message) {
 function sendError(ws, code, message) {
   send(ws, { type: 'error', code, message });
 }
+
+function hostRequestAuthorized(req) {
+  return Boolean(
+    hostSocket &&
+    hostSocket.readyState === 1 &&
+    hostSocket.hostToken &&
+    req.get('x-sfts-host-token') === hostSocket.hostToken
+  );
+}
+
+function requireHostRequest(req, res, next) {
+  if (!hostRequestAuthorized(req)) {
+    res.status(401).json({ ok: false, message: 'An active host session is required' });
+    return;
+  }
+  next();
+}
+
+function tournamentScheduleRows() {
+  const bouts = tournament.schedule.map(bout => ({
+    Bout: bout.boutNo,
+    Group: bout.groupId,
+    Gender: bout.gender,
+    'Weight Category': bout.weightCategory,
+    Round: bout.round,
+    'Red Player': bout.redPlayerName,
+    'Blue Player': bout.bluePlayerName,
+    Status: bout.status,
+    Winner: bout.winnerName || bout.winner || '',
+    Announcement: bout.announcement
+  }));
+  const byes = (tournament.byes || []).map(bye => ({
+    Bout: '',
+    Group: bye.groupId,
+    Gender: bye.gender,
+    'Weight Category': bye.weightCategory,
+    Round: bye.round,
+    'Red Player': bye.playerName,
+    'Blue Player': 'BYE',
+    Status: 'BYE',
+    Winner: bye.playerId,
+    Announcement: bye.announcement
+  }));
+  return [...bouts, ...byes];
+}
+
+function scheduleWorkbook() {
+  const workbook = XLSX.utils.book_new();
+  const sheet = XLSX.utils.json_to_sheet(tournamentScheduleRows());
+  XLSX.utils.book_append_sheet(workbook, sheet, 'Schedule');
+  return workbook;
+}
+
+function tournamentMatchIsBusy() {
+  return match.test.active || match.running || match.phase === 'BREAK' || (
+    match.phase === 'ROUND' && (
+      match.roundHistory.length > 0 ||
+      match.red.score > 0 ||
+      match.blue.score > 0 ||
+      match.red.gamjeom > 0 ||
+      match.blue.gamjeom > 0 ||
+      Object.keys(match.votes).length > 0
+    )
+  );
+}
+
+function findTournamentBout(boutNo) {
+  const number = Number(boutNo);
+  if (!Number.isSafeInteger(number) || number < 1) return null;
+  return tournament.schedule.find(bout => bout.boutNo === number) || null;
+}
+
+function loadTournamentBout(bout) {
+  if (tournamentMatchIsBusy()) {
+    return { ok: false, code: 'MATCH_BUSY', message: 'Finish or reset the current match before loading a scheduled bout' };
+  }
+  if (tournament.activeBoutNo && tournament.activeBoutNo !== bout.boutNo) {
+    return { ok: false, code: 'MATCH_BUSY', message: 'Reset the currently loaded bout before loading another bout' };
+  }
+  if (bout.status !== 'SCHEDULED' && bout.status !== 'IN_PROGRESS') {
+    return { ok: false, code: 'BOUT_UNAVAILABLE', message: 'This bout is already completed' };
+  }
+  const red = tournament.players.find(player => player.id === bout.redPlayerId);
+  const blue = tournament.players.find(player => player.id === bout.bluePlayerId);
+  if (!red || !blue) {
+    return { ok: false, code: 'BOUT_INVALID', message: 'The scheduled players could not be found' };
+  }
+  match = makeMatch(
+    match.matchNo,
+    red.name,
+    blue.name,
+    match.configuredRoundMs,
+    { ...red, playerName: red.name },
+    { ...blue, playerName: blue.name }
+  );
+  timerLastAt = null;
+  bout.status = 'IN_PROGRESS';
+  tournament.activeBoutNo = bout.boutNo;
+  return { ok: true };
+}
+
+function completeTournamentBout(winner) {
+  if (!tournament.activeBoutNo) return;
+  const bout = findTournamentBout(tournament.activeBoutNo);
+  if (!bout) return;
+  bout.status = 'COMPLETED';
+  bout.winner = winner === 'RED' ? bout.redPlayerId : winner === 'BLUE' ? bout.bluePlayerId : null;
+  bout.winnerName = winner === 'RED' ? bout.redPlayerName : winner === 'BLUE' ? bout.bluePlayerName : null;
+  tournament.activeBoutNo = null;
+}
+
+app.post('/api/tournament/import', requireHostRequest, express.raw({ type: '*/*', limit: MAX_IMPORT_BYTES }), (req, res) => {
+  if (tournamentMatchIsBusy()) {
+    res.status(409).json({ ok: false, message: 'Finish or reset the current match before importing a new player sheet' });
+    return;
+  }
+  const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+  try {
+    const players = importTournamentPlayers(buffer);
+    tournament = generateTournament(players);
+    state();
+    res.json({ ok: true, tournament: deep(tournament) });
+  } catch (error) {
+    const details = error instanceof TournamentImportError ? error.errors : [];
+    res.status(400).json({ ok: false, message: error.message || 'Player sheet import failed', errors: details });
+  }
+});
+
+app.get('/api/tournament/template.xlsx', requireHostRequest, (req, res) => {
+  const workbook = XLSX.utils.book_new();
+  const sheet = XLSX.utils.json_to_sheet([{
+    'Player ID': 'P001',
+    Name: 'Example Player',
+    Gender: 'MALE',
+    'Weight Category': '-58 kg',
+    'State Code': 'DL',
+    District: 'New Delhi',
+    Club: 'Example Club'
+  }]);
+  XLSX.utils.book_append_sheet(workbook, sheet, 'Players');
+  const output = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+  res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.attachment('sfts-player-template.xlsx');
+  res.send(output);
+});
+
+app.get('/api/tournament/schedule.xlsx', requireHostRequest, (req, res) => {
+  const output = XLSX.write(scheduleWorkbook(), { type: 'buffer', bookType: 'xlsx' });
+  res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.attachment('sfts-tournament-schedule.xlsx');
+  res.send(output);
+});
+
+app.get('/api/tournament/schedule.csv', requireHostRequest, (req, res) => {
+  const output = XLSX.write(scheduleWorkbook(), { type: 'string', bookType: 'csv' });
+  res.type('text/csv');
+  res.attachment('sfts-tournament-schedule.csv');
+  res.send(output);
+});
 
 function validPlayer(player) {
   return player === 'RED' || player === 'BLUE';
@@ -253,6 +674,7 @@ function releaseRole(ws) {
   ws.deviceId = null;
   ws.sessionId = null;
   ws.remoteSession = null;
+  ws.hostToken = null;
 }
 
 function assignRole(ws, role, corner) {
@@ -265,7 +687,8 @@ function assignRole(ws, role, corner) {
     hostSocket = ws;
     ws.role = 'host';
     ws.corner = 0;
-    send(ws, { type: 'roleAccepted', role: 'host' });
+    ws.hostToken = crypto.randomBytes(24).toString('hex');
+    send(ws, { type: 'roleAccepted', role: 'host', hostToken: ws.hostToken });
     send(ws, fullState());
     return true;
   }
@@ -391,6 +814,7 @@ function finishMatch(winner, reason) {
   match.phase = 'MATCH_END';
   match.matchWinner = winner;
   match.matchReason = reason;
+  completeTournamentBout(winner);
   matchHistory.unshift({
     matchNo: match.matchNo,
     redName: playerDisplayName(match.red),
@@ -424,6 +848,11 @@ function startNextRound() {
 }
 
 function resetCurrentMatch() {
+  if (tournament.activeBoutNo) {
+    const bout = findTournamentBout(tournament.activeBoutNo);
+    if (bout && bout.status === 'IN_PROGRESS') bout.status = 'SCHEDULED';
+    tournament.activeBoutNo = null;
+  }
   match = makeMatch(
     match.matchNo,
     match.red.name,
@@ -667,6 +1096,7 @@ wss.on('connection', ws => {
   ws.deviceId = null;
   ws.sessionId = null;
   ws.remoteSession = null;
+  ws.hostToken = null;
   ws.isAlive = true;
   ws.on('pong', () => { ws.isAlive = true; });
   syncTimer();
@@ -770,6 +1200,26 @@ wss.on('connection', ws => {
           return;
         }
         newMatch();
+      }
+      if (msg.action === 'loadBout') {
+        const bout = findTournamentBout(msg.boutNo);
+        if (!bout) {
+          sendError(ws, 'BOUT_NOT_FOUND', 'Scheduled bout not found');
+          return;
+        }
+        const result = loadTournamentBout(bout);
+        if (!result.ok) {
+          sendError(ws, result.code, result.message);
+          return;
+        }
+      }
+      if (msg.action === 'announceBout') {
+        const bout = findTournamentBout(msg.boutNo);
+        if (!bout) {
+          sendError(ws, 'BOUT_NOT_FOUND', 'Scheduled bout not found');
+          return;
+        }
+        emit({ type: 'announcement', boutNo: bout.boutNo, text: bout.announcement });
       }
       if (msg.action === 'testStart') {
         setRunning(false);

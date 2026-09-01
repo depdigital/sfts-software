@@ -17,6 +17,8 @@ This repository contains the scoring dashboard, backend remote protocol, and sim
 - Round summaries with score, gam-jeom, and point-type statistics.
 - Match winner screen and match numbering.
 - Host-only remote test mode for checking all C1–C4 remotes.
+- Tournament player-sheet import with same-gender, same-weight round-robin scheduling.
+- Tournament schedule viewing, bout loading, announcer messages, Excel/CSV download, and print layout.
 - ESP32 remote protocol with fixed C1–C4 identities, token authentication, acknowledgements, and sequence-based duplicate protection.
 - Node-based remote simulator for backend testing before hardware is available.
 - In-memory history of the last 50 completed matches.
@@ -38,6 +40,7 @@ The current backend includes:
 - Role-scoped WebSocket delivery: ESP32 remotes receive compact state only; full match history is sent only to host/referee browsers.
 - Remote event acknowledgements and replay protection.
 - Remote test mode clears pending votes and pauses the timer so a hardware check cannot carry stale votes into scoring.
+- Tournament file actions require the active host session and are limited to 500 player rows and 5,000 generated bouts per import.
 - Graceful shutdown handling.
 - Automated HTTP and WebSocket integration tests.
 
@@ -96,6 +99,22 @@ Select **MAIN SCOREBOARD**, then use the host controls to configure the match.
 Test mode pauses the match timer, clears pending votes, and records button presses without changing scores. Select **EXIT TEST** before starting a round.
 
 For a quick pre-hardware check, use the simulator commands below. For a real hardware check, also confirm the ESP32 reconnects after a Wi-Fi interruption and that a press is not counted twice when its acknowledgement is retried.
+
+## Tournament player sheet and schedule
+
+Open **PLAYER SETTINGS** from the host scoreboard. The upload accepts `.xlsx`, `.xls`, and `.csv` files. The first worksheet must contain these required columns:
+
+```text
+Name | Gender | Weight Category
+```
+
+The optional columns are `Player ID`, `State Code`, `District`, and `Club`. Gender values `MALE`/`M` and `FEMALE`/`F` are accepted. Player IDs are generated when omitted, but supplied IDs must be unique. State codes are validated against the Indian state-code list already used by player settings.
+
+Selecting **IMPORT & GENERATE SCHEDULE** validates the entire sheet before replacing the current tournament list. Players are grouped by exact gender and case-insensitive weight category. Each group receives a seeded random order and a complete round-robin fixture list; every pairing is scheduled once. An odd-sized group receives a bye allocation. The seed is shown with the schedule so the draw can be identified and reproduced from the same player list and seed during a future audit.
+
+The host can view the schedule, load an available bout into the normal scoring board, announce a bout to connected browser displays using generated announcement text, download the complete schedule as Excel or CSV, and print the schedule. Bye allocations are included in the schedule view and downloads. Importing is blocked while an active match contains scores, penalties, votes, a running timer, or remote test mode. Tournament data is held in memory for the current server run.
+
+The downloadable template is available from **PLAYER SETTINGS → DOWNLOAD TEMPLATE**. A generated schedule contains bout number, group, gender, weight category, round, red player, blue player, status, winner, and announcement text.
 
 ### 6. Stop the application
 
@@ -240,6 +259,7 @@ package.json               Scripts and dependencies
 ## Limitations
 
 - Match state and match history are memory-only and are lost when the server stops.
+- Tournament player data and generated schedules are also memory-only and are lost when the server stops.
 - The current role protocol is intended for a trusted local network; it is not an internet-facing authenticated service.
 - The application is a manual referee-voting system and does not detect strikes through electronic protectors.
 - Physical ESP32 remote firmware has not yet been added; the simulator is the only included remote client.

@@ -1,5 +1,6 @@
 let ws;
 let role = 'unknown';
+let hostToken = '';
 let lastState = null;
 let historyCache = [];
 let currentRoundRecord = null;
@@ -11,11 +12,17 @@ function connectSocket() {
   ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
+    if (msg.type === 'roleAccepted') {
+      role = msg.role || role;
+      if (msg.role === 'host') hostToken = msg.hostToken || '';
+    }
     if (msg.type === 'state') {
       lastState = msg.match;
       historyCache = msg.matchHistory || [];
       renderState(msg.match);
+      renderTournament(msg.tournament);
     }
+    if (msg.type === 'error') toast(msg.message || 'REQUEST FAILED');
     if (msg.type === 'award') {
       toast(`MAJORITY ${msg.player} +${msg.points} (${msg.count}/4)`);
     }
@@ -25,6 +32,7 @@ function connectSocket() {
     if (msg.type === 'matchEnd') showWinnerSlide(msg.winner, msg.match);
     if (msg.type === 'testPress') markTest(msg.corner, msg.player, msg.points);
     if (msg.type === 'testReset') resetTestUi();
+    if (msg.type === 'announcement') announceText(msg.text);
   };
 }
 connectSocket();
@@ -48,8 +56,8 @@ function showScreen(id) {
 
 function renderState(match) {
   if (!match) return;
-  $('redName').textContent = 'HONG';
-  $('blueName').textContent = 'CHUNG';
+  $('redName').textContent = match.red.playerName || match.red.name || 'HONG';
+  $('blueName').textContent = match.blue.playerName || match.blue.name || 'CHUNG';
   $('redMeta').textContent = playerMetaText(match.red);
   $('blueMeta').textContent = playerMetaText(match.blue);
   $('redScore').textContent = match.red.score;
@@ -134,6 +142,7 @@ function openPlayerSettings() {
   $('playerBlueWeight').value = lastState.blue.weightCategory || '';
   $('playerBlueDistrict').value = lastState.blue.district || '';
   $('playerBlueStateCode').value = lastState.blue.stateCode || '';
+  renderTournament(lastState.tournament);
   $('playerSettingsModal').classList.remove('hidden');
 }
 function closePlayerSettings() { $('playerSettingsModal').classList.add('hidden'); }
@@ -157,6 +166,156 @@ function savePlayerSettings() {
     }
   });
   closePlayerSettings();
+}
+
+function renderTournament(tournament) {
+  const status = $('tournamentImportStatus');
+  if (!status) return;
+  if (!tournament || !tournament.players || !tournament.players.length) {
+    status.textContent = 'NO TOURNAMENT SHEET IMPORTED';
+    return;
+  }
+  const groupCount = (tournament.groups || []).length;
+  status.textContent = `${tournament.players.length} PLAYERS · ${groupCount} GROUPS · ${(tournament.schedule || []).length} BOUTS · SEED ${tournament.seed}`;
+}
+
+async function downloadFile(path, fallbackName) {
+  if (!hostToken) {
+    toast('HOST SESSION REQUIRED');
+    return;
+  }
+  try {
+    const response = await fetch(path, { headers: { 'X-SFTS-Host-Token': hostToken } });
+    if (!response.ok) throw new Error(`DOWNLOAD FAILED (${response.status})`);
+    const blob = await response.blob();
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = fallbackName;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  } catch (error) {
+    toast(error.message || 'DOWNLOAD FAILED');
+  }
+}
+
+function downloadPlayerTemplate() {
+  downloadFile('/api/tournament/template.xlsx', 'sfts-player-template.xlsx');
+}
+
+async function uploadPlayerSheet() {
+  const input = $('playerSheetFile');
+  const file = input && input.files[0];
+  if (!file) {
+    toast('SELECT AN EXCEL FILE');
+    return;
+  }
+  if (!hostToken) {
+    toast('HOST SESSION REQUIRED');
+    return;
+  }
+  const status = $('tournamentImportStatus');
+  status.textContent = 'IMPORTING PLAYER SHEET...';
+  try {
+    const response = await fetch('/api/tournament/import', {
+      method: 'POST',
+      headers: {
+        'Content-Type': file.type || 'application/octet-stream',
+        'X-SFTS-Host-Token': hostToken
+      },
+      body: file
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) {
+      const details = result.errors && result.errors.length ? `: ${result.errors.join('; ')}` : '';
+      throw new Error(`${result.message || 'IMPORT FAILED'}${details}`);
+    }
+    if (lastState) lastState.tournament = result.tournament;
+    renderTournament(result.tournament);
+    toast('SCHEDULE GENERATED');
+  } catch (error) {
+    status.textContent = error.message || 'IMPORT FAILED';
+    toast('PLAYER SHEET IMPORT FAILED');
+  }
+}
+
+function openSchedule() {
+  closePlayerSettings();
+  renderSchedule(lastState && lastState.tournament);
+  $('scheduleModal').classList.remove('hidden');
+}
+
+function closeSchedule() { $('scheduleModal').classList.add('hidden'); }
+
+function renderSchedule(tournament) {
+  const summary = $('scheduleSummary');
+  const table = $('scheduleTable');
+  if (!summary || !table) return;
+  if (!tournament || !tournament.players || !tournament.players.length) {
+    summary.textContent = 'NO TOURNAMENT SHEET IMPORTED';
+    table.innerHTML = '<p>Import a player sheet from PLAYER SETTINGS first.</p>';
+    return;
+  }
+  const groups = tournament.groups || [];
+  const byeCount = groups.reduce((total, group) => total + (group.byePlayerIds || []).length, 0);
+  summary.textContent = `${tournament.players.length} players · ${groups.length} groups · ${(tournament.schedule || []).length} bouts · ${byeCount} bye allocation(s) · seed ${tournament.seed}`;
+  const entries = [
+    ...(tournament.schedule || []),
+    ...(tournament.byes || []).map(bye => ({
+      boutNo: '—', groupId: bye.groupId, gender: bye.gender, weightCategory: bye.weightCategory,
+      round: bye.round, redPlayerName: bye.playerName, bluePlayerName: 'BYE', status: 'BYE', isBye: true
+    }))
+  ];
+  if (!entries.length) {
+    table.innerHTML = '<p>No bouts were generated. Check that each group has at least two players.</p>';
+    return;
+  }
+  table.innerHTML = `<table>
+    <thead><tr><th>BOUT</th><th>GROUP</th><th>GENDER</th><th>WEIGHT</th><th>ROUND</th><th>RED</th><th>BLUE</th><th>WINNER</th><th>STATUS</th><th>ACTIONS</th></tr></thead>
+    <tbody>${entries.map(bout => {
+      const canLoad = !bout.isBye && (bout.status === 'SCHEDULED' || bout.status === 'IN_PROGRESS');
+      return `<tr class="${bout.status === 'COMPLETED' ? 'completed' : bout.status === 'IN_PROGRESS' ? 'inProgress' : ''}">
+        <td>${bout.boutNo}</td><td>${escapeHtml(bout.groupId)}</td><td>${escapeHtml(bout.gender)}</td>
+        <td>${escapeHtml(bout.weightCategory)}</td><td>${bout.round}</td>
+        <td>${escapeHtml(bout.redPlayerName)}</td><td>${escapeHtml(bout.bluePlayerName)}</td>
+        <td>${escapeHtml(bout.winnerName || '—')}</td>
+        <td>${escapeHtml(bout.status)}</td>
+        <td class="scheduleRowActions">
+          ${canLoad ? `<button onclick="loadScheduledBout(${bout.boutNo})">LOAD</button>` : ''}
+          ${!bout.isBye ? `<button onclick="announceScheduledBout(${bout.boutNo})">ANNOUNCE</button>` : ''}
+        </td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table>`;
+}
+
+function downloadTournamentSchedule(format) {
+  const extension = format === 'csv' ? 'csv' : 'xlsx';
+  downloadFile(`/api/tournament/schedule.${extension}`, `sfts-tournament-schedule.${extension}`);
+}
+
+function printSchedule() {
+  if ($('scheduleModal').classList.contains('hidden')) openSchedule();
+  setTimeout(() => window.print(), 100);
+}
+
+function announceScheduledBout(boutNo) {
+  send({ type: 'host', action: 'announceBout', boutNo });
+}
+
+function loadScheduledBout(boutNo) {
+  send({ type: 'host', action: 'loadBout', boutNo });
+  closeSchedule();
+}
+
+function announceText(text) {
+  if (!text) return;
+  toast(text);
+  if ('speechSynthesis' in window) {
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+  }
 }
 function resetCurrentMatch() {
   if (confirm('Reset the current match?')) send({ type: 'host', action: 'resetMatch' });
@@ -308,6 +467,14 @@ window.closeSettings = closeSettings;
 window.openPlayerSettings = openPlayerSettings;
 window.closePlayerSettings = closePlayerSettings;
 window.savePlayerSettings = savePlayerSettings;
+window.uploadPlayerSheet = uploadPlayerSheet;
+window.downloadPlayerTemplate = downloadPlayerTemplate;
+window.openSchedule = openSchedule;
+window.closeSchedule = closeSchedule;
+window.downloadTournamentSchedule = downloadTournamentSchedule;
+window.printSchedule = printSchedule;
+window.announceScheduledBout = announceScheduledBout;
+window.loadScheduledBout = loadScheduledBout;
 window.resetCurrentMatch = resetCurrentMatch;
 window.openTimerEditor = openTimerEditor;
 window.closeTimerEditor = closeTimerEditor;

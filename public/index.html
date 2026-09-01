@@ -276,6 +276,17 @@
             </label>
           </div>
         </div>
+        <section class="tournamentImportPanel">
+          <h3>TOURNAMENT PLAYERS &amp; SCHEDULE</h3>
+          <p>Upload a sheet with Name, Gender, and Weight Category columns.</p>
+          <input id="playerSheetFile" class="playerSettingsInput" type="file" accept=".xlsx,.xls,.csv" />
+          <div class="tournamentImportActions">
+            <button onclick="uploadPlayerSheet()">IMPORT &amp; GENERATE SCHEDULE</button>
+            <button onclick="downloadPlayerTemplate()">DOWNLOAD TEMPLATE</button>
+            <button onclick="openSchedule()">VIEW SCHEDULE</button>
+          </div>
+          <div id="tournamentImportStatus" class="tournamentImportStatus">NO TOURNAMENT SHEET IMPORTED</div>
+        </section>
         <button onclick="savePlayerSettings()">SAVE PLAYER SETTINGS</button>
         <button onclick="closePlayerSettings()">CLOSE</button>
       </div>
@@ -295,6 +306,20 @@
         <h2>MATCH HISTORY</h2>
         <div id="historyList" class="historyList"></div>
         <button onclick="closeHistory()">CLOSE</button>
+      </div>
+    </section>
+
+    <section id="scheduleModal" class="overlay hidden">
+      <div class="modalCard scheduleModal">
+        <h2>TOURNAMENT SCHEDULE</h2>
+        <div id="scheduleSummary" class="scheduleSummary"></div>
+        <div class="scheduleActions">
+          <button onclick="downloadTournamentSchedule('xlsx')">DOWNLOAD EXCEL</button>
+          <button onclick="downloadTournamentSchedule('csv')">DOWNLOAD CSV</button>
+          <button onclick="printSchedule()">PRINT SCHEDULE</button>
+        </div>
+        <div id="scheduleTable" class="scheduleTable"></div>
+        <button onclick="closeSchedule()">CLOSE</button>
       </div>
     </section>
 

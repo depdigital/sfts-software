@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import WebSocket from 'ws';
+import * as XLSX from 'xlsx';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const port = 19000 + (process.pid % 1000);
@@ -93,9 +94,45 @@ after(async () => {
 
 test('WebSocket roles, majority scoring, timer expiry, and phase guards work', async () => {
   const host = await connect();
-  assert.equal((await assign(host, 'host')).type, 'roleAccepted');
+  const hostRole = await assign(host, 'host');
+  assert.equal(hostRole.type, 'roleAccepted');
+  assert.match(hostRole.hostToken, /^[a-f0-9]{48}$/);
   const initial = await waitForMessage(host, message => message.type === 'state');
   assert.equal(initial.match.phase, 'ROUND');
+
+  const workbook = XLSX.utils.book_new();
+  const players = XLSX.utils.json_to_sheet([
+    { 'Player ID': 'M1', Name: 'Male One', Gender: 'MALE', 'Weight Category': '-58 kg' },
+    { 'Player ID': 'M2', Name: 'Male Two', Gender: 'M', 'Weight Category': '-58 kg' },
+    { 'Player ID': 'F1', Name: 'Female One', Gender: 'FEMALE', 'Weight Category': '-49 kg' },
+    { 'Player ID': 'F2', Name: 'Female Two', Gender: 'F', 'Weight Category': '-49 kg' }
+  ]);
+  XLSX.utils.book_append_sheet(workbook, players, 'Players');
+  const workbookBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+  const unauthorized = await fetch(`http://127.0.0.1:${port}/api/tournament/template.xlsx`);
+  assert.equal(unauthorized.status, 401);
+  const imported = await fetch(`http://127.0.0.1:${port}/api/tournament/import`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'X-SFTS-Host-Token': hostRole.hostToken },
+    body: workbookBuffer
+  });
+  assert.equal(imported.status, 200);
+  const importedBody = await imported.json();
+  assert.equal(importedBody.tournament.players.length, 4);
+  assert.equal(importedBody.tournament.groups.length, 2);
+  assert.equal(importedBody.tournament.schedule.length, 2);
+  const firstBout = importedBody.tournament.schedule[0];
+  const firstBoutPlayers = new Map(importedBody.tournament.players.map(player => [player.id, player]));
+  assert.equal(firstBoutPlayers.get(firstBout.redPlayerId).gender, firstBoutPlayers.get(firstBout.bluePlayerId).gender);
+  assert.equal(firstBoutPlayers.get(firstBout.redPlayerId).weightCategory, firstBoutPlayers.get(firstBout.bluePlayerId).weightCategory);
+  const downloaded = await fetch(`http://127.0.0.1:${port}/api/tournament/schedule.xlsx`, {
+    headers: { 'X-SFTS-Host-Token': hostRole.hostToken }
+  });
+  assert.equal(downloaded.status, 200);
+  assert.match(downloaded.headers.get('content-type'), /spreadsheetml/);
+  host.send(JSON.stringify({ type: 'host', action: 'announceBout', boutNo: 1 }));
+  const announcement = await waitForMessage(host, message => message.type === 'announcement' && message.boutNo === 1);
+  assert.match(announcement.text, /Bout 1:/);
 
   host.send(JSON.stringify({
     type: 'host',
@@ -215,6 +252,15 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   await waitForMessage(host, message => message.type === 'award' && message.player === 'RED' && message.points === 2);
   const remoteAwarded = await waitForMessage(remote, message => message.type === 'remote_state' && message.red.score === 2);
   assert.equal(remoteAwarded.red.score, 2);
+
+  host.send(JSON.stringify({ type: 'host', action: 'resetMatch' }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.red.score === 0);
+  host.send(JSON.stringify({ type: 'host', action: 'loadBout', boutNo: 1 }));
+  const loadedBout = await waitForMessage(host, message => message.type === 'state' && message.tournament.activeBoutNo === 1);
+  assert.equal(loadedBout.match.red.playerName, firstBout.redPlayerName);
+  assert.equal(loadedBout.match.blue.playerName, firstBout.bluePlayerName);
+  host.send(JSON.stringify({ type: 'host', action: 'resetMatch' }));
+  await waitForMessage(host, message => message.type === 'state' && message.tournament.activeBoutNo === null);
 });
 
 test('malformed WebSocket input does not terminate a connection', async () => {
@@ -240,6 +286,8 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.equal(page.status, 200);
   const html = await page.text();
   assert.match(html, /STRIKE FORCE TAEKWONDO SCORING SYSTEM/);
+  assert.match(html, /id="playerSheetFile"/);
+  assert.match(html, /id="scheduleModal"/);
   assert.doesNotMatch(html, /onclick="openTestRemotes\(\)"/);
   assert.match(html, /onclick="openTestMode\(\)">TEST REMOTES<\/button>/);
 

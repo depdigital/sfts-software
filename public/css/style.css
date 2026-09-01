@@ -312,6 +312,68 @@ button { border: 0; cursor: pointer; }
 }
 .redPlayerPanel { border-top: 4px solid #ef2c23; }
 .bluePlayerPanel { border-top: 4px solid #12a9ed; }
+.tournamentImportPanel {
+  margin-top: 16px;
+  padding: 16px;
+  border-radius: 12px;
+  background: #0b1017;
+  text-align: left;
+}
+.tournamentImportPanel h3 { margin: 0 0 6px; }
+.tournamentImportPanel p {
+  margin: 0 0 12px;
+  color: #aebbd0;
+  font-size: 13px;
+}
+.tournamentImportActions,
+.scheduleActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.tournamentImportActions button,
+.scheduleActions button {
+  flex: 1 1 180px;
+  margin: 0;
+}
+.tournamentImportStatus,
+.scheduleSummary {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #171f2d;
+  color: #d8e2f1;
+  font-size: 13px;
+  font-weight: 700;
+}
+.scheduleModal { width: min(1240px, 96vw); text-align: left; }
+.scheduleModal h2 { text-align: center; }
+.scheduleActions { margin: 14px 0; }
+.scheduleTable {
+  max-height: 58vh;
+  overflow: auto;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 10px;
+}
+.scheduleTable table { width: 100%; border-collapse: collapse; min-width: 900px; }
+.scheduleTable th,
+.scheduleTable td {
+  padding: 10px;
+  border-bottom: 1px solid rgba(255,255,255,.09);
+  text-align: left;
+  white-space: nowrap;
+}
+.scheduleTable th { background: #202a39; position: sticky; top: 0; z-index: 1; }
+.scheduleTable td { color: #dbe5f3; }
+.scheduleTable tr.completed td { color: #91d7a3; }
+.scheduleTable tr.inProgress td { color: #ffe08a; }
+.scheduleTable .scheduleRowActions button {
+  display: inline-block;
+  width: auto;
+  margin: 0 4px 0 0;
+  padding: 7px 10px;
+  font-size: 11px;
+}
 .playerSettingsPanel label {
   display: block;
   margin-top: 12px;
@@ -665,4 +727,34 @@ button { border: 0; cursor: pointer; }
   .historyItem { grid-template-columns: 1fr; }
   .joystickGrid { grid-template-columns: 1fr; }
   .playerSettingsGrid { grid-template-columns: 1fr; }
+  .tournamentImportActions,
+  .scheduleActions { display: grid; grid-template-columns: 1fr; }
+}
+
+@media print {
+  body * { visibility: hidden !important; }
+  #scheduleModal,
+  #scheduleModal * { visibility: visible !important; }
+  #scheduleModal {
+    position: static;
+    display: block;
+    background: #fff;
+    color: #000;
+  }
+  #scheduleModal .modalCard {
+    width: 100%;
+    max-height: none;
+    overflow: visible;
+    padding: 0;
+    border: 0;
+    background: #fff;
+    color: #000;
+  }
+  #scheduleModal .scheduleActions,
+  #scheduleModal .scheduleRowActions,
+  #scheduleModal > .modalCard > button { display: none !important; }
+  #scheduleModal .scheduleTable { max-height: none; overflow: visible; border: 0; }
+  #scheduleModal .scheduleTable table { min-width: 0; font-size: 10px; }
+  #scheduleModal .scheduleTable th,
+  #scheduleModal .scheduleTable td { color: #000; background: #fff; padding: 5px; }
 }
