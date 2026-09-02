@@ -39,7 +39,9 @@ const BREAK_MS_DEFAULT = Number.isFinite(Number(process.env.SFTS_BREAK_MS))
 const MAX_TIMER_MS = 60 * 60 * 1000;
 const TIMER_TICK_MS = 50;
 const TIMER_DISPLAY_UPDATE_MS = 100;
-const KYESHI_LIMIT_MS = 60_000;
+const KYESHI_LIMIT_MS = Number.isFinite(Number(process.env.SFTS_KYESHI_LIMIT_MS))
+  ? Math.max(1_000, Number(process.env.SFTS_KYESHI_LIMIT_MS))
+  : 60_000;
 const HEARTBEAT_MS = 10_000;
 const MAX_WS_PAYLOAD = 64 * 1024;
 const MAX_BUFFERED_BYTES = 1024 * 1024;
@@ -1070,7 +1072,7 @@ function syncKyeShi(now = performance.now()) {
 
   kyeShiLastAt = now;
   match.kyeShi.elapsedMs += elapsed;
-  if (match.kyeShi.elapsedMs < match.kyeShi.limitMs || match.kyeShi.limitReached) return true;
+  if (match.kyeShi.elapsedMs < match.kyeShi.limitMs) return true;
 
   match.kyeShi.elapsedMs = match.kyeShi.limitMs;
   match.kyeShi.running = false;
@@ -1155,6 +1157,9 @@ function resumeKyeShi() {
   if (!match.kyeShi.active || match.kyeShi.running) {
     return { ok: false, code: 'KYESHI_NOT_PAUSED', message: 'Kye-shi is not paused' };
   }
+  if (match.kyeShi.limitReached) {
+    return { ok: false, code: 'KYESHI_LIMIT_REACHED', message: 'End Kye-shi or declare the match winner' };
+  }
   match.kyeShi.running = true;
   kyeShiLastAt = performance.now();
   return { ok: true };
@@ -1169,6 +1174,34 @@ function endKyeShi() {
   match.kyeShi = makeKyeShi();
   kyeShiLastAt = null;
   if (resumeMatch && match.phase === 'ROUND' && match.timerMs > 0) setRunning(true);
+  return { ok: true };
+}
+
+function declareKyeShiWinner(winner) {
+  syncTimer();
+  if (!validPlayer(winner)) {
+    return { ok: false, code: 'INVALID_WINNER', message: 'Winner must be RED or BLUE' };
+  }
+  if (match.phase !== 'ROUND' || !match.kyeShi.active || !match.kyeShi.limitReached) {
+    return { ok: false, code: 'KYESHI_DECISION_UNAVAILABLE', message: 'A winner can be declared only after the Kye-shi limit' };
+  }
+
+  const record = {
+    round: match.round,
+    winner,
+    reason: 'KYE-SHI DECISION',
+    red: deep(match.red),
+    blue: deep(match.blue)
+  };
+  match.running = false;
+  timerLastAt = null;
+  match.timerMs = 0;
+  match.roundHistory.push(record);
+  match.votes = {};
+  clearAllRemoteCombinations();
+  match.kyeShi = makeKyeShi();
+  kyeShiLastAt = null;
+  finishMatch(winner, 'KYE-SHI DECISION');
   return { ok: true };
 }
 
@@ -1358,6 +1391,7 @@ function endRound(winner = null, reason = 'TIME 0:00') {
 
 function finishMatch(winner, reason) {
   match.running = false;
+  match.roundStarted = false;
   timerLastAt = null;
   match.phase = 'MATCH_END';
   match.matchWinner = winner;
@@ -1897,6 +1931,12 @@ wss.on('connection', ws => {
       }
       if (msg.action === 'endKyeShi') {
         const result = endKyeShi();
+        if (!result.ok) sendError(ws, result.code, result.message);
+        state(true);
+        return;
+      }
+      if (msg.action === 'declareKyeShiWinner') {
+        const result = declareKyeShiWinner(String(msg.player || '').toUpperCase());
         if (!result.ok) sendError(ws, result.code, result.message);
         state(true);
         return;

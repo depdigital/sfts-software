@@ -148,6 +148,19 @@ button { border: 0; cursor: pointer; }
   font-weight: 900;
   text-shadow: 0 8px 25px rgba(0,0,0,.2);
 }
+.declareWinnerButton {
+  width: min(82%, 360px);
+  margin: 0 auto 18px;
+  padding: 14px 10px;
+  border: 2px solid rgba(255,255,255,.85);
+  border-radius: 8px;
+  background: rgba(0,0,0,.42);
+  color: #fff;
+  font-size: clamp(13px, min(1.25vw, 2.2vh), 26px);
+  font-weight: 900;
+  box-shadow: 0 4px 12px rgba(0,0,0,.22);
+}
+.declareWinnerButton:hover { background: rgba(0,0,0,.62); }
 
 .centerBoard {
   display: flex;

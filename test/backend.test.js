@@ -67,6 +67,7 @@ before(async () => {
       SFTS_ALLOW_UNPAIRED_REMOTES: 'true',
       SFTS_DATA_DIR: testDataDir,
       SFTS_BREAK_MS: '50',
+      SFTS_KYESHI_LIMIT_MS: '1000',
       SFTS_HOST_TOKEN: 'test-host-token'
     },
     stdio: ['ignore', 'pipe', 'pipe']
@@ -215,6 +216,26 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   ));
   assert.equal(kyeShiEnded.match.running, true);
   assert.ok(kyeShiEnded.match.timerMs <= matchTimeDuringKyeShi);
+
+  host.send(JSON.stringify({ type: 'host', action: 'startKyeShi' }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.kyeShi?.active && message.match.kyeShi.running);
+  const kyeShiLimit = await waitForMessage(host, message => (
+    message.type === 'state' && message.match.kyeShi?.active && message.match.kyeShi.limitReached
+  ));
+  assert.equal(kyeShiLimit.match.running, false);
+  host.send(JSON.stringify({ type: 'host', action: 'declareKyeShiWinner', player: 'BLUE' }));
+  const kyeShiDecision = await waitForMessage(host, message => (
+    message.type === 'matchEnd' && message.winner === 'BLUE' && message.reason === 'KYE-SHI DECISION'
+  ));
+  assert.equal(kyeShiDecision.match.roundHistory.at(-1).reason, 'KYE-SHI DECISION');
+  const decisionState = await waitForMessage(host, message => (
+    message.type === 'state' && message.match.phase === 'MATCH_END' && message.match.matchReason === 'KYE-SHI DECISION'
+  ));
+  assert.equal(decisionState.match.matchWinner, 'BLUE');
+  host.send(JSON.stringify({ type: 'host', action: 'resetMatch' }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.red.score === 0 && !message.match.kyeShi?.active);
+  host.send(JSON.stringify({ type: 'host', action: 'playPause' }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'ROUND' && message.match.running);
 
   const referees = [];
   for (let corner = 1; corner <= 4; corner += 1) {
@@ -530,8 +551,11 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(jsText, /renderRemoteStatuses/);
   assert.match(html, /id="hostAccessToken"/);
   assert.match(html, /id="kyeShiPanel"/);
+  assert.match(html, /id="redDeclareWinnerButton"/);
+  assert.match(html, /id="blueDeclareWinnerButton"/);
   assert.match(jsText, /remainingMs <= 10000/);
   assert.match(jsText, /startKyeShi/);
+  assert.match(jsText, /declareKyeShiWinner/);
 
   const info = await fetch(`http://127.0.0.1:${port}/api/info`);
   assert.equal(info.status, 404);
