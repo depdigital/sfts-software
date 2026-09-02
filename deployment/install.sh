@@ -159,6 +159,7 @@ success "Systemd service installed and restarted"
 configure_desktop_kiosk() {
   local service_user_home
   local display_manager_target
+  local display_manager_service
   local lightdm_config
   local lightdm_tmp
   local labwc_dir
@@ -184,11 +185,12 @@ configure_desktop_kiosk() {
   rm -f "${lightdm_tmp}"
 
   systemctl set-default graphical.target
-  if systemctl list-unit-files --no-legend display-manager.service 2>/dev/null | grep -q 'display-manager.service'; then
-    systemctl enable display-manager.service
-  else
-    systemctl enable lightdm.service
+  display_manager_service=""
+  if [[ -n "${display_manager_target}" ]]; then
+    display_manager_service="$(basename "${display_manager_target}")"
   fi
+  [[ -n "${display_manager_service}" ]] || display_manager_service="lightdm.service"
+  systemctl enable "${display_manager_service}"
 
   chmod 0755 "${KIOSK_SCRIPT}"
   labwc_dir="${service_user_home}/.config/labwc"
@@ -233,7 +235,7 @@ fi
 if command -v curl >/dev/null 2>&1; then
   dashboard_ready=false
   for attempt in {1..15}; do
-    if curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8080/ >/dev/null; then
+    if curl --fail --silent --max-time 5 http://127.0.0.1:8080/ >/dev/null; then
       dashboard_ready=true
       break
     fi
