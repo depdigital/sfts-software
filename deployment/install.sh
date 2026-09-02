@@ -161,17 +161,22 @@ configure_desktop_kiosk() {
   local service_user_home
   local display_manager_target
   local display_manager_service
+  local labwc_bin
   local lightdm_config
   local lightdm_tmp
-  local labwc_dir
-  local labwc_autostart
-  local xdg_autostart_dir
-  local xdg_desktop_entry
-  local kiosk_line
+  local kiosk_config_root
+  local kiosk_labwc_dir
+  local kiosk_autostart
+  local kiosk_session_dir
+  local kiosk_session
+  local kiosk_session_tmp
 
   service_user_home="$(getent passwd "${SERVICE_USER}" | cut -d: -f6)"
   [[ -n "${service_user_home}" && -d "${service_user_home}" ]] || die "could not determine ${SERVICE_USER}'s home directory"
-  [[ -d /usr/share/wayland-sessions || -d /usr/share/xsessions ]] || die "a graphical desktop is not installed; install Raspberry Pi OS Desktop"
+  [[ -d /usr/share/wayland-sessions ]] || die "a Wayland desktop is not installed; install Raspberry Pi OS Desktop with labwc"
+
+  labwc_bin="$(command -v labwc-pi || command -v labwc || true)"
+  [[ -n "${labwc_bin}" ]] || die "labwc was not found; install Raspberry Pi OS Desktop with labwc"
 
   display_manager_target="$(readlink -f /etc/systemd/system/display-manager.service 2>/dev/null || true)"
   if [[ "${display_manager_target}" != *lightdm* && ! -e /etc/init.d/lightdm ]]; then
@@ -180,7 +185,7 @@ configure_desktop_kiosk() {
 
   lightdm_config="/etc/lightdm/lightdm.conf.d/50-sfts-scoreboard-kiosk.conf"
   lightdm_tmp="$(mktemp)"
-  printf '%s\n' '[Seat:*]' "autologin-user=${SERVICE_USER}" 'autologin-user-timeout=0' > "${lightdm_tmp}"
+  printf '%s\n' '[Seat:*]' "autologin-user=${SERVICE_USER}" 'autologin-user-timeout=0' 'autologin-session=sfts-scoreboard-kiosk' > "${lightdm_tmp}"
   install -d -m 0755 -o root -g root /etc/lightdm/lightdm.conf.d
   install -m 0644 -o root -g root "${lightdm_tmp}" "${lightdm_config}"
   rm -f "${lightdm_tmp}"
@@ -193,38 +198,36 @@ configure_desktop_kiosk() {
   [[ -n "${display_manager_service}" ]] || display_manager_service="lightdm.service"
   systemctl enable "${display_manager_service}"
 
-  chmod 0755 "${KIOSK_SCRIPT}"
-  labwc_dir="${service_user_home}/.config/labwc"
-  labwc_autostart="${labwc_dir}/autostart"
-  kiosk_line="\"${KIOSK_SCRIPT}\" &"
-  install -d -m 0700 -o "${SERVICE_USER}" -g "${SERVICE_GROUP}" "${labwc_dir}"
-  touch "${labwc_autostart}"
-  if ! grep -Fqx -- "${kiosk_line}" "${labwc_autostart}"; then
-    {
-      printf '\n# SFTS scoreboard kiosk (managed by deployment/install.sh)\n'
-      printf '%s\n' "${kiosk_line}"
-    } >> "${labwc_autostart}"
-  fi
-  chown "${SERVICE_USER}:${SERVICE_GROUP}" "${labwc_autostart}"
-  chmod 0600 "${labwc_autostart}"
+  kiosk_config_root="/etc/sfts/sfts-scoreboard-kiosk"
+  kiosk_labwc_dir="${kiosk_config_root}/labwc"
+  kiosk_autostart="${kiosk_labwc_dir}/autostart"
+  kiosk_session_dir="/usr/share/wayland-sessions"
+  kiosk_session="${kiosk_session_dir}/sfts-scoreboard-kiosk.desktop"
+  kiosk_session_tmp="$(mktemp)"
 
-  # This covers older Raspberry Pi OS images using an X11 desktop. On labwc,
-  # the lock in start-kiosk.sh prevents a duplicate if both mechanisms run.
-  xdg_autostart_dir="${service_user_home}/.config/autostart"
-  xdg_desktop_entry="${xdg_autostart_dir}/sfts-scoreboard-kiosk.desktop"
-  install -d -m 0700 -o "${SERVICE_USER}" -g "${SERVICE_GROUP}" "${xdg_autostart_dir}"
+  # Use a separate labwc configuration root so the regular Raspberry Pi
+  # desktop wallpaper, panel, notifications, and icons are never started.
+  install -d -m 0755 -o root -g root "${kiosk_config_root}" "${kiosk_labwc_dir}"
+  printf '%s\n' \
+    '#!/usr/bin/env bash' \
+    "\"${KIOSK_SCRIPT}\" &" \
+    > "${kiosk_autostart}"
+  chown root:root "${kiosk_autostart}"
+  chmod 0644 "${kiosk_autostart}"
+
   printf '%s\n' \
     '[Desktop Entry]' \
-    'Type=Application' \
     'Name=SFTS Scoreboard Kiosk' \
-    "Exec=\"${KIOSK_SCRIPT}\"" \
-    'Terminal=false' \
-    'X-GNOME-Autostart-enabled=true' \
-    > "${xdg_desktop_entry}"
-  chown "${SERVICE_USER}:${SERVICE_GROUP}" "${xdg_desktop_entry}"
-  chmod 0600 "${xdg_desktop_entry}"
+    'Comment=Dedicated SFTS scoring kiosk session' \
+    'Type=Application' \
+    "Exec=/usr/bin/env XDG_CONFIG_HOME=${kiosk_config_root} ${labwc_bin}" \
+    'DesktopNames=labwc' \
+    > "${kiosk_session_tmp}"
+  install -m 0644 -o root -g root "${kiosk_session_tmp}" "${kiosk_session}"
+  rm -f "${kiosk_session_tmp}"
 
-  log "Configured desktop auto-login and kiosk autostart for ${SERVICE_USER}"
+  chmod 0755 "${KIOSK_SCRIPT}"
+  log "Configured dedicated labwc kiosk session for ${SERVICE_USER}"
 }
 
 configure_quiet_boot() {
@@ -296,9 +299,9 @@ if command -v curl >/dev/null 2>&1; then
 fi
 success "Dashboard is responding on http://127.0.0.1:8080"
 
-step "Configuring desktop auto-login and kiosk startup"
+step "Configuring dedicated kiosk session"
 configure_desktop_kiosk
-success "Desktop kiosk startup is configured"
+success "Dedicated kiosk session and auto-login are configured"
 
 step "Applying quiet boot configuration"
 configure_quiet_boot
