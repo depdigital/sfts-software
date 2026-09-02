@@ -10,7 +10,7 @@ SERVICE_TMP=""
 REBOOT_DELAY_SECONDS="${SFTS_REBOOT_DELAY_SECONDS:-10}"
 SKIP_REBOOT="${SFTS_SKIP_REBOOT:-false}"
 
-TOTAL_STEPS=8
+TOTAL_STEPS=9
 CURRENT_STEP=0
 
 log() {
@@ -226,6 +226,56 @@ configure_desktop_kiosk() {
   log "Configured desktop auto-login and kiosk autostart for ${SERVICE_USER}"
 }
 
+configure_quiet_boot() {
+  local boot_config
+  local cmdline_file
+  local config_backup
+  local cmdline_backup
+  local cmdline
+  local token
+
+  if [[ -f /boot/firmware/config.txt ]]; then
+    boot_config="/boot/firmware/config.txt"
+    cmdline_file="/boot/firmware/cmdline.txt"
+  elif [[ -f /boot/config.txt ]]; then
+    boot_config="/boot/config.txt"
+    cmdline_file="/boot/cmdline.txt"
+  else
+    die "Raspberry Pi boot configuration was not found under /boot/firmware or /boot"
+  fi
+  [[ -f "${cmdline_file}" ]] || die "kernel command line file is missing: ${cmdline_file}"
+  [[ -w "${boot_config}" && -w "${cmdline_file}" ]] || die "boot configuration files are not writable"
+
+  config_backup="${boot_config}.sfts-scoreboard.original"
+  cmdline_backup="${cmdline_file}.sfts-scoreboard.original"
+  if [[ ! -e "${config_backup}" ]]; then
+    cp -p "${boot_config}" "${config_backup}"
+    log "Saved original boot configuration to ${config_backup}"
+  fi
+  if [[ ! -e "${cmdline_backup}" ]]; then
+    cp -p "${cmdline_file}" "${cmdline_backup}"
+    log "Saved original kernel command line to ${cmdline_backup}"
+  fi
+
+  if grep -Eq '^[[:space:]]*#?[[:space:]]*disable_splash=' "${boot_config}"; then
+    sed -i -E 's|^[[:space:]]*#?[[:space:]]*disable_splash=.*$|disable_splash=1|' "${boot_config}"
+  else
+    printf '\n# SFTS scoreboard: hide the Raspberry Pi firmware splash\ndisable_splash=1\n' >> "${boot_config}"
+  fi
+
+  cmdline="$(tr -s '[:space:]' ' ' < "${cmdline_file}" | sed -E 's/^ //; s/ $//')"
+  cmdline="$(printf '%s' "${cmdline}" | sed -E 's/(^|[[:space:]])splash([[:space:]]|$)/ /g; s/[[:space:]]+/ /g; s/^ //; s/ $//')"
+  for token in quiet loglevel=0 logo.nologo vt.global_cursor_default=0 systemd.show_status=false; do
+    case " ${cmdline} " in
+      *" ${token} "*) ;;
+      *) cmdline="${cmdline} ${token}" ;;
+    esac
+  done
+  printf '%s\n' "${cmdline}" > "${cmdline_file}"
+
+  log "Disabled firmware/Plymouth splash and suppressed boot messages"
+}
+
 step "Verifying the application health"
 if ! systemctl is-active --quiet "${SERVICE_NAME}.service"; then
   journalctl -u "${SERVICE_NAME}.service" -n 40 --no-pager >&2 || true
@@ -248,6 +298,10 @@ success "Dashboard is responding on http://127.0.0.1:8080"
 step "Configuring desktop auto-login and kiosk startup"
 configure_desktop_kiosk
 success "Desktop kiosk startup is configured"
+
+step "Applying quiet boot configuration"
+configure_quiet_boot
+success "Boot visuals are configured for a clean kiosk startup"
 
 step "Installation complete"
 log "Service: ${SERVICE_NAME}.service (enabled and running)"

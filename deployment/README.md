@@ -50,6 +50,8 @@ Pi power on → Raspberry Pi OS desktop auto-login → local server starts → C
 
 The kiosk launcher waits until the local server responds, uses a dedicated Chromium profile with the basic password store (so no keyring prompt is required), and reopens Chromium if it is closed. It uses a lock so rerunning the installer or having both desktop autostart mechanisms enabled cannot create duplicate kiosk windows.
 
+The installer also configures a clean boot transition: it disables the Raspberry Pi firmware rainbow screen, removes the Plymouth splash, suppresses kernel/systemd boot messages, and hides the boot cursor. The original `/boot/firmware/config.txt` and `/boot/firmware/cmdline.txt` files are backed up once with the suffix `.sfts-scoreboard.original` before modification. Older Raspberry Pi OS images using `/boot` are handled too.
+
 The installer requires Raspberry Pi OS Desktop with LightDM. It intentionally stops with a clear error on Raspberry Pi OS Lite or an unsupported display manager rather than reporting a successful kiosk setup that cannot launch a graphical browser. Desktop auto-login is enabled for this dedicated event kiosk, so anyone with physical access to the Pi can reach the scoreboard without entering a desktop password.
 
 After all checks pass, the installer displays a 10-second countdown and reboots the Pi automatically. The final reboot uses non-interactive sudo, so it never pauses for another password prompt. The initial command may still ask for the normal sudo password once:
