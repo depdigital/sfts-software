@@ -355,7 +355,8 @@ configure_desktop_kiosk() {
   systemctl enable "${display_manager_service}"
 
   lightdm_show_config="$(lightdm --show-config 2>/dev/null || true)"
-  if ! grep -Eq '^[[:space:]]*[A-Z][[:space:]]+autologin-session=sfts-scoreboard-kiosk[[:space:]]*$' <<< "${lightdm_show_config}"; then
+  if ! grep -Fq 'autologin-session=sfts-scoreboard-kiosk' <<< "${lightdm_show_config}"; then
+    printf '%s\n' "${lightdm_show_config}" >&2
     die "LightDM did not select sfts-scoreboard-kiosk for autologin"
   fi
 
