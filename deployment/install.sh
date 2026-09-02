@@ -360,7 +360,7 @@ configure_desktop_kiosk() {
     'Name=SFTS Scoreboard Kiosk' \
     'Comment=Dedicated SFTS scoring kiosk session' \
     'Type=Application' \
-    "Exec=/usr/bin/env XDG_CONFIG_HOME=${kiosk_config_root} ${labwc_bin}" \
+    "Exec=/usr/bin/env XDG_CONFIG_HOME=${kiosk_config_root} XKB_DEFAULT_LAYOUT=us XKB_DEFAULT_VARIANT= ${labwc_bin}" \
     'DesktopNames=labwc' \
     > "${kiosk_session_tmp}"
   install -m 0644 -o root -g root "${kiosk_session_tmp}" "${kiosk_session}"

@@ -61,7 +61,7 @@ The SETTINGS screen includes REBOOT and SHUTDOWN controls. Each action requires 
 
 The installer configures local announcements automatically. It runs `sfts-piper.service` on `127.0.0.1:5000` with the `en_GB-alan-medium` voice, a medium speaking pace (`length-scale=1.20`) and short sentence pauses (`sentence-silence=0.15`). This British-English model is the closest official Piper option to formal Indian event English; Piper does not currently provide an official Indian-English voice. It sets `SFTS_TTS_ENGINE=piper` and `SFTS_TTS_URL=http://127.0.0.1:5000/synthesize`, and configures the kiosk session to set the default PipeWire output to 95% and unmute it. The scoreboard keeps returned announcement audio in memory with a bounded, expiring cache; it does not write new announcement WAV files to the SD card.
 
-The dedicated kiosk session also forces the English/US keyboard layout through labwc's `XKB_DEFAULT_LAYOUT=us` setting. This is scoped to the scoreboard kiosk and does not change the system locale or other desktop users.
+The dedicated kiosk session also forces the English/US keyboard layout through labwc's `XKB_DEFAULT_LAYOUT=us` setting, applied both in labwc's environment file and directly when the compositor starts. This is scoped to the scoreboard kiosk and does not change the system locale or other desktop users.
 
 To tune the voice during a maintenance install, set the optional installer variables, for example:
 
