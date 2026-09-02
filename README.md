@@ -78,7 +78,9 @@ deployment/
 ├── polkit/sfts-scoreboard-power.rules
 ├── scripts/check-network.sh
 ├── scripts/start-kiosk.sh
-└── systemd/sfts-scoreboard.service
+└── systemd/
+   ├── sfts-piper.service
+   └── sfts-scoreboard.service
 ```
 
 The Pi network should use its built-in Wi-Fi for internet/SSH and Ethernet for the dedicated remote router. The remote router should provide the `192.168.50.x` network, while the Pi's default internet route must remain on `wlan0`.
@@ -93,7 +95,7 @@ bash deployment/scripts/check-network.sh
 sudo bash deployment/install.sh
 ```
 
-The installer checks or installs Node.js, `curl`, `flock`, `swaybg`, `polkitd`, and Chromium, installs production dependencies, preserves the `data` directory and local environment file, and configures the `sfts-scoreboard.service` systemd unit. It configures Raspberry Pi OS Desktop with a dedicated labwc kiosk session that bypasses the normal wallpaper/panel/notification startup, auto-logs in, and launches Chromium in kiosk mode after boot. The kiosk startup immediately hides any remaining common desktop panels/icons and uses a solid black background while the server becomes ready. The installer suppresses boot splash/log output so the display transitions cleanly to the scoreboard. The kiosk waits for the server before opening and restarts Chromium if it closes. After verification, the installer gives a 10-second countdown and reboots automatically; use `SFTS_SKIP_REBOOT=true` for a maintenance run without rebooting. It sets `PORT=8080` and `SFTS_KIOSK_MODE=true`, so the local host browser does not require manual token entry. Backend authentication remains enabled for non-kiosk connections.
+The installer checks or installs Node.js, Python virtual-environment support, `curl`, `flock`, `swaybg`, `polkitd`, and Chromium, installs production dependencies, preserves the `data` directory and local environment file, installs the Piper voice environment/model and `sfts-piper.service`, and configures the `sfts-scoreboard.service` systemd unit. It configures Raspberry Pi OS Desktop with a dedicated labwc kiosk session that bypasses the normal wallpaper/panel/notification startup, auto-logs in, sets the default audio output to 85% and unmuted, and launches Chromium in kiosk mode after boot. The kiosk startup immediately hides any remaining common desktop panels/icons and uses a solid black background while the server becomes ready. The installer suppresses boot splash/log output so the display transitions cleanly to the scoreboard. The kiosk waits for the server before opening and restarts Chromium if it closes. After verification, the installer gives a 10-second countdown and reboots automatically; use `SFTS_SKIP_REBOOT=true` for a maintenance run without rebooting. It sets `PORT=8080` and `SFTS_KIOSK_MODE=true`, so the local host browser does not require manual token entry. Backend authentication remains enabled for non-kiosk connections.
 
 The host SETTINGS screen also provides REBOOT and SHUTDOWN controls. Each action requires confirmation, waits 15 seconds, and can be cancelled during the countdown. The installer adds a narrowly scoped polkit rule for the non-root service account, allowing these two actions without a sudo prompt; no sudo command is used by the scoreboard server.
 
@@ -193,7 +195,16 @@ When the server is restarted, the dashboard reconnects automatically. The match 
 
 ## Local announcements with Piper
 
-Piper is optional. Keep its executable and ONNX voice model on the same PC/Raspberry Pi. Example on Windows PowerShell:
+Piper is optional. For Raspberry Pi deployment, run Piper’s HTTP server locally and configure the scoreboard to request audio from `127.0.0.1`. The generated WAV response is kept in the Node.js process memory and is served to the kiosk browser; it is not written to the SD card. The Piper service itself keeps the voice model loaded between announcements.
+
+Use these settings on the Pi:
+
+```ini
+SFTS_TTS_ENGINE=piper
+SFTS_TTS_URL=http://127.0.0.1:5000/synthesize
+```
+
+For legacy CLI mode on a development computer, keep its executable and ONNX voice model on the same PC/Raspberry Pi. Example on Windows PowerShell:
 
 ```powershell
 $env:SFTS_TTS_ENGINE = "piper"

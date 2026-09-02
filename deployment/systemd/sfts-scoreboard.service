@@ -1,7 +1,7 @@
 [Unit]
 Description=SFTS Taekwondo Scoring System
-After=network-online.target
-Wants=network-online.target
+After=network-online.target sfts-piper.service
+Wants=network-online.target sfts-piper.service
 
 [Service]
 Type=simple

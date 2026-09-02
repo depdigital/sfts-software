@@ -4,13 +4,17 @@ IFS=$'\n\t'
 
 SERVICE_NAME="sfts-scoreboard"
 SERVICE_DEST="/etc/systemd/system/${SERVICE_NAME}.service"
+PIPER_SERVICE_NAME="sfts-piper"
+PIPER_SERVICE_DEST="/etc/systemd/system/${PIPER_SERVICE_NAME}.service"
 ENV_DIR="/etc/sfts"
 ENV_FILE="${ENV_DIR}/sfts-scoreboard.env"
 SERVICE_TMP=""
+PIPER_SERVICE_TMP=""
 REBOOT_DELAY_SECONDS="${SFTS_REBOOT_DELAY_SECONDS:-10}"
 SKIP_REBOOT="${SFTS_SKIP_REBOOT:-false}"
+PIPER_MODEL_NAME="${SFTS_PIPER_MODEL:-en_US-lessac-medium}"
 
-TOTAL_STEPS=10
+TOTAL_STEPS=11
 CURRENT_STEP=0
 
 log() {
@@ -36,6 +40,13 @@ cleanup() {
   if [[ -n "${SERVICE_TMP:-}" ]]; then
     rm -f "${SERVICE_TMP}"
   fi
+  if [[ -n "${PIPER_SERVICE_TMP:-}" ]]; then
+    rm -f "${PIPER_SERVICE_TMP}"
+  fi
+}
+
+escape_sed_value() {
+  printf '%s' "$1" | sed 's/[&|\\]/\\&/g'
 }
 
 trap cleanup EXIT
@@ -62,6 +73,7 @@ fi
 
 PROJECT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 SERVICE_TEMPLATE="${PROJECT_DIR}/deployment/systemd/${SERVICE_NAME}.service"
+PIPER_SERVICE_TEMPLATE="${PROJECT_DIR}/deployment/systemd/${PIPER_SERVICE_NAME}.service"
 ENV_TEMPLATE="${PROJECT_DIR}/deployment/config/sfts-scoreboard.env.example"
 KIOSK_SCRIPT="${PROJECT_DIR}/deployment/scripts/start-kiosk.sh"
 POLKIT_TEMPLATE="${PROJECT_DIR}/deployment/polkit/sfts-scoreboard-power.rules"
@@ -72,6 +84,7 @@ POLKIT_DEST="/etc/polkit-1/rules.d/49-sfts-scoreboard-power.rules"
 [[ -f "${PROJECT_DIR}/src/server.js" ]] || die "src/server.js was not found at ${PROJECT_DIR}"
 [[ -f "${PROJECT_DIR}/config/remote-config.json" ]] || die "config/remote-config.json is missing"
 [[ -f "${SERVICE_TEMPLATE}" ]] || die "systemd service template is missing"
+[[ -f "${PIPER_SERVICE_TEMPLATE}" ]] || die "Piper systemd service template is missing"
 [[ -f "${ENV_TEMPLATE}" ]] || die "environment template is missing"
 [[ -f "${KIOSK_SCRIPT}" ]] || die "kiosk launcher is missing"
 [[ -f "${POLKIT_TEMPLATE}" ]] || die "polkit power-permission template is missing"
@@ -85,6 +98,14 @@ fi
 [[ -n "${SERVICE_USER}" && "${SERVICE_USER}" != "root" ]] || die "could not determine a non-root service user; use SFTS_SERVICE_USER=sfts"
 id "${SERVICE_USER}" >/dev/null 2>&1 || die "service user does not exist: ${SERVICE_USER}"
 SERVICE_GROUP="$(id -gn "${SERVICE_USER}")"
+SERVICE_USER_HOME="$(getent passwd "${SERVICE_USER}" | cut -d: -f6)"
+[[ -n "${SERVICE_USER_HOME}" && -d "${SERVICE_USER_HOME}" ]] || die "could not determine ${SERVICE_USER}'s home directory"
+PIPER_ROOT="${SFTS_PIPER_ROOT:-${SERVICE_USER_HOME}/sfts-tts}"
+PIPER_VENV="${PIPER_ROOT}/venv"
+PIPER_PYTHON="${PIPER_VENV}/bin/python"
+PIPER_VOICES="${PIPER_ROOT}/voices"
+PIPER_MODEL="${PIPER_VOICES}/${PIPER_MODEL_NAME}.onnx"
+[[ "${PIPER_MODEL_NAME}" =~ ^[A-Za-z0-9_-]+$ ]] || die "SFTS_PIPER_MODEL contains unsupported characters"
 success "Service will run as ${SERVICE_USER}:${SERVICE_GROUP}"
 
 step "Checking required system packages"
@@ -92,8 +113,14 @@ APT_PACKAGES=()
 if [[ ! -x /usr/bin/node || ! -x /usr/bin/npm ]]; then
   APT_PACKAGES+=(nodejs npm)
 fi
+command -v python3 >/dev/null 2>&1 || APT_PACKAGES+=(python3)
+if ! python3 -m venv --help >/dev/null 2>&1; then
+  APT_PACKAGES+=(python3-venv)
+fi
+command -v pip3 >/dev/null 2>&1 || APT_PACKAGES+=(python3-pip)
 command -v curl >/dev/null 2>&1 || APT_PACKAGES+=(curl)
 command -v flock >/dev/null 2>&1 || APT_PACKAGES+=(util-linux)
+command -v wpctl >/dev/null 2>&1 || APT_PACKAGES+=(pipewire-bin)
 command -v swaybg >/dev/null 2>&1 || APT_PACKAGES+=(swaybg)
 command -v pkcheck >/dev/null 2>&1 || APT_PACKAGES+=(polkitd)
 if ! command -v chromium >/dev/null 2>&1 && ! command -v chromium-browser >/dev/null 2>&1; then
@@ -120,11 +147,90 @@ NPM_BIN="$(command -v npm || true)"
 [[ -n "${NPM_BIN}" ]] || die "npm is not installed"
 success "Node.js $(/usr/bin/node --version) and npm are ready"
 
+configure_piper() {
+  local piper_root_value
+  local piper_venv_value
+  local piper_python_value
+  local piper_voices_value
+  local piper_model_value
+  local service_user_value
+  local service_group_value
+  local piper_ready
+
+  log "Preparing Piper environment at ${PIPER_ROOT}"
+  install -d -m 0750 -o "${SERVICE_USER}" -g "${SERVICE_GROUP}" "${PIPER_ROOT}" "${PIPER_VOICES}"
+
+  if [[ ! -x "${PIPER_PYTHON}" ]]; then
+    log "Creating the Piper Python virtual environment"
+    runuser -u "${SERVICE_USER}" -- python3 -m venv "${PIPER_VENV}"
+  fi
+  [[ -x "${PIPER_PYTHON}" ]] || die "Piper Python virtual environment was not created"
+
+  if runuser -u "${SERVICE_USER}" -- "${PIPER_PYTHON}" -c 'import piper, flask' >/dev/null 2>&1; then
+    log "Piper HTTP support is already installed"
+  else
+    log "Installing Piper HTTP support"
+    runuser -u "${SERVICE_USER}" -- "${PIPER_PYTHON}" -m pip install \
+      --disable-pip-version-check "piper-tts[http]"
+  fi
+
+  if [[ ! -f "${PIPER_MODEL}" || ! -f "${PIPER_MODEL}.json" ]]; then
+    log "Downloading Piper voice model ${PIPER_MODEL_NAME}"
+    runuser -u "${SERVICE_USER}" -- "${PIPER_PYTHON}" -m piper.download_voices \
+      "${PIPER_MODEL_NAME}" --data-dir "${PIPER_VOICES}"
+  else
+    log "Piper voice model ${PIPER_MODEL_NAME} is already present"
+  fi
+  [[ -s "${PIPER_MODEL}" && -s "${PIPER_MODEL}.json" ]] || die "Piper voice model files are missing"
+
+  piper_root_value="$(escape_sed_value "${PIPER_ROOT}")"
+  piper_venv_value="$(escape_sed_value "${PIPER_VENV}")"
+  piper_python_value="$(escape_sed_value "${PIPER_PYTHON}")"
+  piper_voices_value="$(escape_sed_value "${PIPER_VOICES}")"
+  piper_model_value="$(escape_sed_value "${PIPER_MODEL}")"
+  service_user_value="$(escape_sed_value "${SERVICE_USER}")"
+  service_group_value="$(escape_sed_value "${SERVICE_GROUP}")"
+  PIPER_SERVICE_TMP="$(mktemp)"
+  sed \
+    -e "s|@SERVICE_USER@|${service_user_value}|g" \
+    -e "s|@SERVICE_GROUP@|${service_group_value}|g" \
+    -e "s|@PIPER_ROOT@|${piper_root_value}|g" \
+    -e "s|@PIPER_VENV@|${piper_venv_value}|g" \
+    -e "s|@PIPER_PYTHON@|${piper_python_value}|g" \
+    -e "s|@PIPER_VOICES@|${piper_voices_value}|g" \
+    -e "s|@PIPER_MODEL@|${piper_model_value}|g" \
+    "${PIPER_SERVICE_TEMPLATE}" > "${PIPER_SERVICE_TMP}"
+  install -m 0644 -o root -g root "${PIPER_SERVICE_TMP}" "${PIPER_SERVICE_DEST}"
+  rm -f "${PIPER_SERVICE_TMP}"
+  PIPER_SERVICE_TMP=""
+
+  systemctl daemon-reload
+  systemctl enable "${PIPER_SERVICE_NAME}.service"
+  systemctl restart "${PIPER_SERVICE_NAME}.service"
+  log "Waiting for Piper to load the voice model"
+  piper_ready=false
+  for attempt in {1..60}; do
+    if curl --fail --silent --max-time 3 http://127.0.0.1:5000/info >/dev/null; then
+      piper_ready=true
+      break
+    fi
+    sleep 1
+  done
+  if [[ "${piper_ready}" != true ]]; then
+    journalctl -u "${PIPER_SERVICE_NAME}.service" -n 40 --no-pager >&2 || true
+    die "Piper HTTP service did not respond on port 5000"
+  fi
+}
+
 step "Installing production dependencies"
 log "Using project directory: ${PROJECT_DIR}"
 log "Using service user: ${SERVICE_USER}"
 runuser -u "${SERVICE_USER}" -- env PATH="/usr/bin:/bin" "${NPM_BIN}" ci --omit=dev
 success "Production dependencies installed"
+
+step "Installing local Piper speech service"
+configure_piper
+success "Local Piper speech service is installed and responding"
 
 step "Preparing application data and environment"
 install -d -m 0750 -o "${SERVICE_USER}" -g "${SERVICE_GROUP}" "${PROJECT_DIR}/data"
@@ -136,13 +242,21 @@ if [[ ! -e "${ENV_FILE}" ]]; then
 else
   log "Preserving existing ${ENV_FILE}"
 fi
+sed -i -E '/^SFTS_TTS_(COMMAND|MODEL|CACHE_DIR)=/d' "${ENV_FILE}"
+if grep -Eq '^SFTS_TTS_ENGINE=' "${ENV_FILE}"; then
+  sed -i -E 's|^SFTS_TTS_ENGINE=.*$|SFTS_TTS_ENGINE=piper|' "${ENV_FILE}"
+else
+  printf '%s\n' 'SFTS_TTS_ENGINE=piper' >> "${ENV_FILE}"
+fi
+if grep -Eq '^SFTS_TTS_URL=' "${ENV_FILE}"; then
+  sed -i -E 's|^SFTS_TTS_URL=.*$|SFTS_TTS_URL=http://127.0.0.1:5000/synthesize|' "${ENV_FILE}"
+else
+  printf '%s\n' 'SFTS_TTS_URL=http://127.0.0.1:5000/synthesize' >> "${ENV_FILE}"
+fi
+log "Configured announcements to use the local Piper HTTP service"
 success "Application data and environment are ready"
 
 step "Installing and starting the system service"
-escape_sed_value() {
-  printf '%s' "$1" | sed 's/[&|\\]/\\&/g'
-}
-
 PROJECT_VALUE="$(escape_sed_value "${PROJECT_DIR}")"
 USER_VALUE="$(escape_sed_value "${SERVICE_USER}")"
 GROUP_VALUE="$(escape_sed_value "${SERVICE_GROUP}")"

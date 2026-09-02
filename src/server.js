@@ -78,6 +78,12 @@ const hostAccessToken = String(process.env.SFTS_HOST_TOKEN || '').trim() || cryp
 app.use(express.static(publicDir));
 
 app.get('/api/tts/audio/:file', (req, res) => {
+  const audioBuffer = tts.audioBuffer(req.params.file);
+  if (audioBuffer) {
+    res.type('audio/wav');
+    res.send(audioBuffer);
+    return;
+  }
   const audioFile = tts.audioPath(req.params.file);
   if (!audioFile) {
     res.status(404).end();

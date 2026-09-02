@@ -11,6 +11,7 @@ KIOSK_URL="http://127.0.0.1:${SERVER_PORT}/"
 PROFILE_DIR="${HOME}/.config/sfts-scoreboard-kiosk"
 LOCK_DIR="${XDG_RUNTIME_DIR:-${HOME}/.cache}/sfts-scoreboard-kiosk"
 BACKGROUND_PID=""
+AUDIO_VOLUME="0.85"
 
 log() {
   printf '[sfts-kiosk] %s\n' "$*" >&2
@@ -53,6 +54,42 @@ start_black_background() {
   fi
 }
 
+set_audio_volume() {
+  local audio_sink
+  local analog_sink
+
+  if ! command -v wpctl >/dev/null 2>&1; then
+    log "wpctl was not found; leaving the desktop audio volume unchanged"
+    return 0
+  fi
+  analog_sink="$(wpctl status 2>/dev/null | awk '
+    /Sinks:/ { in_sinks = 1; next }
+    /Sources:/ { in_sinks = 0 }
+    in_sinks && /Built-in Audio Stereo/ {
+      gsub(/[*.]/, "", $1)
+      if ($1 ~ /^[0-9]+$/) { print $1; exit }
+    }
+  ')"
+  audio_sink="@DEFAULT_AUDIO_SINK@"
+  if [[ "${analog_sink}" =~ ^[0-9]+$ ]]; then
+    wpctl set-default "${analog_sink}" >/dev/null 2>&1 || true
+    audio_sink="${analog_sink}"
+  fi
+  for attempt in {1..20}; do
+    if wpctl set-volume "${audio_sink}" "${AUDIO_VOLUME}" >/dev/null 2>&1 &&
+       wpctl set-mute "${audio_sink}" 0 >/dev/null 2>&1; then
+      if [[ "${audio_sink}" == "@DEFAULT_AUDIO_SINK@" ]]; then
+        log "Default audio output set to 85% and unmuted"
+      else
+        log "Analog audio output selected, set to 85%, and unmuted"
+      fi
+      return 0
+    fi
+    sleep 1
+  done
+  log "Could not set the default audio output to 85%; continuing kiosk startup"
+}
+
 cleanup() {
   if [[ -n "${BACKGROUND_PID}" ]]; then
     kill "${BACKGROUND_PID}" 2>/dev/null || true
@@ -64,6 +101,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 stop_desktop_chrome
 start_black_background
+set_audio_volume
 
 BROWSER=""
 for candidate in chromium chromium-browser; do

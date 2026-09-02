@@ -16,6 +16,7 @@ deployment/
 │   ├── check-network.sh
 │   └── start-kiosk.sh
 └── systemd/
+    ├── sfts-piper.service
     └── sfts-scoreboard.service
 ```
 
@@ -42,7 +43,7 @@ bash deployment/scripts/check-network.sh
 sudo bash deployment/install.sh
 ```
 
-`install.sh` is safe to run again. It installs missing system packages (Node.js/npm, `curl`, `polkitd`, and Chromium), verifies Node.js 18 or newer, installs production dependencies with `npm ci --omit=dev`, creates the runtime data directory, installs the systemd unit, and enables the service.
+`install.sh` is safe to run again. It installs missing system packages (Node.js/npm, Python virtual-environment support, `curl`, `polkitd`, and Chromium), verifies Node.js 18 or newer, installs production dependencies with `npm ci --omit=dev`, creates the runtime data directory, installs the local Piper Python environment and voice model when needed, installs both systemd units, and enables the services.
 
 On Raspberry Pi OS Desktop with LightDM and labwc, the installer sets the graphical boot target, enables auto-login for the project user, and selects a dedicated SFTS kiosk session. After a reboot, the expected flow is:
 
@@ -57,6 +58,8 @@ The installer also configures a clean boot transition: it disables the Raspberry
 The installer requires Raspberry Pi OS Desktop with LightDM and labwc. It intentionally stops with a clear error on Raspberry Pi OS Lite or an unsupported display manager rather than reporting a successful kiosk setup that cannot launch a graphical browser. Desktop auto-login is enabled for this dedicated event kiosk, so anyone with physical access to the Pi can reach the scoreboard without entering a desktop password.
 
 The SETTINGS screen includes REBOOT and SHUTDOWN controls. Each action requires confirmation and has a server-controlled 15-second countdown with a CANCEL option. During installation, the service account is granted only the required polkit reboot and power-off permissions, including their multiple-session variants, so the dashboard can invoke these actions without a sudo prompt. The permission rule is installed at `/etc/polkit-1/rules.d/49-sfts-scoreboard-power.rules`.
+
+The installer configures local announcements automatically. It runs `sfts-piper.service` on `127.0.0.1:5000`, sets `SFTS_TTS_ENGINE=piper` and `SFTS_TTS_URL=http://127.0.0.1:5000/synthesize`, and configures the kiosk session to set the default PipeWire output to 85% and unmute it. The scoreboard keeps returned announcement audio in memory with a bounded, expiring cache; it does not write new announcement WAV files to the SD card.
 
 After all checks pass, the installer displays a 10-second countdown and reboots the Pi automatically. The final reboot uses non-interactive sudo, so it never pauses for another password prompt. The initial command may still ask for the normal sudo password once:
 

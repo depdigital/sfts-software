@@ -1,0 +1,17 @@
+[Unit]
+Description=SFTS Local Piper Text-to-Speech Service
+After=network.target
+
+[Service]
+Type=simple
+User=@SERVICE_USER@
+Group=@SERVICE_GROUP@
+WorkingDirectory=@PIPER_ROOT@
+ExecStart=@PIPER_PYTHON@ -m piper.http_server --host=127.0.0.1 --port=5000 --model=@PIPER_MODEL@ --data-dir=@PIPER_VOICES@
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
