@@ -91,6 +91,7 @@ if [[ ! -x /usr/bin/node || ! -x /usr/bin/npm ]]; then
 fi
 command -v curl >/dev/null 2>&1 || APT_PACKAGES+=(curl)
 command -v flock >/dev/null 2>&1 || APT_PACKAGES+=(util-linux)
+command -v swaybg >/dev/null 2>&1 || APT_PACKAGES+=(swaybg)
 if ! command -v chromium >/dev/null 2>&1 && ! command -v chromium-browser >/dev/null 2>&1; then
   APT_PACKAGES+=(chromium)
 fi

@@ -10,6 +10,7 @@ ENV_FILE="/etc/sfts/sfts-scoreboard.env"
 KIOSK_URL="http://127.0.0.1:${SERVER_PORT}/"
 PROFILE_DIR="${HOME}/.config/sfts-scoreboard-kiosk"
 LOCK_DIR="${XDG_RUNTIME_DIR:-${HOME}/.cache}/sfts-scoreboard-kiosk"
+BACKGROUND_PID=""
 
 log() {
   printf '[sfts-kiosk] %s\n' "$*" >&2
@@ -32,6 +33,38 @@ mkdir -p "${LOCK_DIR}" "${PROFILE_DIR}"
 exec 9>"${LOCK_DIR}/browser.lock"
 flock -n 9 || exit 0
 
+stop_desktop_chrome() {
+  local current_user_id
+  local desktop_process
+
+  current_user_id="$(id -u)"
+  if command -v pkill >/dev/null 2>&1; then
+    for desktop_process in waybar wf-panel-pi lxpanel pcmanfm pcmanfm-qt; do
+      pkill -u "${current_user_id}" -x "${desktop_process}" 2>/dev/null || true
+    done
+  fi
+}
+
+start_black_background() {
+  if command -v swaybg >/dev/null 2>&1; then
+    pkill -u "$(id -u)" -x swaybg 2>/dev/null || true
+    swaybg -c '#000000' >/dev/null 2>&1 &
+    BACKGROUND_PID="$!"
+  fi
+}
+
+cleanup() {
+  if [[ -n "${BACKGROUND_PID}" ]]; then
+    kill "${BACKGROUND_PID}" 2>/dev/null || true
+  fi
+}
+
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+stop_desktop_chrome
+start_black_background
+
 BROWSER=""
 for candidate in chromium chromium-browser; do
   if command -v "${candidate}" >/dev/null 2>&1; then
@@ -51,7 +84,7 @@ if ! command -v curl >/dev/null 2>&1; then
 fi
 
 wait_for_server() {
-  until curl --fail --silent --show-error --max-time 3 "${KIOSK_URL}" >/dev/null; do
+  until curl --fail --silent --max-time 3 "${KIOSK_URL}" >/dev/null; do
     sleep 2
   done
 }

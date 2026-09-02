@@ -48,7 +48,7 @@ On Raspberry Pi OS Desktop with LightDM, the installer also sets the graphical b
 Pi power on → Raspberry Pi OS desktop auto-login → local server starts → Chromium opens in kiosk mode
 ```
 
-The kiosk launcher waits until the local server responds, uses a dedicated Chromium profile with the basic password store (so no keyring prompt is required), and reopens Chromium if it is closed. It uses a lock so rerunning the installer or having both desktop autostart mechanisms enabled cannot create duplicate kiosk windows.
+The kiosk launcher immediately stops common desktop panels/icons and starts a solid black background, then waits until the local server responds. It uses a dedicated Chromium profile with the basic password store (so no keyring prompt is required), and reopens Chromium if it is closed. It uses a lock so rerunning the installer or having both desktop autostart mechanisms enabled cannot create duplicate kiosk windows.
 
 The installer also configures a clean boot transition: it disables the Raspberry Pi firmware rainbow screen, removes the Plymouth splash, suppresses kernel/systemd boot messages, and hides the boot cursor. The original `/boot/firmware/config.txt` and `/boot/firmware/cmdline.txt` files are backed up once with the suffix `.sfts-scoreboard.original` before modification. Older Raspberry Pi OS images using `/boot` are handled too.
 
