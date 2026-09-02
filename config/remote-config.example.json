@@ -1,0 +1,9 @@
+{
+  "port": 8080,
+  "remoteTokens": {
+    "C1": "replace-with-the-token-flashed-to-remote-c1",
+    "C2": "replace-with-the-token-flashed-to-remote-c2",
+    "C3": "replace-with-the-token-flashed-to-remote-c3",
+    "C4": "replace-with-the-token-flashed-to-remote-c4"
+  }
+}

@@ -1,5 +1,6 @@
 import express from "express";
 import crypto from "node:crypto";
+import { readFileSync } from "node:fs";
 import http from "http";
 import os from "os";
 import path from "path";
@@ -9,7 +10,28 @@ import * as XLSX from "xlsx";
 import { createTts } from "./tts.js";
 import { createPersistence } from "./persistence.js";
 
-const PORT = Number(process.env.PORT || 8080);
+const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const REMOTE_CONFIG_PATH = path.join(PROJECT_ROOT, 'config', 'remote-config.json');
+
+function loadRemoteConfig() {
+  try {
+    const config = JSON.parse(readFileSync(REMOTE_CONFIG_PATH, 'utf8'));
+    if (!config || typeof config !== 'object' || Array.isArray(config)) {
+      throw new Error('configuration must be a JSON object');
+    }
+    return config;
+  } catch (error) {
+    if (error.code === 'ENOENT') return {};
+    console.error(`Could not load ${REMOTE_CONFIG_PATH}: ${error.message}`);
+    process.exit(1);
+  }
+}
+
+const remoteConfig = loadRemoteConfig();
+const configuredRemoteTokens = remoteConfig.remoteTokens && typeof remoteConfig.remoteTokens === 'object'
+  ? remoteConfig.remoteTokens
+  : {};
+const PORT = Number(process.env.PORT || remoteConfig.port || 8080);
 const ROUND_MS_DEFAULT = 60_000;
 const BREAK_MS_DEFAULT = Number.isFinite(Number(process.env.SFTS_BREAK_MS))
   ? Math.max(50, Number(process.env.SFTS_BREAK_MS))
@@ -42,7 +64,7 @@ server.requestTimeout = 30_000;
 server.headersTimeout = 10_000;
 server.keepAliveTimeout = 5_000;
 const wss = new WebSocketServer({ server, maxPayload: MAX_WS_PAYLOAD });
-const publicDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'public');
+const publicDir = path.join(PROJECT_ROOT, 'public');
 const tts = createTts();
 const persistence = createPersistence();
 const hostAccessToken = String(process.env.SFTS_HOST_TOKEN || '').trim() || crypto.randomBytes(24).toString('hex');
@@ -976,7 +998,13 @@ function remoteButton(button) {
 }
 
 function expectedRemoteToken(deviceId) {
-  return process.env[`SFTS_REMOTE_TOKEN_${deviceId}`] || null;
+  // Environment variables remain available as a development/deployment
+  // override, while the local JSON configuration removes event-day shell
+  // setup.
+  const environmentToken = String(process.env[`SFTS_REMOTE_TOKEN_${deviceId}`] || '').trim();
+  if (environmentToken) return environmentToken;
+  const configuredToken = String(configuredRemoteTokens[deviceId] || '').trim();
+  return configuredToken || null;
 }
 
 function rememberRemoteAck(session, sequence, ack) {
@@ -1470,13 +1498,15 @@ function handleRemoteHello(ws, msg) {
     sendError(ws, 'INVALID_SESSION', 'A valid remote session ID is required');
     return;
   }
-  if (!expectedToken && !allowUnpaired) {
-    sendError(ws, 'REMOTE_NOT_CONFIGURED', `No token configured for ${deviceId}`);
-    return;
-  }
-  if (expectedToken && String(msg.token || '') !== expectedToken) {
-    sendError(ws, 'UNAUTHORIZED_REMOTE', 'Remote authentication failed');
-    return;
+  if (!allowUnpaired) {
+    if (!expectedToken) {
+      sendError(ws, 'REMOTE_NOT_CONFIGURED', `No token configured for ${deviceId}`);
+      return;
+    }
+    if (String(msg.token || '') !== expectedToken) {
+      sendError(ws, 'UNAUTHORIZED_REMOTE', 'Remote authentication failed');
+      return;
+    }
   }
   const helloTelemetry = {};
   if (Object.prototype.hasOwnProperty.call(msg, 'rssi')) {
@@ -1951,6 +1981,8 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`Taekwondo Scorer v3 running on port ${PORT}`);
   console.log(`Local: http://localhost:${PORT}`);
   console.log(`Wi-Fi:  http://${getLocalIPv4()}:${PORT}`);
+  const configuredRemoteIds = [...REMOTE_IDS].filter(deviceId => expectedRemoteToken(deviceId));
+  console.log(`Remote authentication configured for: ${configuredRemoteIds.join(', ') || 'none'}`);
   console.log(`Host access token: ${hostAccessToken}`);
   if (KIOSK_MODE) console.log('Kiosk mode: localhost host access is enabled');
 });

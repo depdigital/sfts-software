@@ -16,7 +16,7 @@ This folder contains a first hardware-test sketch for the Adafruit ESP32 Feather
 
 ## Button wiring
 
-Each momentary button connects between its GPIO and GND. Keep the fitted external 10K pull-up from each GPIO to 3.3V. The sketch uses `INPUT` (not `INPUT_PULLUP`) and a falling-edge interrupt with software debounce.
+Each momentary button connects between its GPIO and GND. Keep the fitted external 10K pull-up from each GPIO to 3.3V. The sketch uses `INPUT` (not `INPUT_PULLUP`) and a change interrupt with state-based software debounce. It emits one event per press and re-arms only after a stable release.
 
 | Button | GPIO | Feather label |
 |---|---:|---|
@@ -26,7 +26,7 @@ Each momentary button connects between its GPIO and GND. Keep the fitted externa
 | RED TECHNICAL | 33 | D33 |
 | BLUE +1 | 32 | D32 |
 | BLUE +2 | 14 | D14 |
-| BLUE +3 | 20 | SCL |
+| BLUE +3 | 21 | MI / MISO |
 | BLUE TECHNICAL | 22 | SDA |
 
 The selected pins are interrupt-capable on the ESP32 Arduino core. GPIO0/2, GPIO12, GPIO13, GPIO15, input-only pins without internal pull-ups, GPIO4, and GPIO5 were intentionally not used.

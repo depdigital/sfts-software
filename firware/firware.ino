@@ -1,7 +1,3 @@
-
-
-
-
 /*
  * SFTS demo remote for the Adafruit ESP32 Feather V2.
  *
@@ -40,16 +36,16 @@ const char* WIFI_PASSWORD = "clabs2023!";
 
 // Use the Raspberry Pi or Windows PC LAN address, never localhost on the ESP32.
 const char* SERVER_HOST = "192.168.0.106";
-const uint16_t SERVER_PORT = 3000;
+const uint16_t SERVER_PORT = 8080;
 const char* SERVER_PATH = "/";
 
 // MODE=1 on the dashboard enables C1. Change both this ID and the dashboard
 // mode when testing another corner. Valid IDs are C1, C2, C3, and C4.
 const char* REMOTE_DEVICE_ID = "C1";
 
-// Leave empty when the server is started with SFTS_ALLOW_UNPAIRED_REMOTES=true.
-// In a real event, set this to the matching SFTS_REMOTE_TOKEN_C1 value.
-const char* REMOTE_TOKEN = "";
+// Must match remoteTokens.C1 in config/remote-config.json on the server.
+// Flash each remote with its own matching ID and token before the event.
+const char* REMOTE_TOKEN = "sfts-c1-9a3f7d2c8e1b4f60a5d9c7e2b6f1a804";
 
 const uint8_t DUMMY_BATTERY_PERCENT = 100;
 const uint32_t DEBOUNCE_MS = 45;
@@ -59,7 +55,9 @@ const uint32_t WIFI_RETRY_INTERVAL_MS = 5000;
 // ----------------------------- Button pin map ------------------------------
 
 // All eight selected pins are ordinary Feather ESP32 V2 GPIOs and are used
-// with attachInterruptArg(..., FALLING). Buttons are active LOW.
+// with attachInterruptArg(..., CHANGE). Buttons are active LOW. The interrupt
+// only records that a pin changed; debounce and button-state decisions happen
+// in loop(), outside the ISR.
 struct ButtonDefinition {
   uint8_t pin;
   const char* protocolButton;
@@ -73,7 +71,7 @@ ButtonDefinition buttons[] = {
   {33, "RED_TECHNICAL", 3}, // D33 / GPIO33
   {32, "BLUE_1",        4}, // D32 / GPIO32
   {14, "BLUE_2",        5}, // D14 / GPIO14
-  {20, "BLUE_3",        6}, // SCL / GPIO20
+  {21, "BLUE_3",        6}, // MI / MISO / GPIO21 (replacement for SCL / GPIO20)
   {22, "BLUE_TECHNICAL", 7} // SDA / GPIO22
 };
 
@@ -85,12 +83,15 @@ static_assert(BUTTON_COUNT == 8, "The demo remote must have exactly eight button
 WebSocketsClient webSocket;
 portMUX_TYPE buttonMux = portMUX_INITIALIZER_UNLOCKED;
 volatile uint32_t pendingButtonMask = 0;
-uint32_t lastButtonEventAt[BUTTON_COUNT] = {};
-bool buttonDebouncePrimed[BUTTON_COUNT] = {};
+uint32_t buttonHighSince[BUTTON_COUNT] = {};
+bool buttonArmed[BUTTON_COUNT] = {};
 uint32_t nextSequence = 0;
 uint32_t lastStatusAt = 0;
 uint32_t lastWiFiAttemptAt = 0;
+// Transport connection and server acceptance are separate states. A TCP/
+// WebSocket connection can exist even when the server rejects remote_hello.
 bool webSocketConnected = false;
+bool remoteAccepted = false;
 bool wifiBeginCalled = false;
 String sessionId;
 
@@ -148,7 +149,7 @@ String buildStatusMessage() {
 }
 
 void sendStatus() {
-  if (!webSocketConnected || WiFi.status() != WL_CONNECTED) return;
+  if (!webSocketConnected || !remoteAccepted || WiFi.status() != WL_CONNECTED) return;
   String message = buildStatusMessage();
   webSocket.sendTXT(message);
   lastStatusAt = millis();
@@ -163,8 +164,8 @@ void sendHello() {
 }
 
 void sendButtonEvent(const ButtonDefinition& button) {
-  if (!webSocketConnected) {
-    Serial.print("Ignored offline button: ");
+  if (!webSocketConnected || !remoteAccepted) {
+    Serial.print("Ignored unavailable button: ");
     Serial.println(button.protocolButton);
     return;
   }
@@ -193,13 +194,15 @@ void webSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
   switch (type) {
     case WStype_CONNECTED:
       webSocketConnected = true;
-      digitalWrite(LED_BUILTIN, HIGH);
+      remoteAccepted = false;
+      digitalWrite(LED_BUILTIN, LOW);
       Serial.println("WebSocket connected");
       sendHello();
       break;
 
     case WStype_DISCONNECTED:
       webSocketConnected = false;
+      remoteAccepted = false;
       digitalWrite(LED_BUILTIN, LOW);
       Serial.println("WebSocket disconnected; reconnecting");
       break;
@@ -210,6 +213,8 @@ void webSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
       for (size_t i = 0; i < length; ++i) message += static_cast<char>(payload[i]);
 
       if (message.indexOf("remote_ready") >= 0) {
+        remoteAccepted = true;
+        digitalWrite(LED_BUILTIN, HIGH);
         Serial.println("Remote accepted by SFTS server");
         sendStatus();
       } else if (message.indexOf("remote_event_ack") >= 0) {
@@ -218,8 +223,16 @@ void webSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
       } else if (message.indexOf("remote_status_ack") >= 0) {
         Serial.println("Status accepted");
       } else if (message.indexOf("\"type\":\"error\"") >= 0) {
+        const bool wasAccepted = remoteAccepted;
+        remoteAccepted = false;
+        digitalWrite(LED_BUILTIN, LOW);
         Serial.print("Server error: ");
         Serial.println(message);
+
+        // Authentication/protocol errors leave this server connection open
+        // but unusable. Force a reconnect so a corrected server configuration
+        // takes effect without pressing RESET on the remote.
+        if (!wasAccepted) webSocket.disconnect();
       }
       break;
     }
@@ -258,7 +271,15 @@ void setup() {
 
   for (size_t i = 0; i < BUTTON_COUNT; ++i) {
     pinMode(buttons[i].pin, INPUT);
-    attachInterruptArg(buttons[i].pin, buttonInterrupt, &buttons[i], FALLING);
+
+    // The fitted external pull-up makes HIGH the released state. A button
+    // held while the board boots is intentionally not treated as a press.
+    buttonArmed[i] = digitalRead(buttons[i].pin) == HIGH;
+    buttonHighSince[i] = buttonArmed[i] ? millis() : 0;
+
+    // Capture both transitions. The loop emits one event for a stable LOW
+    // transition and waits for a stable HIGH release before re-arming.
+    attachInterruptArg(buttons[i].pin, buttonInterrupt, &buttons[i], CHANGE);
   }
 
   WiFi.mode(WIFI_STA);
@@ -273,7 +294,7 @@ void setup() {
   webSocket.enableHeartbeat(15000, 3000, 2);
 
   Serial.println("SFTS ESP32 Feather V2 demo started");
-  Serial.println("Buttons use external 10K pull-ups, INPUT, and FALLING-edge interrupts");
+  Serial.println("Buttons use external 10K pull-ups, INPUT, and CHANGE-edge interrupts");
 }
 
 void loop() {
@@ -285,10 +306,32 @@ void loop() {
 
   const uint32_t pending = takePendingButtons();
   for (size_t i = 0; i < BUTTON_COUNT; ++i) {
-    if (!(pending & (1UL << buttons[i].index))) continue;
-    if (buttonDebouncePrimed[i] && now - lastButtonEventAt[i] < DEBOUNCE_MS) continue;
-    buttonDebouncePrimed[i] = true;
-    lastButtonEventAt[i] = now;
-    sendButtonEvent(buttons[i]);
+    const bool changed = pending & (1UL << buttons[i].index);
+
+    // Normally a pin is examined after its ISR flag is consumed. While a
+    // button is waiting for a stable release, keep checking it so release
+    // debounce can complete even though no new interrupt is generated.
+    if (!changed && buttonArmed[i]) continue;
+
+    const bool pressed = digitalRead(buttons[i].pin) == LOW;
+    if (pressed) {
+      // A LOW pin is a press only when the button was previously armed. Any
+      // LOW bounce while held is therefore ignored.
+      buttonHighSince[i] = 0;
+      if (!buttonArmed[i]) continue;
+
+      buttonArmed[i] = false;
+      sendButtonEvent(buttons[i]);
+      continue;
+    }
+
+    // The pin is HIGH. Require it to remain HIGH for the full debounce period
+    // before allowing the next LOW transition to generate an event.
+    if (buttonArmed[i]) continue;
+    if (buttonHighSince[i] == 0) buttonHighSince[i] = now;
+    if (now - buttonHighSince[i] >= DEBOUNCE_MS) {
+      buttonArmed[i] = true;
+      buttonHighSince[i] = 0;
+    }
   }
 }

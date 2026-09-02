@@ -69,15 +69,21 @@ Use kiosk mode only when the browser is running on the same machine as the serve
 
 ## ESP32 remotes
 
-Configure every remote with:
+Configure every remote once before the event with:
 
 - The Raspberry Pi’s LAN IP, not `localhost`.
 - WebSocket port `8080` by default.
 - A fixed device ID: `C1`, `C2`, `C3`, or `C4`.
 - A unique session ID for each boot/session.
-- The matching remote token.
+- The matching remote token in `config/remote-config.json`.
 
-Set remote tokens before starting the server:
+The server loads `config/remote-config.json` automatically at startup, so the
+event operator does not need to enter remote tokens in a terminal. Each remote
+must be flashed once with its matching `REMOTE_DEVICE_ID` and `REMOTE_TOKEN`.
+The checked-in file contains the default C1-C4 pairing values used by this
+installation; keep it private if the project is copied outside the event LAN.
+
+Environment variables are still supported as overrides for development:
 
 ```bat
 set SFTS_REMOTE_TOKEN_C1=private-token-for-c1

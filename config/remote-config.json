@@ -1,0 +1,9 @@
+{
+  "port": 8080,
+  "remoteTokens": {
+    "C1": "sfts-c1-9a3f7d2c8e1b4f60a5d9c7e2b6f1a804",
+    "C2": "sfts-c2-4e8b1a7d3f906c52b8e4d1a6f7c03925",
+    "C3": "sfts-c3-6d2f9a1c8b704e35f0a7c4d9e2b68153",
+    "C4": "sfts-c4-1f8c5a3d7e206b94d9a2f6c0e4b71583"
+  }
+}
