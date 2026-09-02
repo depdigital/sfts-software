@@ -1,0 +1,13 @@
+// SFTS scoreboard power controls.
+// The installer replaces @SERVICE_USER@ with the non-root service account.
+polkit.addRule(function(action, subject) {
+  if (subject.user == "@SERVICE_USER@" &&
+      [
+        "org.freedesktop.login1.reboot",
+        "org.freedesktop.login1.reboot-multiple-sessions",
+        "org.freedesktop.login1.power-off",
+        "org.freedesktop.login1.power-off-multiple-sessions"
+      ].indexOf(action.id) >= 0) {
+    return polkit.Result.YES;
+  }
+});

@@ -75,6 +75,7 @@ The `deployment` branch is reserved for the Raspberry Pi installation. The deplo
 deployment/
 ├── install.sh
 ├── config/sfts-scoreboard.env.example
+├── polkit/sfts-scoreboard-power.rules
 ├── scripts/check-network.sh
 ├── scripts/start-kiosk.sh
 └── systemd/sfts-scoreboard.service
@@ -92,7 +93,9 @@ bash deployment/scripts/check-network.sh
 sudo bash deployment/install.sh
 ```
 
-The installer checks or installs Node.js, `curl`, `flock`, `swaybg`, and Chromium, installs production dependencies, preserves the `data` directory and local environment file, and configures the `sfts-scoreboard.service` systemd unit. It configures Raspberry Pi OS Desktop with a dedicated labwc kiosk session that bypasses the normal wallpaper/panel/notification startup, auto-logs in, and launches Chromium in kiosk mode after boot. The kiosk startup immediately hides any remaining common desktop panels/icons and uses a solid black background while the server becomes ready. The installer suppresses boot splash/log output so the display transitions cleanly to the scoreboard. The kiosk waits for the server before opening and restarts Chromium if it closes. After verification, the installer gives a 10-second countdown and reboots automatically; use `SFTS_SKIP_REBOOT=true` for a maintenance run without rebooting. It sets `PORT=8080` and `SFTS_KIOSK_MODE=true`, so the local host browser does not require manual token entry. Backend authentication remains enabled for non-kiosk connections.
+The installer checks or installs Node.js, `curl`, `flock`, `swaybg`, `polkitd`, and Chromium, installs production dependencies, preserves the `data` directory and local environment file, and configures the `sfts-scoreboard.service` systemd unit. It configures Raspberry Pi OS Desktop with a dedicated labwc kiosk session that bypasses the normal wallpaper/panel/notification startup, auto-logs in, and launches Chromium in kiosk mode after boot. The kiosk startup immediately hides any remaining common desktop panels/icons and uses a solid black background while the server becomes ready. The installer suppresses boot splash/log output so the display transitions cleanly to the scoreboard. The kiosk waits for the server before opening and restarts Chromium if it closes. After verification, the installer gives a 10-second countdown and reboots automatically; use `SFTS_SKIP_REBOOT=true` for a maintenance run without rebooting. It sets `PORT=8080` and `SFTS_KIOSK_MODE=true`, so the local host browser does not require manual token entry. Backend authentication remains enabled for non-kiosk connections.
+
+The host SETTINGS screen also provides REBOOT and SHUTDOWN controls. Each action requires confirmation, waits 15 seconds, and can be cancelled during the countdown. The installer adds a narrowly scoped polkit rule for the non-root service account, allowing these two actions without a sudo prompt; no sudo command is used by the scoreboard server.
 
 Open the host dashboard on the Pi at `http://localhost:8080`. Configure the ESP32 remotes with the Pi's Ethernet address, normally `ws://192.168.50.102:8080`, and their matching tokens from `config/remote-config.json`.
 

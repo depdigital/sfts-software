@@ -12,6 +12,10 @@ let historyCache = [];
 let currentRoundRecord = null;
 let audioCtx;
 let announcementAudio = null;
+let powerAction = '';
+let powerActionScheduled = false;
+let powerDeadlineAt = 0;
+let powerCountdownTimer = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -44,6 +48,13 @@ function connectSocket() {
         role = 'unknown';
         showScreen('home');
       }
+      if (['INVALID_POWER_ACTION', 'SYSTEM_POWER_PENDING', 'NO_SYSTEM_POWER_PENDING'].includes(msg.code)) {
+        powerActionScheduled = false;
+        $('powerConfirmButton')?.classList.remove('hidden');
+        $('powerConfirmButton').disabled = false;
+        $('powerCancelButton').disabled = false;
+        $('powerCountdownStatus').textContent = msg.message || 'SYSTEM POWER ACTION FAILED';
+      }
       toast(msg.message || 'REQUEST FAILED');
     }
     if (msg.type === 'award') {
@@ -63,6 +74,18 @@ function connectSocket() {
     if (msg.type === 'testPress') markTest(msg.corner, msg.player, msg.points, msg.button);
     if (msg.type === 'testReset') resetTestUi();
     if (msg.type === 'announcement') announceText(msg.text, msg.audioUrl);
+    if (msg.type === 'systemPowerScheduled') beginPowerCountdown(msg);
+    if (msg.type === 'systemPowerExecuting') {
+      $('powerCountdownStatus').textContent = `${powerActionLabel(msg.action)} STARTING...`;
+    }
+    if (msg.type === 'systemPowerCancelled') {
+      toast(`${powerActionLabel(msg.action || powerAction)} CANCELLED`);
+      closePowerModal();
+    }
+    if (msg.type === 'systemPowerFailed') {
+      toast(msg.message || 'SYSTEM POWER ACTION FAILED');
+      closePowerModal();
+    }
   };
   ws.onclose = () => {
     if (reconnectTimer) return;
@@ -236,6 +259,76 @@ function editGam(player) {
 
 function openSettings() { $('settingsModal').classList.remove('hidden'); }
 function closeSettings() { $('settingsModal').classList.add('hidden'); }
+function powerActionLabel(action = powerAction) {
+  return String(action || '').toUpperCase() === 'SHUTDOWN' ? 'SHUTDOWN' : 'REBOOT';
+}
+function openPowerAction(action) {
+  const normalized = String(action || '').toLowerCase();
+  if (normalized !== 'reboot' && normalized !== 'shutdown') return;
+  closeSettings();
+  powerAction = normalized;
+  powerActionScheduled = false;
+  $('powerActionTitle').textContent = powerActionLabel(normalized);
+  $('powerActionMessage').textContent = `${powerActionLabel(normalized)} the Raspberry Pi? The scoreboard will become unavailable.`;
+  $('powerCountdown').classList.add('hidden');
+  $('powerCountdownStatus').textContent = 'The action will begin after a 15-second countdown.';
+  $('powerConfirmButton').textContent = `START ${powerActionLabel(normalized)}`;
+  $('powerConfirmButton').disabled = false;
+  $('powerCancelButton').disabled = false;
+  $('powerModal').classList.remove('hidden');
+}
+function confirmPowerAction() {
+  if (!powerAction || powerActionScheduled) return;
+  powerActionScheduled = true;
+  $('powerConfirmButton').disabled = true;
+  $('powerCountdownStatus').textContent = 'Requesting system power action...';
+  send({ type: 'host', action: 'systemPower', powerAction });
+}
+function beginPowerCountdown(message) {
+  powerAction = String(message.action || '').toLowerCase();
+  powerActionScheduled = true;
+  powerDeadlineAt = Number(message.deadlineAt) || Date.now() + 15000;
+  $('powerActionTitle').textContent = powerActionLabel(powerAction);
+  $('powerActionMessage').textContent = `${powerActionLabel(powerAction)} has been scheduled. Keep this window open to cancel.`;
+  $('powerCountdown').classList.remove('hidden');
+  $('powerConfirmButton').classList.add('hidden');
+  $('powerCancelButton').disabled = false;
+  $('powerCountdownStatus').textContent = `${powerActionLabel(powerAction)} will start in 15 seconds.`;
+  $('powerModal').classList.remove('hidden');
+  clearInterval(powerCountdownTimer);
+  updatePowerCountdown();
+  powerCountdownTimer = setInterval(updatePowerCountdown, 100);
+}
+function updatePowerCountdown() {
+  const remainingMs = Math.max(0, powerDeadlineAt - Date.now());
+  $('powerCountdown').textContent = String(Math.ceil(remainingMs / 1000));
+  if (remainingMs <= 0) {
+    clearInterval(powerCountdownTimer);
+    powerCountdownTimer = null;
+    $('powerCountdownStatus').textContent = `${powerActionLabel()} STARTING...`;
+  }
+}
+function cancelPowerAction() {
+  if (powerActionScheduled) {
+    $('powerCancelButton').disabled = true;
+    $('powerCountdownStatus').textContent = 'Cancelling system power action...';
+    send({ type: 'host', action: 'cancelSystemPower' });
+    return;
+  }
+  closePowerModal();
+}
+function closePowerModal() {
+  clearInterval(powerCountdownTimer);
+  powerCountdownTimer = null;
+  powerAction = '';
+  powerActionScheduled = false;
+  powerDeadlineAt = 0;
+  $('powerModal').classList.add('hidden');
+  $('powerCountdown').classList.add('hidden');
+  $('powerConfirmButton').classList.remove('hidden');
+  $('powerConfirmButton').disabled = false;
+  $('powerCancelButton').disabled = false;
+}
 function openPlayerSettings() {
   closeSettings();
   if (!lastState) return;
@@ -637,6 +730,10 @@ window.editScore = editScore;
 window.editGam = editGam;
 window.openSettings = openSettings;
 window.closeSettings = closeSettings;
+window.openPowerAction = openPowerAction;
+window.confirmPowerAction = confirmPowerAction;
+window.cancelPowerAction = cancelPowerAction;
+window.closePowerModal = closePowerModal;
 window.openPlayerSettings = openPlayerSettings;
 window.closePlayerSettings = closePlayerSettings;
 window.savePlayerSettings = savePlayerSettings;

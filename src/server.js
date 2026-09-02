@@ -1,5 +1,6 @@
 import express from "express";
 import crypto from "node:crypto";
+import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import http from "http";
 import os from "os";
@@ -55,6 +56,8 @@ const WS_MESSAGE_LIMIT = 120;
 const WS_MESSAGE_WINDOW_MS = 1000;
 const VOTE_SETTLE_MS = 750;
 const TECHNICAL_COMBO_WINDOW_MS = 1000;
+const SYSTEM_POWER_DELAY_MS = 15_000;
+const SYSTEMCTL_BIN = '/usr/bin/systemctl';
 const KIOSK_MODE = process.env.SFTS_KIOSK_MODE === 'true';
 const INDIAN_STATE_CODES = new Set([
   'AN', 'AP', 'AR', 'AS', 'BR', 'CH', 'CG', 'DD', 'DL', 'DN', 'GA', 'GJ',
@@ -499,6 +502,7 @@ let lastStateAt = 0;
 let persistenceReady = false;
 let lastTimerPersistAt = 0;
 let voteSettleGuard = null;
+let pendingSystemPower = null;
 
 function deep(v) { return JSON.parse(JSON.stringify(v)); }
 
@@ -641,6 +645,72 @@ function emit(message) {
 
 function sendError(ws, code, message) {
   send(ws, { type: 'error', code, message });
+}
+
+function powerActionName(action) {
+  const normalized = String(action || '').toLowerCase();
+  return normalized === 'reboot' || normalized === 'shutdown' ? normalized : '';
+}
+
+function executeSystemPower(request) {
+  if (pendingSystemPower !== request) return;
+  pendingSystemPower = null;
+  const systemctlAction = request.action === 'shutdown' ? 'poweroff' : 'reboot';
+  console.log(`Executing system ${request.action}`);
+  send(hostSocket, { type: 'systemPowerExecuting', action: request.action });
+  execFile(
+    SYSTEMCTL_BIN,
+    ['--no-ask-password', '--no-block', systemctlAction],
+    { timeout: 5000 },
+    error => {
+      if (!error) return;
+      console.error(`Could not ${request.action} the system: ${error.message}`);
+      send(hostSocket, {
+        type: 'systemPowerFailed',
+        action: request.action,
+        message: `Could not ${request.action} the Raspberry Pi`
+      });
+    }
+  );
+}
+
+function scheduleSystemPower(ws, action) {
+  const normalized = powerActionName(action);
+  if (!normalized) {
+    sendError(ws, 'INVALID_POWER_ACTION', 'Power action must be reboot or shutdown');
+    return;
+  }
+  if (pendingSystemPower) {
+    sendError(ws, 'SYSTEM_POWER_PENDING', 'A system power action is already counting down');
+    return;
+  }
+  const scheduledAt = Date.now();
+  const request = {
+    action: normalized,
+    scheduledAt,
+    deadlineAt: scheduledAt + SYSTEM_POWER_DELAY_MS,
+    timer: null
+  };
+  pendingSystemPower = request;
+  request.timer = setTimeout(() => executeSystemPower(request), SYSTEM_POWER_DELAY_MS);
+  send(ws, {
+    type: 'systemPowerScheduled',
+    action: normalized,
+    delayMs: SYSTEM_POWER_DELAY_MS,
+    scheduledAt,
+    deadlineAt: request.deadlineAt
+  });
+}
+
+function cancelSystemPower(ws) {
+  if (!pendingSystemPower) {
+    sendError(ws, 'NO_SYSTEM_POWER_PENDING', 'No system power action is counting down');
+    return;
+  }
+  const action = pendingSystemPower.action;
+  clearTimeout(pendingSystemPower.timer);
+  pendingSystemPower = null;
+  send(ws, { type: 'systemPowerCancelled', action });
 }
 
 function hostRequestAuthorized(req) {
@@ -1906,6 +1976,15 @@ wss.on('connection', ws => {
     if (msg.type === 'host') {
       if (ws.role !== 'host') return;
 
+      if (msg.action === 'systemPower') {
+        scheduleSystemPower(ws, msg.powerAction);
+        return;
+      }
+      if (msg.action === 'cancelSystemPower') {
+        cancelSystemPower(ws);
+        return;
+      }
+
       if (match.kyeShi.active && ['playPause', 'setTime', 'resetRoundTimer'].includes(msg.action)) {
         sendError(ws, 'KYESHI_ACTIVE', 'End Kye-shi before changing the match timer');
         return;
@@ -2158,6 +2237,10 @@ server.on('error', error => {
 
 async function shutdown(signal) {
   console.log(`${signal} received; shutting down`);
+  if (pendingSystemPower) {
+    clearTimeout(pendingSystemPower.timer);
+    pendingSystemPower = null;
+  }
   try {
     await persistence.flush(persistenceSnapshot());
   } catch (error) {

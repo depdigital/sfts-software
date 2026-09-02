@@ -463,6 +463,37 @@ button {
 .smallModal {
   width: min(440px, 92vw);
 }
+.powerModal {
+  border-top: 4px solid #f0b429;
+}
+.powerActionButton {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+.rebootButton {
+  background: #7b5412 !important;
+}
+.shutdownButton {
+  background: #8b2020 !important;
+}
+.powerWarning {
+  margin: 4px 0 14px;
+  color: #ffe08a;
+  font-weight: 800;
+  line-height: 1.45;
+}
+.powerCountdown {
+  margin: 8px 0;
+  color: #fff;
+  font-size: 72px;
+  font-weight: 900;
+  line-height: 1;
+}
+.powerCountdownStatus {
+  min-height: 20px;
+  color: #cbd5e5;
+  font-size: 13px;
+  font-weight: 800;
+}
 .wideModal {
   width: min(980px, 94vw);
 }

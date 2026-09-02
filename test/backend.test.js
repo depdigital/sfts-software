@@ -110,6 +110,15 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   const initial = await waitForMessage(host, message => message.type === 'state');
   assert.equal(initial.match.phase, 'ROUND');
 
+  host.send(JSON.stringify({ type: 'host', action: 'systemPower', powerAction: 'reboot' }));
+  const powerScheduled = await waitForMessage(host, message => message.type === 'systemPowerScheduled');
+  assert.equal(powerScheduled.action, 'reboot');
+  assert.equal(powerScheduled.delayMs, 15000);
+  assert.equal(powerScheduled.deadlineAt - powerScheduled.scheduledAt, 15000);
+  host.send(JSON.stringify({ type: 'host', action: 'cancelSystemPower' }));
+  const powerCancelled = await waitForMessage(host, message => message.type === 'systemPowerCancelled');
+  assert.equal(powerCancelled.action, 'reboot');
+
   const workbook = XLSX.utils.book_new();
   const players = XLSX.utils.json_to_sheet([
     { 'Player ID': 'M1', Name: 'Male One', Gender: 'MALE', 'Weight Category': '58 kg' },
@@ -553,9 +562,14 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(html, /id="kyeShiPanel"/);
   assert.match(html, /id="redDeclareWinnerButton"/);
   assert.match(html, /id="blueDeclareWinnerButton"/);
+  assert.match(html, /onclick="openPowerAction\('reboot'\)">REBOOT<\/button>/);
+  assert.match(html, /onclick="openPowerAction\('shutdown'\)">SHUTDOWN<\/button>/);
+  assert.match(html, /id="powerCountdown"/);
   assert.match(jsText, /remainingMs <= 10000/);
   assert.match(jsText, /startKyeShi/);
   assert.match(jsText, /declareKyeShiWinner/);
+  assert.match(jsText, /systemPowerScheduled/);
+  assert.match(jsText, /cancelSystemPower/);
 
   const info = await fetch(`http://127.0.0.1:${port}/api/info`);
   assert.equal(info.status, 404);

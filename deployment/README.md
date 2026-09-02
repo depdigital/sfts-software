@@ -10,6 +10,8 @@ deployment/
 ├── install.sh
 ├── config/
 │   └── sfts-scoreboard.env.example
+├── polkit/
+│   └── sfts-scoreboard-power.rules
 ├── scripts/
 │   ├── check-network.sh
 │   └── start-kiosk.sh
@@ -40,7 +42,7 @@ bash deployment/scripts/check-network.sh
 sudo bash deployment/install.sh
 ```
 
-`install.sh` is safe to run again. It installs missing system packages (Node.js/npm, `curl`, and Chromium), verifies Node.js 18 or newer, installs production dependencies with `npm ci --omit=dev`, creates the runtime data directory, installs the systemd unit, and enables the service.
+`install.sh` is safe to run again. It installs missing system packages (Node.js/npm, `curl`, `polkitd`, and Chromium), verifies Node.js 18 or newer, installs production dependencies with `npm ci --omit=dev`, creates the runtime data directory, installs the systemd unit, and enables the service.
 
 On Raspberry Pi OS Desktop with LightDM and labwc, the installer sets the graphical boot target, enables auto-login for the project user, and selects a dedicated SFTS kiosk session. After a reboot, the expected flow is:
 
@@ -53,6 +55,8 @@ The dedicated session prevents the standard Raspberry Pi desktop wallpaper, pane
 The installer also configures a clean boot transition: it disables the Raspberry Pi firmware rainbow screen, removes the Plymouth splash, suppresses kernel/systemd boot messages, and hides the boot cursor. The original `/boot/firmware/config.txt` and `/boot/firmware/cmdline.txt` files are backed up once with the suffix `.sfts-scoreboard.original` before modification. Older Raspberry Pi OS images using `/boot` are handled too.
 
 The installer requires Raspberry Pi OS Desktop with LightDM and labwc. It intentionally stops with a clear error on Raspberry Pi OS Lite or an unsupported display manager rather than reporting a successful kiosk setup that cannot launch a graphical browser. Desktop auto-login is enabled for this dedicated event kiosk, so anyone with physical access to the Pi can reach the scoreboard without entering a desktop password.
+
+The SETTINGS screen includes REBOOT and SHUTDOWN controls. Each action requires confirmation and has a server-controlled 15-second countdown with a CANCEL option. During installation, the service account is granted only the required polkit reboot and power-off permissions, including their multiple-session variants, so the dashboard can invoke these actions without a sudo prompt. The permission rule is installed at `/etc/polkit-1/rules.d/49-sfts-scoreboard-power.rules`.
 
 After all checks pass, the installer displays a 10-second countdown and reboots the Pi automatically. The final reboot uses non-interactive sudo, so it never pauses for another password prompt. The initial command may still ask for the normal sudo password once:
 
@@ -161,4 +165,12 @@ If the network check fails, verify that the Pi still has a `192.168.50.x` Ethern
 ```bash
 ip -4 addr show eth0
 ip route
+```
+
+If a dashboard power action reports a failure, check that the polkit rule exists and that the service is running as the expected non-root account:
+
+```bash
+sudo cat /etc/polkit-1/rules.d/49-sfts-scoreboard-power.rules
+systemctl show -p User sfts-scoreboard.service
+sudo journalctl -u sfts-scoreboard.service -n 50 --no-pager
 ```

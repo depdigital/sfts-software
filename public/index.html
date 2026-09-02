@@ -165,7 +165,24 @@
         <button onclick="openTimerEditor()">EDIT TIMER</button>
         <button onclick="openHistory()">MATCH HISTORY</button>
         <button onclick="openTestMode()">REMOTE SETTINGS</button>
+        <button class="powerActionButton rebootButton" onclick="openPowerAction('reboot')">REBOOT</button>
+        <button class="powerActionButton shutdownButton" onclick="openPowerAction('shutdown')">SHUTDOWN</button>
         <button onclick="closeSettings()">CLOSE</button>
+      </div>
+    </section>
+
+    <section id="powerModal" class="overlay hidden">
+      <div class="modalCard smallModal powerModal">
+        <h2 id="powerActionTitle">SYSTEM POWER</h2>
+        <p id="powerActionMessage" class="powerWarning">
+          Confirm the requested system action.
+        </p>
+        <div id="powerCountdown" class="powerCountdown hidden" aria-live="polite">15</div>
+        <p id="powerCountdownStatus" class="powerCountdownStatus">
+          The action will begin after a 15-second countdown.
+        </p>
+        <button id="powerConfirmButton" onclick="confirmPowerAction()">START</button>
+        <button id="powerCancelButton" onclick="cancelPowerAction()">CANCEL</button>
       </div>
     </section>
 

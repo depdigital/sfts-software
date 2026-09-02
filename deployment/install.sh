@@ -10,7 +10,7 @@ SERVICE_TMP=""
 REBOOT_DELAY_SECONDS="${SFTS_REBOOT_DELAY_SECONDS:-10}"
 SKIP_REBOOT="${SFTS_SKIP_REBOOT:-false}"
 
-TOTAL_STEPS=9
+TOTAL_STEPS=10
 CURRENT_STEP=0
 
 log() {
@@ -64,6 +64,8 @@ PROJECT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 SERVICE_TEMPLATE="${PROJECT_DIR}/deployment/systemd/${SERVICE_NAME}.service"
 ENV_TEMPLATE="${PROJECT_DIR}/deployment/config/sfts-scoreboard.env.example"
 KIOSK_SCRIPT="${PROJECT_DIR}/deployment/scripts/start-kiosk.sh"
+POLKIT_TEMPLATE="${PROJECT_DIR}/deployment/polkit/sfts-scoreboard-power.rules"
+POLKIT_DEST="/etc/polkit-1/rules.d/49-sfts-scoreboard-power.rules"
 
 [[ -f "${PROJECT_DIR}/package.json" ]] || die "package.json was not found at ${PROJECT_DIR}"
 [[ -f "${PROJECT_DIR}/package-lock.json" ]] || die "package-lock.json was not found at ${PROJECT_DIR}"
@@ -72,6 +74,7 @@ KIOSK_SCRIPT="${PROJECT_DIR}/deployment/scripts/start-kiosk.sh"
 [[ -f "${SERVICE_TEMPLATE}" ]] || die "systemd service template is missing"
 [[ -f "${ENV_TEMPLATE}" ]] || die "environment template is missing"
 [[ -f "${KIOSK_SCRIPT}" ]] || die "kiosk launcher is missing"
+[[ -f "${POLKIT_TEMPLATE}" ]] || die "polkit power-permission template is missing"
 success "Installer prerequisites found"
 
 step "Selecting the service account"
@@ -92,6 +95,7 @@ fi
 command -v curl >/dev/null 2>&1 || APT_PACKAGES+=(curl)
 command -v flock >/dev/null 2>&1 || APT_PACKAGES+=(util-linux)
 command -v swaybg >/dev/null 2>&1 || APT_PACKAGES+=(swaybg)
+command -v pkcheck >/dev/null 2>&1 || APT_PACKAGES+=(polkitd)
 if ! command -v chromium >/dev/null 2>&1 && ! command -v chromium-browser >/dev/null 2>&1; then
   APT_PACKAGES+=(chromium)
 fi
@@ -230,6 +234,17 @@ configure_desktop_kiosk() {
   log "Configured dedicated labwc kiosk session for ${SERVICE_USER}"
 }
 
+configure_power_permissions() {
+  local polkit_tmp
+  polkit_tmp="$(mktemp)"
+  sed -e "s|@SERVICE_USER@|$(escape_sed_value "${SERVICE_USER}")|g" \
+    "${POLKIT_TEMPLATE}" > "${polkit_tmp}"
+  install -d -m 0755 -o root -g root /etc/polkit-1/rules.d
+  install -m 0644 -o root -g root "${polkit_tmp}" "${POLKIT_DEST}"
+  rm -f "${polkit_tmp}"
+  log "Enabled password-free reboot and shutdown for ${SERVICE_USER}"
+}
+
 configure_quiet_boot() {
   local boot_config
   local cmdline_file
@@ -302,6 +317,10 @@ success "Dashboard is responding on http://127.0.0.1:8080"
 step "Configuring dedicated kiosk session"
 configure_desktop_kiosk
 success "Dedicated kiosk session and auto-login are configured"
+
+step "Configuring password-free power controls"
+configure_power_permissions
+success "Dashboard reboot and shutdown controls are configured"
 
 step "Applying quiet boot configuration"
 configure_quiet_boot
