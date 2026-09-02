@@ -102,8 +102,15 @@ if ! systemctl is-active --quiet "${SERVICE_NAME}.service"; then
 fi
 
 if command -v curl >/dev/null 2>&1; then
-  curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8080/ >/dev/null \
-    || die "service is active but the dashboard did not respond on port 8080"
+  dashboard_ready=false
+  for attempt in {1..15}; do
+    if curl --fail --silent --show-error --max-time 5 http://127.0.0.1:8080/ >/dev/null; then
+      dashboard_ready=true
+      break
+    fi
+    sleep 1
+  done
+  [[ "${dashboard_ready}" == true ]] || die "service is active but the dashboard did not respond on port 8080"
 fi
 
 log "${SERVICE_NAME}.service is enabled and running"
