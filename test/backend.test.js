@@ -196,6 +196,26 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   host.send(JSON.stringify({ type: 'host', action: 'playPause' }));
   await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'ROUND' && message.match.running);
 
+  host.send(JSON.stringify({ type: 'host', action: 'startKyeShi' }));
+  const kyeShiStarted = await waitForMessage(host, message => (
+    message.type === 'state' && message.match.kyeShi?.active && message.match.kyeShi.running === true
+  ));
+  assert.equal(kyeShiStarted.match.running, false);
+  const matchTimeDuringKyeShi = kyeShiStarted.match.timerMs;
+  host.send(JSON.stringify({ type: 'host', action: 'headPoint', player: 'RED' }));
+  await waitForMessage(host, message => message.type === 'error' && message.code === 'ROUND_NOT_ACTIVE');
+  host.send(JSON.stringify({ type: 'host', action: 'pauseKyeShi' }));
+  const kyeShiPaused = await waitForMessage(host, message => message.type === 'state' && message.match.kyeShi?.active && !message.match.kyeShi.running);
+  assert.equal(kyeShiPaused.match.timerMs, matchTimeDuringKyeShi);
+  host.send(JSON.stringify({ type: 'host', action: 'resumeKyeShi' }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.kyeShi?.active && message.match.kyeShi.running);
+  host.send(JSON.stringify({ type: 'host', action: 'endKyeShi' }));
+  const kyeShiEnded = await waitForMessage(host, message => (
+    message.type === 'state' && !message.match.kyeShi?.active && message.match.running === true
+  ));
+  assert.equal(kyeShiEnded.match.running, true);
+  assert.ok(kyeShiEnded.match.timerMs <= matchTimeDuringKyeShi);
+
   const referees = [];
   for (let corner = 1; corner <= 4; corner += 1) {
     const referee = await connect();
@@ -509,6 +529,9 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(jsText, /reconnectDelay/);
   assert.match(jsText, /renderRemoteStatuses/);
   assert.match(html, /id="hostAccessToken"/);
+  assert.match(html, /id="kyeShiPanel"/);
+  assert.match(jsText, /remainingMs <= 10000/);
+  assert.match(jsText, /startKyeShi/);
 
   const info = await fetch(`http://127.0.0.1:${port}/api/info`);
   assert.equal(info.status, 404);

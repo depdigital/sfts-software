@@ -52,6 +52,10 @@ function connectSocket() {
     if (msg.type === 'scoreSound') playPointSound(msg.points);
     if (msg.type === 'roundEndSound') playWhistle();
     if (msg.type === 'roundEnd') showRoundSummary(msg.record);
+    if (msg.type === 'kyeShiLimit') {
+      toast('KYE-SHI 1:00 LIMIT REACHED');
+      beep(520, 0.35, 'square', 0.18);
+    }
     if (msg.type === 'matchEnd') {
       if (msg.winner) showWinnerSlide(msg.winner, msg.match);
       else toast('MATCH TIED — RESOLVE IT IN THE SCHEDULE');
@@ -101,9 +105,10 @@ function renderState(match) {
   $('redGam').textContent = match.red.gamjeom;
   $('blueGam').textContent = match.blue.gamjeom;
   $('matchNo').textContent = String(match.matchNo).padStart(3, '0');
-  $('timer').textContent = formatTime(match.timerMs);
+  $('timer').textContent = formatTime(match.timerMs, match.phase === 'ROUND');
   $('roundText').textContent = match.phase === 'MATCH_END' ? 'MATCH END' : `ROUND ${match.round}`;
   $('playBtn').textContent = match.running ? '❚❚ PAUSE' : '▶ PLAY';
+  renderKyeShi(match.kyeShi, match);
   const activeRemoteCount = Math.min(4, Math.max(1, Number(match.remoteCount) || 4));
   $('voteStrip').textContent = [1,2,3,4].slice(0, activeRemoteCount).map(c => {
     const v = match.votes[c];
@@ -111,7 +116,7 @@ function renderState(match) {
   }).join('   ');
 
   if (match.phase === 'BREAK') {
-    $('breakTimeText').textContent = `BREAK ${formatTime(match.timerMs)}`;
+    $('breakTimeText').textContent = `BREAK ${formatTime(match.timerMs, false)}`;
   }
 
   if (match.phase !== 'MATCH_END') {
@@ -127,9 +132,46 @@ function playerMetaText(player) {
   return `${name} · ${weight} · ${stateCode} · ${district}`;
 }
 
-function formatTime(ms) {
-  const s = Math.max(0, Math.ceil(ms / 1000));
+function formatTime(ms, showTenths = true) {
+  const remainingMs = Math.max(0, Number(ms) || 0);
+  if (showTenths && remainingMs <= 10000) return `${(Math.ceil(remainingMs / 100) / 10).toFixed(1)}`;
+  const s = Math.ceil(remainingMs / 1000);
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function formatKyeShiTime(ms) {
+  const elapsedSeconds = Math.floor(Math.max(0, Number(ms) || 0) / 1000);
+  return `${Math.floor(elapsedSeconds / 60)}:${String(elapsedSeconds % 60).padStart(2, '0')}`;
+}
+
+function renderKyeShi(kyeShi, match) {
+  const active = Boolean(kyeShi?.active);
+  const panel = $('kyeShiPanel');
+  const startButton = $('kyeShiStartBtn');
+  if (!panel || !startButton) return;
+  const canStart = !active && match?.phase === 'ROUND' && Boolean(match.roundStarted || match.running);
+  panel.classList.toggle('hidden', !active);
+  startButton.classList.toggle('hidden', active);
+  startButton.disabled = !canStart;
+  if (!active) return;
+
+  const limitReached = Boolean(kyeShi.limitReached);
+  const running = Boolean(kyeShi.running);
+  panel.classList.toggle('limitReached', limitReached);
+  panel.classList.toggle('paused', !running && !limitReached);
+  $('kyeShiStatus').textContent = limitReached
+    ? running ? 'EXTRA TIME' : '1:00 LIMIT'
+    : running ? 'RUNNING' : 'SUSPENDED';
+  $('kyeShiTimer').textContent = formatKyeShiTime(kyeShi.elapsedMs);
+  $('kyeShiNotice').textContent = limitReached
+    ? running ? 'EXTRA MEDICAL TIME — REFEREE AUTHORIZATION REQUIRED' : 'MEDICAL TIME LIMIT REACHED — REFEREE DECISION REQUIRED'
+    : kyeShi.elapsedMs >= 40000
+      ? 'ANNOUNCE ELAPSED TIME EVERY 5 SECONDS'
+      : 'MATCH CLOCK PAUSED';
+  $('kyeShiToggleBtn').textContent = running
+    ? 'SUSPEND KYE-SHI'
+    : limitReached ? 'RESUME EXTRA TIME' : 'RESUME KYE-SHI';
+  $('kyeShiEndBtn').textContent = kyeShi.resumeMatch ? 'END & RESUME MATCH' : 'END KYE-SHI';
 }
 
 function parseTime(value) {
@@ -153,6 +195,18 @@ function nameChange(player, value) {
 }
 function playPause() { send({ type: 'host', action: 'playPause' }); }
 function resetRoundTimer() { send({ type: 'host', action: 'resetRoundTimer' }); }
+function startKyeShi() { send({ type: 'host', action: 'startKyeShi' }); }
+function toggleKyeShi() {
+  if (!lastState?.kyeShi) return;
+  if (lastState.kyeShi.running) {
+    if (confirm('Suspend the Kye-shi timer?')) send({ type: 'host', action: 'pauseKyeShi' });
+  } else {
+    send({ type: 'host', action: 'resumeKyeShi' });
+  }
+}
+function endKyeShi() {
+  if (confirm('End Kye-shi and resume the match timer?')) send({ type: 'host', action: 'endKyeShi' });
+}
 function manualPoint(player, points) { send({ type: 'host', action: 'point', player, points }); }
 function manualHeadPoint(player) { send({ type: 'host', action: 'headPoint', player }); }
 function manualGam(player) { send({ type: 'host', action: 'gamjeom', player }); }
@@ -562,6 +616,9 @@ window.openHost = openHost;
 window.nameChange = nameChange;
 window.playPause = playPause;
 window.resetRoundTimer = resetRoundTimer;
+window.startKyeShi = startKyeShi;
+window.toggleKyeShi = toggleKyeShi;
+window.endKyeShi = endKyeShi;
 window.manualPoint = manualPoint;
 window.manualHeadPoint = manualHeadPoint;
 window.manualGam = manualGam;

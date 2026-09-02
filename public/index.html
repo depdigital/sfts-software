@@ -25,7 +25,7 @@
           placeholder="Enter the token shown in the server window"
         />
       </label>
-      <button class="homeBtn" onclick="openHost()">LAUNCH SCOREBOARD</button>
+      <button class="homeBtn" onclick="openHost()">LAUNCH</button>
     </section>
 
     <section id="host" class="screen hidden hostScreen">
@@ -57,6 +57,33 @@
           <button class="centerControl" onclick="resetRoundTimer()">
             ↺ RESET TIMER
           </button>
+          <button
+            id="kyeShiStartBtn"
+            class="centerControl kyeShiStart"
+            onclick="startKyeShi()"
+          >
+            KYE-SHI
+          </button>
+          <section
+            id="kyeShiPanel"
+            class="kyeShiPanel hidden"
+            aria-live="polite"
+          >
+            <div class="kyeShiHeading">
+              <span>KYE-SHI</span>
+              <b id="kyeShiStatus">RUNNING</b>
+            </div>
+            <div id="kyeShiTimer" class="kyeShiTimer">0:00</div>
+            <div id="kyeShiNotice" class="kyeShiNotice"></div>
+            <div class="kyeShiControls">
+              <button id="kyeShiToggleBtn" onclick="toggleKyeShi()">
+                SUSPEND KYE-SHI
+              </button>
+              <button id="kyeShiEndBtn" onclick="endKyeShi()">
+                END &amp; RESUME MATCH
+              </button>
+            </div>
+          </section>
           <div id="voteStrip" class="voteStrip">
             C1 — &nbsp; C2 — &nbsp; C3 — &nbsp; C4 —
           </div>

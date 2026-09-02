@@ -193,6 +193,67 @@ button { border: 0; cursor: pointer; }
   background: #fff;
   color: #111;
 }
+.kyeShiStart {
+  background: #6f3c18;
+  border: 2px solid #f3ad4f;
+}
+.kyeShiStart:disabled { opacity: .45; cursor: not-allowed; }
+.kyeShiPanel {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px;
+  border: 2px solid #f3ad4f;
+  border-radius: 8px;
+  background: #38230f;
+  text-align: center;
+}
+.kyeShiPanel.paused { border-color: #aebbd0; background: #202936; }
+.kyeShiPanel.limitReached {
+  border-color: #ff5858;
+  background: #541919;
+  animation: kyeShiAlert 1s steps(2, jump-none) infinite;
+}
+.kyeShiHeading {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: #ffd58c;
+  font-size: 12px;
+  font-weight: 900;
+}
+.kyeShiTimer {
+  margin: 2px 0;
+  color: #fff;
+  font-size: clamp(28px, min(3vw, 5vh), 58px);
+  font-weight: 900;
+}
+.kyeShiNotice {
+  color: #ffd58c;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+.kyeShiPanel.limitReached .kyeShiHeading,
+.kyeShiPanel.limitReached .kyeShiNotice { color: #ffb0b0; }
+.kyeShiControls {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 8px;
+}
+.kyeShiControls button {
+  padding: 8px 4px;
+  border: 1px solid rgba(255,255,255,.22);
+  border-radius: 6px;
+  background: #5b3a1d;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 900;
+}
+.kyeShiControls button:last-child { background: #8e2626; }
+@keyframes kyeShiAlert {
+  50% { box-shadow: 0 0 18px rgba(255, 65, 65, .7); }
+}
 .bottomArea {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(250px, clamp(250px, min(20vw, 32vh), 560px)) minmax(0, 1fr);

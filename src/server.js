@@ -37,7 +37,9 @@ const BREAK_MS_DEFAULT = Number.isFinite(Number(process.env.SFTS_BREAK_MS))
   ? Math.max(50, Number(process.env.SFTS_BREAK_MS))
   : 35_000;
 const MAX_TIMER_MS = 60 * 60 * 1000;
-const TIMER_TICK_MS = 250;
+const TIMER_TICK_MS = 50;
+const TIMER_DISPLAY_UPDATE_MS = 100;
+const KYESHI_LIMIT_MS = 60_000;
 const HEARTBEAT_MS = 10_000;
 const MAX_WS_PAYLOAD = 64 * 1024;
 const MAX_BUFFERED_BYTES = 1024 * 1024;
@@ -92,6 +94,17 @@ function getLocalIPv4() {
 }
 
 const baseStats = () => ({ plus1: 0, plus2: 0, plus3: 0 });
+function makeKyeShi() {
+  return {
+    active: false,
+    running: false,
+    elapsedMs: 0,
+    limitMs: KYESHI_LIMIT_MS,
+    limitReached: false,
+    resumeMatch: false
+  };
+}
+
 function makeSide(name, profile = {}) {
   const stateCode = String(profile?.stateCode || '').trim().toUpperCase();
   return {
@@ -121,7 +134,9 @@ function makeMatch(
     breakMs: BREAK_MS_DEFAULT,
     remoteCount: 4,
     running: false,
+    roundStarted: false,
     phase: "ROUND", // ROUND | BREAK | MATCH_END
+    kyeShi: makeKyeShi(),
     red: makeSide(redName, redProfile),
     blue: makeSide(blueName, blueProfile),
     votes: {},
@@ -477,6 +492,7 @@ const remoteStatuses = new Map([...REMOTE_IDS].map(deviceId => [deviceId, {
 const remoteTechnicalPending = new Map();
 const remoteLastBasePress = new Map();
 let timerLastAt = null;
+let kyeShiLastAt = null;
 let lastStateAt = 0;
 let persistenceReady = false;
 let lastTimerPersistAt = 0;
@@ -487,6 +503,10 @@ function deep(v) { return JSON.parse(JSON.stringify(v)); }
 function persistenceSnapshot() {
   const savedMatch = deep(match);
   savedMatch.running = false;
+  if (savedMatch.kyeShi) {
+    savedMatch.kyeShi.running = false;
+    savedMatch.kyeShi.resumeMatch = false;
+  }
   savedMatch.votes = {};
   savedMatch.test = { active: false, presses: {} };
   return {
@@ -510,6 +530,17 @@ function restorePersistedState(snapshot) {
     ? match.remoteCount
     : 4;
   match.running = false;
+  match.roundStarted = Boolean(match.roundStarted || match.timerMs < match.configuredRoundMs ||
+    match.red.score > 0 || match.blue.score > 0 || match.red.gamjeom > 0 || match.blue.gamjeom > 0);
+  match.kyeShi = {
+    ...makeKyeShi(),
+    ...(match.kyeShi && typeof match.kyeShi === 'object' ? match.kyeShi : {})
+  };
+  match.kyeShi.limitMs = KYESHI_LIMIT_MS;
+  match.kyeShi.running = false;
+  match.kyeShi.resumeMatch = false;
+  match.kyeShi.elapsedMs = Math.max(0, Math.min(match.kyeShi.limitMs, Number(match.kyeShi.elapsedMs) || 0));
+  kyeShiLastAt = null;
   match.votes = {};
   match.test = { active: false, presses: {} };
   matchHistory = snapshot.matchHistory;
@@ -576,6 +607,7 @@ function remoteState(ws) {
     phase: match.phase,
     timerMs: Math.max(0, Math.ceil(match.timerMs)),
     running: match.running,
+    kyeShi: deep(match.kyeShi),
     activeRemoteCount: match.remoteCount,
     requiredVotes: Math.floor(match.remoteCount / 2) + 1,
     connected: Boolean(remoteStatuses.get(ws.deviceId)?.connected),
@@ -764,6 +796,7 @@ function loadTournamentBout(bout) {
   clearAllRemoteCombinations();
   clearVoteSettleGuard();
   timerLastAt = null;
+  kyeShiLastAt = null;
   bout.status = 'IN_PROGRESS';
   tournament.activeBoutNo = bout.boutNo;
   return { ok: true };
@@ -1027,13 +1060,32 @@ function remoteAck(ws, sequence, details) {
 }
 
 function scoringIsAllowed() {
-  return match.phase === 'ROUND' && match.running && !match.test.active;
+  return match.phase === 'ROUND' && match.running && !match.test.active && !match.kyeShi.active;
+}
+
+function syncKyeShi(now = performance.now()) {
+  if (!match.kyeShi.active || !match.kyeShi.running || kyeShiLastAt === null) return false;
+  const elapsed = Math.max(0, now - kyeShiLastAt);
+  if (!elapsed) return false;
+
+  kyeShiLastAt = now;
+  match.kyeShi.elapsedMs += elapsed;
+  if (match.kyeShi.elapsedMs < match.kyeShi.limitMs || match.kyeShi.limitReached) return true;
+
+  match.kyeShi.elapsedMs = match.kyeShi.limitMs;
+  match.kyeShi.running = false;
+  match.kyeShi.limitReached = true;
+  kyeShiLastAt = null;
+  emit({ type: 'kyeShiLimit' });
+  state(true);
+  return true;
 }
 
 function syncTimer(now = performance.now()) {
-  if (!match.running || timerLastAt === null) return false;
+  const kyeShiChanged = syncKyeShi(now);
+  if (!match.running || timerLastAt === null) return kyeShiChanged;
   const elapsed = Math.max(0, now - timerLastAt);
-  if (!elapsed) return false;
+  if (!elapsed) return kyeShiChanged;
 
   timerLastAt = now;
   match.timerMs -= elapsed;
@@ -1064,7 +1116,60 @@ function setRunning(running) {
   }
   if (match.timerMs <= 0) return;
   match.running = true;
+  if (match.phase === 'ROUND') match.roundStarted = true;
   timerLastAt = performance.now();
+}
+
+function startKyeShi() {
+  syncTimer();
+  if (match.phase !== 'ROUND' || match.test.active || match.kyeShi.active || !match.roundStarted) {
+    return { ok: false, code: 'KYESHI_NOT_AVAILABLE', message: 'Kye-shi can only start during an active round' };
+  }
+  const resumeMatch = match.running;
+  setRunning(false);
+  if (match.phase !== 'ROUND') {
+    return { ok: false, code: 'ROUND_NOT_ACTIVE', message: 'The round has already ended' };
+  }
+  match.kyeShi = makeKyeShi();
+  match.kyeShi.active = true;
+  match.kyeShi.running = true;
+  match.kyeShi.resumeMatch = resumeMatch;
+  kyeShiLastAt = performance.now();
+  match.votes = {};
+  clearAllRemoteCombinations();
+  return { ok: true };
+}
+
+function pauseKyeShi() {
+  syncTimer();
+  if (!match.kyeShi.active || !match.kyeShi.running) {
+    return { ok: false, code: 'KYESHI_NOT_RUNNING', message: 'Kye-shi is not running' };
+  }
+  match.kyeShi.running = false;
+  kyeShiLastAt = null;
+  return { ok: true };
+}
+
+function resumeKyeShi() {
+  syncTimer();
+  if (!match.kyeShi.active || match.kyeShi.running) {
+    return { ok: false, code: 'KYESHI_NOT_PAUSED', message: 'Kye-shi is not paused' };
+  }
+  match.kyeShi.running = true;
+  kyeShiLastAt = performance.now();
+  return { ok: true };
+}
+
+function endKyeShi() {
+  syncTimer();
+  if (!match.kyeShi.active) {
+    return { ok: false, code: 'KYESHI_NOT_ACTIVE', message: 'Kye-shi is not active' };
+  }
+  const resumeMatch = match.kyeShi.resumeMatch;
+  match.kyeShi = makeKyeShi();
+  kyeShiLastAt = null;
+  if (resumeMatch && match.phase === 'ROUND' && match.timerMs > 0) setRunning(true);
+  return { ok: true };
 }
 
 function releaseRole(ws) {
@@ -1279,7 +1384,10 @@ function startNextRound() {
   match.phase = 'ROUND';
   match.timerMs = match.configuredRoundMs;
   match.running = false;
+  match.roundStarted = false;
   timerLastAt = null;
+  match.kyeShi = makeKyeShi();
+  kyeShiLastAt = null;
   match.red.score = 0;
   match.red.gamjeom = 0;
   match.red.stats = baseStats();
@@ -1318,6 +1426,7 @@ function resetCurrentMatch() {
   clearAllRemoteCombinations();
   clearVoteSettleGuard();
   timerLastAt = null;
+  kyeShiLastAt = null;
   state(true);
 }
 
@@ -1339,6 +1448,7 @@ function newMatch() {
   clearAllRemoteCombinations();
   clearVoteSettleGuard();
   timerLastAt = null;
+  kyeShiLastAt = null;
   state(true);
   return true;
 }
@@ -1762,6 +1872,36 @@ wss.on('connection', ws => {
     if (msg.type === 'host') {
       if (ws.role !== 'host') return;
 
+      if (match.kyeShi.active && ['playPause', 'setTime', 'resetRoundTimer'].includes(msg.action)) {
+        sendError(ws, 'KYESHI_ACTIVE', 'End Kye-shi before changing the match timer');
+        return;
+      }
+
+      if (msg.action === 'startKyeShi') {
+        const result = startKyeShi();
+        if (!result.ok) sendError(ws, result.code, result.message);
+        state(true);
+        return;
+      }
+      if (msg.action === 'pauseKyeShi') {
+        const result = pauseKyeShi();
+        if (!result.ok) sendError(ws, result.code, result.message);
+        state(true);
+        return;
+      }
+      if (msg.action === 'resumeKyeShi') {
+        const result = resumeKyeShi();
+        if (!result.ok) sendError(ws, result.code, result.message);
+        state(true);
+        return;
+      }
+      if (msg.action === 'endKyeShi') {
+        const result = endKyeShi();
+        if (!result.ok) sendError(ws, result.code, result.message);
+        state(true);
+        return;
+      }
+
       if (msg.action === 'playPause' && (match.phase === 'ROUND' || match.phase === 'BREAK')) {
         setRunning(!match.running);
       }
@@ -1940,7 +2080,11 @@ wss.on('connection', ws => {
 
 setInterval(() => {
   const changed = syncTimer();
-  if (changed && Date.now() - lastStateAt >= 900) state();
+  const displayInterval = match.kyeShi.active ||
+    (match.phase === 'ROUND' && match.running && match.timerMs <= 10_000)
+    ? TIMER_DISPLAY_UPDATE_MS
+    : 900;
+  if (changed && Date.now() - lastStateAt >= displayInterval) state();
   if (match.running && Date.now() - lastTimerPersistAt >= 10_000) persistState();
 }, TIMER_TICK_MS);
 
