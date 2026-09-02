@@ -10,6 +10,7 @@ ENV_DIR="/etc/sfts"
 ENV_FILE="${ENV_DIR}/sfts-scoreboard.env"
 SERVICE_TMP=""
 PIPER_SERVICE_TMP=""
+LIGHTDM_MAIN_TMP=""
 REBOOT_DELAY_SECONDS="${SFTS_REBOOT_DELAY_SECONDS:-10}"
 SKIP_REBOOT="${SFTS_SKIP_REBOOT:-false}"
 PIPER_MODEL_NAME="${SFTS_PIPER_MODEL:-en_GB-alan-medium}"
@@ -44,6 +45,9 @@ cleanup() {
   fi
   if [[ -n "${PIPER_SERVICE_TMP:-}" ]]; then
     rm -f "${PIPER_SERVICE_TMP}"
+  fi
+  if [[ -n "${LIGHTDM_MAIN_TMP:-}" ]]; then
+    rm -f "${LIGHTDM_MAIN_TMP}"
   fi
 }
 
@@ -291,8 +295,11 @@ configure_desktop_kiosk() {
   local display_manager_target
   local display_manager_service
   local labwc_bin
+  local lightdm_main_config
+  local lightdm_main_backup
   local lightdm_config
   local lightdm_tmp
+  local lightdm_show_config
   local kiosk_config_root
   local kiosk_labwc_dir
   local kiosk_autostart
@@ -313,6 +320,25 @@ configure_desktop_kiosk() {
     die "LightDM was not detected; the kiosk installer supports Raspberry Pi OS Desktop with LightDM"
   fi
 
+  # Raspberry Pi OS stores an explicit rpd-labwc autologin session in the
+  # main LightDM configuration. That setting takes precedence over the
+  # drop-in above, so update only that selector and keep the original file.
+  lightdm_main_config="/etc/lightdm/lightdm.conf"
+  lightdm_main_backup="${lightdm_main_config}.sfts-scoreboard.original"
+  if [[ -f "${lightdm_main_config}" ]] && grep -Eq '^[[:space:]]*autologin-session=' "${lightdm_main_config}"; then
+    if [[ ! -e "${lightdm_main_backup}" ]]; then
+      cp -p "${lightdm_main_config}" "${lightdm_main_backup}"
+      log "Saved original LightDM configuration to ${lightdm_main_backup}"
+    fi
+    LIGHTDM_MAIN_TMP="$(mktemp)"
+    sed -E 's|^[[:space:]]*autologin-session=.*$|autologin-session=sfts-scoreboard-kiosk|' \
+      "${lightdm_main_config}" > "${LIGHTDM_MAIN_TMP}"
+    install -m 0644 -o root -g root "${LIGHTDM_MAIN_TMP}" "${lightdm_main_config}"
+    rm -f "${LIGHTDM_MAIN_TMP}"
+    LIGHTDM_MAIN_TMP=""
+    log "Selected the SFTS kiosk session for LightDM autologin"
+  fi
+
   lightdm_config="/etc/lightdm/lightdm.conf.d/50-sfts-scoreboard-kiosk.conf"
   lightdm_tmp="$(mktemp)"
   printf '%s\n' '[Seat:*]' "autologin-user=${SERVICE_USER}" 'autologin-user-timeout=0' 'autologin-session=sfts-scoreboard-kiosk' > "${lightdm_tmp}"
@@ -327,6 +353,11 @@ configure_desktop_kiosk() {
   fi
   [[ -n "${display_manager_service}" ]] || display_manager_service="lightdm.service"
   systemctl enable "${display_manager_service}"
+
+  lightdm_show_config="$(lightdm --show-config 2>/dev/null || true)"
+  if ! grep -Eq '^[[:space:]]*[A-Z][[:space:]]+autologin-session=sfts-scoreboard-kiosk[[:space:]]*$' <<< "${lightdm_show_config}"; then
+    die "LightDM did not select sfts-scoreboard-kiosk for autologin"
+  fi
 
   kiosk_config_root="/etc/sfts/sfts-scoreboard-kiosk"
   kiosk_labwc_dir="${kiosk_config_root}/labwc"
