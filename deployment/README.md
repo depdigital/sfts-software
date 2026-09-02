@@ -59,7 +59,17 @@ The installer requires Raspberry Pi OS Desktop with LightDM and labwc. It intent
 
 The SETTINGS screen includes REBOOT and SHUTDOWN controls. Each action requires confirmation and has a server-controlled 15-second countdown with a CANCEL option. During installation, the service account is granted only the required polkit reboot and power-off permissions, including their multiple-session variants, so the dashboard can invoke these actions without a sudo prompt. The permission rule is installed at `/etc/polkit-1/rules.d/49-sfts-scoreboard-power.rules`.
 
-The installer configures local announcements automatically. It runs `sfts-piper.service` on `127.0.0.1:5000`, sets `SFTS_TTS_ENGINE=piper` and `SFTS_TTS_URL=http://127.0.0.1:5000/synthesize`, and configures the kiosk session to set the default PipeWire output to 85% and unmute it. The scoreboard keeps returned announcement audio in memory with a bounded, expiring cache; it does not write new announcement WAV files to the SD card.
+The installer configures local announcements automatically. It runs `sfts-piper.service` on `127.0.0.1:5000` with the `en_GB-alan-medium` voice, a medium speaking pace (`length-scale=1.20`) and short sentence pauses (`sentence-silence=0.15`). This British-English model is the closest official Piper option to formal Indian event English; Piper does not currently provide an official Indian-English voice. It sets `SFTS_TTS_ENGINE=piper` and `SFTS_TTS_URL=http://127.0.0.1:5000/synthesize`, and configures the kiosk session to set the default PipeWire output to 95% and unmute it. The scoreboard keeps returned announcement audio in memory with a bounded, expiring cache; it does not write new announcement WAV files to the SD card.
+
+The dedicated kiosk session also forces the English/US keyboard layout through labwc's `XKB_DEFAULT_LAYOUT=us` setting. This is scoped to the scoreboard kiosk and does not change the system locale or other desktop users.
+
+To tune the voice during a maintenance install, set the optional installer variables, for example:
+
+```bash
+sudo SFTS_PIPER_LENGTH_SCALE=1.15 SFTS_PIPER_SENTENCE_SILENCE=0.15 bash deployment/install.sh
+```
+
+The default `1.20` value is intentionally retained for a medium-paced announcement. Larger values speak more slowly; smaller values speak faster.
 
 After all checks pass, the installer displays a 10-second countdown and reboots the Pi automatically. The final reboot uses non-interactive sudo, so it never pauses for another password prompt. The initial command may still ask for the normal sudo password once:
 

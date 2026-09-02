@@ -195,7 +195,7 @@ When the server is restarted, the dashboard reconnects automatically. The match 
 
 ## Local announcements with Piper
 
-Piper is optional. For Raspberry Pi deployment, run Piper’s HTTP server locally and configure the scoreboard to request audio from `127.0.0.1`. The generated WAV response is kept in the Node.js process memory and is served to the kiosk browser; it is not written to the SD card. The Piper service itself keeps the voice model loaded between announcements.
+Piper is optional. For Raspberry Pi deployment, the installer runs Piper’s HTTP server locally with the official `en_GB-alan-medium` voice and configures the scoreboard to request audio from `127.0.0.1`. The generated WAV response is kept in the Node.js process memory and is served to the kiosk browser; it is not written to the SD card. The Piper service itself keeps the voice model loaded between announcements. The British-English voice is the closest official Piper option to formal Indian event English; an actual Indian-English accent requires a compatible third-party or custom Piper model.
 
 Use these settings on the Pi:
 

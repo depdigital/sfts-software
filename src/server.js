@@ -215,7 +215,7 @@ function shuffled(items, random) {
 }
 
 function scheduleAnnouncement(bout) {
-  return `Bout ${bout.boutNo}: ${bout.redPlayerName} vs ${bout.bluePlayerName}, ${bout.gender}, ${bout.weightCategory}`;
+  return `Bout ${bout.boutNo}: ${bout.redPlayerName} versus ${bout.bluePlayerName}, ${bout.gender}, ${bout.weightCategory}`;
 }
 
 function bracketSizeFor(playerCount) {
@@ -889,7 +889,7 @@ function completeTournamentBout(winner) {
     bout.winner = null;
     bout.winnerName = null;
     bout.tieReason = 'Manual tie resolution required';
-    bout.announcement = `Tie pending for Bout ${bout.boutNo}: ${bout.redPlayerName} vs ${bout.bluePlayerName}`;
+  bout.announcement = `Tie pending for Bout ${bout.boutNo}: ${bout.redPlayerName} versus ${bout.bluePlayerName}`;
     refreshTournamentBracket();
     return { tiePending: true };
   }

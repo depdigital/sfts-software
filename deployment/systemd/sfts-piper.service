@@ -7,7 +7,7 @@ Type=simple
 User=@SERVICE_USER@
 Group=@SERVICE_GROUP@
 WorkingDirectory=@PIPER_ROOT@
-ExecStart=@PIPER_PYTHON@ -m piper.http_server --host=127.0.0.1 --port=5000 --model=@PIPER_MODEL@ --data-dir=@PIPER_VOICES@
+ExecStart=@PIPER_PYTHON@ -m piper.http_server --host=127.0.0.1 --port=5000 --model=@PIPER_MODEL@ --data-dir=@PIPER_VOICES@ --length-scale=@PIPER_LENGTH_SCALE@ --sentence-silence=@PIPER_SENTENCE_SILENCE@
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true

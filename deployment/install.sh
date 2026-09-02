@@ -12,7 +12,9 @@ SERVICE_TMP=""
 PIPER_SERVICE_TMP=""
 REBOOT_DELAY_SECONDS="${SFTS_REBOOT_DELAY_SECONDS:-10}"
 SKIP_REBOOT="${SFTS_SKIP_REBOOT:-false}"
-PIPER_MODEL_NAME="${SFTS_PIPER_MODEL:-en_US-lessac-medium}"
+PIPER_MODEL_NAME="${SFTS_PIPER_MODEL:-en_GB-alan-medium}"
+PIPER_LENGTH_SCALE="${SFTS_PIPER_LENGTH_SCALE:-1.20}"
+PIPER_SENTENCE_SILENCE="${SFTS_PIPER_SENTENCE_SILENCE:-0.15}"
 
 TOTAL_STEPS=11
 CURRENT_STEP=0
@@ -62,6 +64,9 @@ case "${SKIP_REBOOT}" in
   true|false) ;;
   *) die "SFTS_SKIP_REBOOT must be true or false" ;;
 esac
+[[ "${PIPER_LENGTH_SCALE}" =~ ^[0-9]+([.][0-9]+)?$ ]] || die "SFTS_PIPER_LENGTH_SCALE must be a positive number"
+[[ "${PIPER_SENTENCE_SILENCE}" =~ ^[0-9]+([.][0-9]+)?$ ]] || die "SFTS_PIPER_SENTENCE_SILENCE must be zero or a positive number"
+awk -v value="${PIPER_LENGTH_SCALE}" 'BEGIN { exit !(value > 0) }' || die "SFTS_PIPER_LENGTH_SCALE must be greater than zero"
 
 if [[ "${EUID}" -ne 0 ]]; then
   die "run this installer with sudo, for example: sudo bash deployment/install.sh"
@@ -153,6 +158,8 @@ configure_piper() {
   local piper_python_value
   local piper_voices_value
   local piper_model_value
+  local piper_length_scale_value
+  local piper_sentence_silence_value
   local service_user_value
   local service_group_value
   local piper_ready
@@ -188,6 +195,8 @@ configure_piper() {
   piper_python_value="$(escape_sed_value "${PIPER_PYTHON}")"
   piper_voices_value="$(escape_sed_value "${PIPER_VOICES}")"
   piper_model_value="$(escape_sed_value "${PIPER_MODEL}")"
+  piper_length_scale_value="$(escape_sed_value "${PIPER_LENGTH_SCALE}")"
+  piper_sentence_silence_value="$(escape_sed_value "${PIPER_SENTENCE_SILENCE}")"
   service_user_value="$(escape_sed_value "${SERVICE_USER}")"
   service_group_value="$(escape_sed_value "${SERVICE_GROUP}")"
   PIPER_SERVICE_TMP="$(mktemp)"
@@ -199,6 +208,8 @@ configure_piper() {
     -e "s|@PIPER_PYTHON@|${piper_python_value}|g" \
     -e "s|@PIPER_VOICES@|${piper_voices_value}|g" \
     -e "s|@PIPER_MODEL@|${piper_model_value}|g" \
+    -e "s|@PIPER_LENGTH_SCALE@|${piper_length_scale_value}|g" \
+    -e "s|@PIPER_SENTENCE_SILENCE@|${piper_sentence_silence_value}|g" \
     "${PIPER_SERVICE_TEMPLATE}" > "${PIPER_SERVICE_TMP}"
   install -m 0644 -o root -g root "${PIPER_SERVICE_TMP}" "${PIPER_SERVICE_DEST}"
   rm -f "${PIPER_SERVICE_TMP}"
@@ -285,6 +296,7 @@ configure_desktop_kiosk() {
   local kiosk_config_root
   local kiosk_labwc_dir
   local kiosk_autostart
+  local kiosk_environment
   local kiosk_session_dir
   local kiosk_session
   local kiosk_session_tmp
@@ -319,6 +331,7 @@ configure_desktop_kiosk() {
   kiosk_config_root="/etc/sfts/sfts-scoreboard-kiosk"
   kiosk_labwc_dir="${kiosk_config_root}/labwc"
   kiosk_autostart="${kiosk_labwc_dir}/autostart"
+  kiosk_environment="${kiosk_labwc_dir}/environment"
   kiosk_session_dir="/usr/share/wayland-sessions"
   kiosk_session="${kiosk_session_dir}/sfts-scoreboard-kiosk.desktop"
   kiosk_session_tmp="$(mktemp)"
@@ -332,6 +345,15 @@ configure_desktop_kiosk() {
     > "${kiosk_autostart}"
   chown root:root "${kiosk_autostart}"
   chmod 0644 "${kiosk_autostart}"
+
+  # Keep the dedicated kiosk session on a US/English keyboard layout. This
+  # avoids changing the system locale or other users' desktop sessions.
+  printf '%s\n' \
+    '# SFTS scoreboard kiosk: use English keyboard input' \
+    'XKB_DEFAULT_LAYOUT=us' \
+    > "${kiosk_environment}"
+  chown root:root "${kiosk_environment}"
+  chmod 0644 "${kiosk_environment}"
 
   printf '%s\n' \
     '[Desktop Entry]' \

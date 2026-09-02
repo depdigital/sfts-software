@@ -11,7 +11,7 @@ KIOSK_URL="http://127.0.0.1:${SERVER_PORT}/"
 PROFILE_DIR="${HOME}/.config/sfts-scoreboard-kiosk"
 LOCK_DIR="${XDG_RUNTIME_DIR:-${HOME}/.cache}/sfts-scoreboard-kiosk"
 BACKGROUND_PID=""
-AUDIO_VOLUME="0.85"
+AUDIO_VOLUME="0.95"
 
 log() {
   printf '[sfts-kiosk] %s\n' "$*" >&2

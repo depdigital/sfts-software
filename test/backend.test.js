@@ -159,6 +159,7 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   host.send(JSON.stringify({ type: 'host', action: 'announceBout', boutNo: 1 }));
   const announcement = await waitForMessage(host, message => message.type === 'announcement' && message.boutNo === 1);
   assert.match(announcement.text, /Bout 1:/);
+  assert.match(announcement.text, / versus /);
 
   host.send(JSON.stringify({
     type: 'host',
