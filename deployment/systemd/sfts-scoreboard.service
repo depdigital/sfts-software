@@ -1,0 +1,20 @@
+[Unit]
+Description=SFTS Taekwondo Scoring System
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@SERVICE_USER@
+Group=@SERVICE_GROUP@
+WorkingDirectory=@PROJECT_DIR@
+EnvironmentFile=-/etc/sfts/sfts-scoreboard.env
+ExecStart=@NODE_BIN@ @PROJECT_DIR@/src/server.js
+Restart=on-failure
+RestartSec=5
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

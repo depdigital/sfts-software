@@ -67,6 +67,43 @@ npm start
 
 Use kiosk mode only when the browser is running on the same machine as the server. On the Pi, put `SFTS_KIOSK_MODE=true` in the service configuration. The dashboard reconnects automatically if the server restarts and requests a fresh host session.
 
+## Raspberry Pi deployment
+
+The `deployment` branch is reserved for the Raspberry Pi installation. The deployment files are kept under `deployment/`:
+
+```text
+deployment/
+├── install.sh
+├── config/sfts-scoreboard.env.example
+├── scripts/check-network.sh
+└── systemd/sfts-scoreboard.service
+```
+
+The Pi network should use its built-in Wi-Fi for internet/SSH and Ethernet for the dedicated remote router. The remote router should provide the `192.168.50.x` network, while the Pi's default internet route must remain on `wlan0`.
+
+From the Pi project checkout, run:
+
+```bash
+cd ~/sfts-software
+git switch deployment
+git pull --ff-only origin deployment
+bash deployment/scripts/check-network.sh
+sudo bash deployment/install.sh
+```
+
+The installer checks or installs Node.js, installs production dependencies, preserves the `data` directory and local environment file, and configures the `sfts-scoreboard.service` systemd unit. It sets `PORT=8080` and `SFTS_KIOSK_MODE=true`, so the local host browser does not require manual token entry. Backend authentication remains enabled for non-kiosk connections.
+
+Open the host dashboard on the Pi at `http://localhost:8080`. Configure the ESP32 remotes with the Pi's Ethernet address, normally `ws://192.168.50.102:8080`, and their matching tokens from `config/remote-config.json`.
+
+Useful service commands:
+
+```bash
+sudo systemctl status sfts-scoreboard.service --no-pager
+sudo journalctl -u sfts-scoreboard.service -f
+```
+
+For the full installer, service, network-check, update, and troubleshooting instructions, see [`deployment/README.md`](deployment/README.md).
+
 ## ESP32 remotes
 
 Configure every remote once before the event with:
