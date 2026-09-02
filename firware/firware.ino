@@ -31,11 +31,11 @@
 
 // --------------------------- Test configuration ---------------------------
 
-const char* WIFI_SSID = "CLABS";
-const char* WIFI_PASSWORD = "clabs2023!";
+const char* WIFI_SSID = "sfts-gateway";
+const char* WIFI_PASSWORD = "sfts-gateway#";
 
 // Use the Raspberry Pi or Windows PC LAN address, never localhost on the ESP32.
-const char* SERVER_HOST = "192.168.0.106";
+const char* SERVER_HOST = "192.168.50.102";
 const uint16_t SERVER_PORT = 8080;
 const char* SERVER_PATH = "/";
 

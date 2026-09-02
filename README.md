@@ -76,6 +76,7 @@ deployment/
 ├── install.sh
 ├── config/sfts-scoreboard.env.example
 ├── scripts/check-network.sh
+├── scripts/start-kiosk.sh
 └── systemd/sfts-scoreboard.service
 ```
 
@@ -91,7 +92,7 @@ bash deployment/scripts/check-network.sh
 sudo bash deployment/install.sh
 ```
 
-The installer checks or installs Node.js, installs production dependencies, preserves the `data` directory and local environment file, and configures the `sfts-scoreboard.service` systemd unit. It sets `PORT=8080` and `SFTS_KIOSK_MODE=true`, so the local host browser does not require manual token entry. Backend authentication remains enabled for non-kiosk connections.
+The installer checks or installs Node.js, `curl`, and Chromium, installs production dependencies, preserves the `data` directory and local environment file, and configures the `sfts-scoreboard.service` systemd unit. It also configures Raspberry Pi OS Desktop to auto-login and launch Chromium in kiosk mode after boot. The kiosk waits for the server before opening and restarts Chromium if it closes. After verification, the installer gives a 10-second countdown and reboots automatically; use `SFTS_SKIP_REBOOT=true` for a maintenance run without rebooting. It sets `PORT=8080` and `SFTS_KIOSK_MODE=true`, so the local host browser does not require manual token entry. Backend authentication remains enabled for non-kiosk connections.
 
 Open the host dashboard on the Pi at `http://localhost:8080`. Configure the ESP32 remotes with the Pi's Ethernet address, normally `ws://192.168.50.102:8080`, and their matching tokens from `config/remote-config.json`.
 

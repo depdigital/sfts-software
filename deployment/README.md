@@ -11,7 +11,8 @@ deployment/
 ├── config/
 │   └── sfts-scoreboard.env.example
 ├── scripts/
-│   └── check-network.sh
+│   ├── check-network.sh
+│   └── start-kiosk.sh
 └── systemd/
     └── sfts-scoreboard.service
 ```
@@ -39,7 +40,31 @@ bash deployment/scripts/check-network.sh
 sudo bash deployment/install.sh
 ```
 
-`install.sh` is safe to run again. It installs Node.js/npm with APT if `/usr/bin/node` is missing, verifies Node.js 18 or newer, installs production dependencies with `npm ci --omit=dev`, creates the runtime data directory, installs the systemd unit, and enables the service.
+`install.sh` is safe to run again. It installs missing system packages (Node.js/npm, `curl`, and Chromium), verifies Node.js 18 or newer, installs production dependencies with `npm ci --omit=dev`, creates the runtime data directory, installs the systemd unit, and enables the service.
+
+On Raspberry Pi OS Desktop with LightDM, the installer also sets the graphical boot target, enables desktop auto-login for the project user, and registers the kiosk launcher. After a reboot, the expected flow is:
+
+```text
+Pi power on → Raspberry Pi OS desktop auto-login → local server starts → Chromium opens in kiosk mode
+```
+
+The kiosk launcher waits until the local server responds, uses a dedicated Chromium profile with the basic password store (so no keyring prompt is required), and reopens Chromium if it is closed. It uses a lock so rerunning the installer or having both desktop autostart mechanisms enabled cannot create duplicate kiosk windows.
+
+The installer requires Raspberry Pi OS Desktop with LightDM. It intentionally stops with a clear error on Raspberry Pi OS Lite or an unsupported display manager rather than reporting a successful kiosk setup that cannot launch a graphical browser. Desktop auto-login is enabled for this dedicated event kiosk, so anyone with physical access to the Pi can reach the scoreboard without entering a desktop password.
+
+After all checks pass, the installer displays a 10-second countdown and reboots the Pi automatically. The final reboot uses non-interactive sudo, so it never pauses for another password prompt. The initial command may still ask for the normal sudo password once:
+
+```bash
+sudo bash deployment/install.sh
+```
+
+For a maintenance run where you do not want an automatic reboot, use:
+
+```bash
+sudo SFTS_SKIP_REBOOT=true bash deployment/install.sh
+```
+
+The countdown can be changed when needed with `SFTS_REBOOT_DELAY_SECONDS`, for example `sudo SFTS_REBOOT_DELAY_SECONDS=30 bash deployment/install.sh`.
 
 The installer creates `/etc/sfts/sfts-scoreboard.env` from the example only when that file does not already exist. Existing environment settings and the project `data` directory are preserved.
 
@@ -98,6 +123,20 @@ sudo bash deployment/install.sh
 ```
 
 The installer restarts the service through systemd and does not delete saved match or tournament data.
+
+After updating, reboot once to verify the complete power-on flow:
+
+```bash
+sudo reboot
+```
+
+After the desktop appears, verify the kiosk process and server:
+
+```bash
+pgrep -af 'chromium.*sfts-scoreboard-kiosk'
+curl http://127.0.0.1:8080/
+systemctl get-default
+```
 
 ## Secrets and local configuration
 
