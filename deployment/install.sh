@@ -213,7 +213,7 @@ configure_piper() {
   piper_sentence_silence_value="$(escape_sed_value "${PIPER_SENTENCE_SILENCE}")"
   service_user_value="$(escape_sed_value "${SERVICE_USER}")"
   service_group_value="$(escape_sed_value "${SERVICE_GROUP}")"
-  PIPER_SERVICE_TMP="$(mktemp)"
+  PIPER_SERVICE_TMP="$(mktemp "/tmp/${PIPER_SERVICE_NAME}.XXXXXX.service")"
   sed \
     -e "s|@SERVICE_USER@|${service_user_value}|g" \
     -e "s|@SERVICE_GROUP@|${service_group_value}|g" \
@@ -293,7 +293,7 @@ step "Installing and starting the system service"
 PROJECT_VALUE="$(escape_sed_value "${PROJECT_DIR}")"
 USER_VALUE="$(escape_sed_value "${SERVICE_USER}")"
 GROUP_VALUE="$(escape_sed_value "${SERVICE_GROUP}")"
-SERVICE_TMP="$(mktemp)"
+SERVICE_TMP="$(mktemp "/tmp/${SERVICE_NAME}.XXXXXX.service")"
 
 sed \
   -e "s|@PROJECT_DIR@|${PROJECT_VALUE}|g" \
