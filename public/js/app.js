@@ -1,6 +1,6 @@
-let role = 'unknown';
-let hostToken = '';
-let hostAccessToken = '';
+let role = "unknown";
+let hostToken = "";
+let hostAccessToken = "";
 let requestedRole = null;
 let requestedCorner = 0;
 let ws = null;
@@ -12,7 +12,7 @@ let historyCache = [];
 let currentRoundRecord = null;
 let audioCtx;
 let announcementAudio = null;
-let powerAction = '';
+let powerAction = "";
 let powerActionScheduled = false;
 let powerDeadlineAt = 0;
 let powerCountdownTimer = null;
@@ -20,70 +20,87 @@ let powerCountdownTimer = null;
 const $ = (id) => document.getElementById(id);
 
 function connectSocket() {
-  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
+  ws = new WebSocket(
+    (location.protocol === "https:" ? "wss://" : "ws://") + location.host,
+  );
   ws.onopen = () => {
     reconnectDelay = 500;
     if (requestedRole) {
-      send({ type: 'role', role: requestedRole, corner: requestedCorner, accessToken: hostAccessToken });
+      send({
+        type: "role",
+        role: requestedRole,
+        corner: requestedCorner,
+        accessToken: hostAccessToken,
+      });
     }
   };
   ws.onmessage = (event) => {
     const msg = JSON.parse(event.data);
-    if (msg.type === 'roleAccepted') {
+    if (msg.type === "roleAccepted") {
       role = msg.role || role;
-      if (msg.role === 'host') hostToken = msg.hostToken || '';
+      if (msg.role === "host") hostToken = msg.hostToken || "";
     }
-    if (msg.type === 'state') {
+    if (msg.type === "state") {
       lastState = msg.match;
       lastTournament = msg.tournament || null;
       historyCache = msg.matchHistory || [];
       renderState(msg.match);
       renderRemoteStatuses(msg.remotes);
       renderTournament(msg.tournament);
-      if (!$('scheduleModal').classList.contains('hidden')) renderSchedule(msg.tournament);
+      if (!$("scheduleModal").classList.contains("hidden"))
+        renderSchedule(msg.tournament);
     }
-    if (msg.type === 'error') {
-      if (msg.code === 'HOST_UNAUTHORIZED') {
+    if (msg.type === "error") {
+      if (msg.code === "HOST_UNAUTHORIZED") {
         requestedRole = null;
-        role = 'unknown';
-        showScreen('home');
+        role = "unknown";
+        showScreen("home");
       }
-      if (['INVALID_POWER_ACTION', 'SYSTEM_POWER_PENDING', 'NO_SYSTEM_POWER_PENDING'].includes(msg.code)) {
+      if (
+        [
+          "INVALID_POWER_ACTION",
+          "SYSTEM_POWER_PENDING",
+          "NO_SYSTEM_POWER_PENDING",
+        ].includes(msg.code)
+      ) {
         powerActionScheduled = false;
-        $('powerConfirmButton')?.classList.remove('hidden');
-        $('powerConfirmButton').disabled = false;
-        $('powerCancelButton').disabled = false;
-        $('powerCountdownStatus').textContent = msg.message || 'SYSTEM POWER ACTION FAILED';
+        $("powerConfirmButton")?.classList.remove("hidden");
+        $("powerConfirmButton").disabled = false;
+        $("powerCancelButton").disabled = false;
+        $("powerCountdownStatus").textContent =
+          msg.message || "SYSTEM POWER ACTION FAILED";
       }
-      toast(msg.message || 'REQUEST FAILED');
+      toast(msg.message || "REQUEST FAILED");
     }
-    if (msg.type === 'award') {
+    if (msg.type === "award") {
       toast(`MAJORITY ${msg.player} +${msg.points} (${msg.count}/4)`);
     }
-    if (msg.type === 'scoreSound') playPointSound(msg.points);
-    if (msg.type === 'roundEndSound') playWhistle();
-    if (msg.type === 'roundEnd') showRoundSummary(msg.record);
-    if (msg.type === 'kyeShiLimit') {
-      toast('KYE-SHI 1:00 LIMIT REACHED');
-      beep(520, 0.35, 'square', 0.18);
+    if (msg.type === "scoreSound") playPointSound(msg.points);
+    if (msg.type === "roundEndSound") playWhistle();
+    if (msg.type === "roundEnd") showRoundSummary(msg.record);
+    if (msg.type === "kyeShiLimit") {
+      toast("KYE-SHI 1:00 LIMIT REACHED");
+      beep(520, 0.35, "square", 0.18);
     }
-    if (msg.type === 'matchEnd') {
+    if (msg.type === "matchEnd") {
       if (msg.winner) showWinnerSlide(msg.winner, msg.match);
-      else toast('MATCH TIED — RESOLVE IT IN THE SCHEDULE');
+      else toast("MATCH TIED — RESOLVE IT IN THE SCHEDULE");
     }
-    if (msg.type === 'testPress') markTest(msg.corner, msg.player, msg.points, msg.button);
-    if (msg.type === 'testReset') resetTestUi();
-    if (msg.type === 'announcement') announceText(msg.text, msg.audioUrl);
-    if (msg.type === 'systemPowerScheduled') beginPowerCountdown(msg);
-    if (msg.type === 'systemPowerExecuting') {
-      $('powerCountdownStatus').textContent = `${powerActionLabel(msg.action)} STARTING...`;
+    if (msg.type === "testPress")
+      markTest(msg.corner, msg.player, msg.points, msg.button);
+    if (msg.type === "testReset") resetTestUi();
+    if (msg.type === "announcement") announceText(msg.text, msg.audioUrl);
+    if (msg.type === "systemPowerScheduled") beginPowerCountdown(msg);
+    if (msg.type === "systemPowerExecuting") {
+      $("powerCountdownStatus").textContent =
+        `${powerActionLabel(msg.action)} STARTING...`;
     }
-    if (msg.type === 'systemPowerCancelled') {
+    if (msg.type === "systemPowerCancelled") {
       toast(`${powerActionLabel(msg.action || powerAction)} CANCELLED`);
       closePowerModal();
     }
-    if (msg.type === 'systemPowerFailed') {
-      toast(msg.message || 'SYSTEM POWER ACTION FAILED');
+    if (msg.type === "systemPowerFailed") {
+      toast(msg.message || "SYSTEM POWER ACTION FAILED");
       closePowerModal();
     }
   };
@@ -101,218 +118,275 @@ connectSocket();
 
 function send(data) {
   if (ws && ws.readyState === 1) ws.send(JSON.stringify(data));
-  else toast('NOT CONNECTED');
+  else toast("NOT CONNECTED");
 }
 
 function toast(text) {
-  const node = $('toast');
+  const node = $("toast");
   node.textContent = text;
-  node.classList.add('show');
-  setTimeout(() => node.classList.remove('show'), 2200);
+  node.classList.add("show");
+  setTimeout(() => node.classList.remove("show"), 2200);
 }
 
 function showScreen(id) {
-  document.querySelectorAll('.screen').forEach(el => el.classList.add('hidden'));
-  $(id).classList.remove('hidden');
+  document
+    .querySelectorAll(".screen")
+    .forEach((el) => el.classList.add("hidden"));
+  $(id).classList.remove("hidden");
 }
 
 function renderState(match) {
   if (!match) return;
   renderRemoteMode(match.remoteCount);
-  $('redName').textContent = 'HONG';
-  $('blueName').textContent = 'CHUNG';
-  $('redMeta').textContent = playerMetaText(match.red);
-  $('blueMeta').textContent = playerMetaText(match.blue);
-  $('redScore').textContent = match.red.score;
-  $('blueScore').textContent = match.blue.score;
-  $('redGam').textContent = match.red.gamjeom;
-  $('blueGam').textContent = match.blue.gamjeom;
-  $('matchNo').textContent = String(match.matchNo).padStart(3, '0');
-  $('timer').textContent = formatTime(match.timerMs, match.phase === 'ROUND');
-  $('roundText').textContent = match.phase === 'MATCH_END' ? 'MATCH END' : `ROUND ${match.round}`;
-  $('playBtn').textContent = match.running ? '❚❚ PAUSE' : '▶ PLAY';
+  $("redName").textContent = "HONG";
+  $("blueName").textContent = "CHUNG";
+  $("redMeta").textContent = playerMetaText(match.red);
+  $("blueMeta").textContent = playerMetaText(match.blue);
+  $("redScore").textContent = match.red.score;
+  $("blueScore").textContent = match.blue.score;
+  $("redGam").textContent = match.red.gamjeom;
+  $("blueGam").textContent = match.blue.gamjeom;
+  $("matchNo").textContent = String(match.matchNo).padStart(3, "0");
+  $("timer").textContent = formatTime(match.timerMs, match.phase === "ROUND");
+  $("roundText").textContent =
+    match.phase === "MATCH_END" ? "MATCH END" : `ROUND ${match.round}`;
+  $("playBtn").textContent = match.running ? "❚❚ PAUSE" : "▶ PLAY";
   renderKyeShi(match.kyeShi, match);
   renderKyeShiWinnerButtons(match);
-  const activeRemoteCount = Math.min(4, Math.max(1, Number(match.remoteCount) || 4));
-  $('voteStrip').textContent = [1,2,3,4].slice(0, activeRemoteCount).map(c => {
-    const v = match.votes[c];
-    return `C${c} ${v ? v.player[0] + '+' + v.points : '—'}`;
-  }).join('   ');
+  const activeRemoteCount = Math.min(
+    4,
+    Math.max(1, Number(match.remoteCount) || 4),
+  );
+  $("voteStrip").textContent = [1, 2, 3, 4]
+    .slice(0, activeRemoteCount)
+    .map((c) => {
+      const v = match.votes[c];
+      return `C${c} ${v ? v.player[0] + "+" + v.points : "—"}`;
+    })
+    .join("   ");
 
-  if (match.phase === 'BREAK') {
-    $('breakTimeText').textContent = `BREAK ${formatTime(match.timerMs, false)}`;
+  if (match.phase === "BREAK") {
+    $("breakTimeText").textContent =
+      `BREAK ${formatTime(match.timerMs, false)}`;
   }
 
-  if (match.phase !== 'MATCH_END') {
-    $('winnerSlide').classList.add('hidden');
+  if (match.phase !== "MATCH_END") {
+    $("winnerSlide").classList.add("hidden");
   }
 }
 
 function playerMetaText(player) {
-  const name = String(player.playerName || '').trim() || 'PLAYER NAME —';
-  const weight = String(player.weightCategory || '').trim() || 'WEIGHT —';
-  const stateCode = String(player.stateCode || '').trim() || 'STATE —';
-  const district = String(player.district || '').trim() || 'DISTRICT —';
+  const name = String(player.playerName || "").trim() || "PLAYER NAME —";
+  const weight = String(player.weightCategory || "").trim() || "WEIGHT —";
+  const stateCode = String(player.stateCode || "").trim() || "STATE —";
+  const district = String(player.district || "").trim() || "DISTRICT —";
   return `${name} · ${weight} · ${stateCode} · ${district}`;
 }
 
 function formatTime(ms, showTenths = true) {
   const remainingMs = Math.max(0, Number(ms) || 0);
-  if (showTenths && remainingMs <= 10000) return `${(Math.ceil(remainingMs / 100) / 10).toFixed(1)}`;
+  if (showTenths && remainingMs <= 10000)
+    return `${(Math.ceil(remainingMs / 100) / 10).toFixed(1)}`;
   const s = Math.ceil(remainingMs / 1000);
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
 function formatKyeShiTime(ms) {
   const elapsedSeconds = Math.floor(Math.max(0, Number(ms) || 0) / 1000);
-  return `${Math.floor(elapsedSeconds / 60)}:${String(elapsedSeconds % 60).padStart(2, '0')}`;
+  return `${Math.floor(elapsedSeconds / 60)}:${String(elapsedSeconds % 60).padStart(2, "0")}`;
 }
 
 function renderKyeShi(kyeShi, match) {
   const active = Boolean(kyeShi?.active);
-  const panel = $('kyeShiPanel');
-  const startButton = $('kyeShiStartBtn');
+  const panel = $("kyeShiPanel");
+  const startButton = $("kyeShiStartBtn");
   if (!panel || !startButton) return;
-  const canStart = !active && match?.phase === 'ROUND' && Boolean(match.roundStarted || match.running);
-  panel.classList.toggle('hidden', !active);
-  startButton.classList.toggle('hidden', active);
+  const canStart =
+    !active &&
+    match?.phase === "ROUND" &&
+    Boolean(match.roundStarted || match.running);
+  panel.classList.toggle("hidden", !active);
+  startButton.classList.toggle("hidden", active);
   startButton.disabled = !canStart;
   if (!active) return;
 
   const limitReached = Boolean(kyeShi.limitReached);
   const running = Boolean(kyeShi.running);
-  panel.classList.toggle('limitReached', limitReached);
-  panel.classList.toggle('paused', !running && !limitReached);
-  $('kyeShiStatus').textContent = limitReached ? '1:00 LIMIT' : running ? 'RUNNING' : 'SUSPENDED';
-  $('kyeShiTimer').textContent = formatKyeShiTime(kyeShi.elapsedMs);
-  $('kyeShiNotice').textContent = limitReached
-    ? 'MEDICAL TIME LIMIT REACHED — REFEREE DECISION REQUIRED'
+  panel.classList.toggle("limitReached", limitReached);
+  panel.classList.toggle("paused", !running && !limitReached);
+  $("kyeShiStatus").textContent = limitReached
+    ? "1:00 LIMIT"
+    : running
+      ? "RUNNING"
+      : "SUSPENDED";
+  $("kyeShiTimer").textContent = formatKyeShiTime(kyeShi.elapsedMs);
+  $("kyeShiNotice").textContent = limitReached
+    ? "MEDICAL TIME LIMIT REACHED — REFEREE DECISION REQUIRED"
     : kyeShi.elapsedMs >= 40000
-      ? 'ANNOUNCE ELAPSED TIME EVERY 5 SECONDS'
-      : 'MATCH CLOCK PAUSED';
-  $('kyeShiToggleBtn').disabled = limitReached;
-  $('kyeShiToggleBtn').textContent = running ? 'SUSPEND KYE-SHI' : limitReached ? 'LIMIT REACHED' : 'RESUME KYE-SHI';
-  $('kyeShiEndBtn').textContent = kyeShi.resumeMatch ? 'END & RESUME MATCH' : 'END KYE-SHI';
+      ? "ANNOUNCE ELAPSED TIME EVERY 5 SECONDS"
+      : "MATCH CLOCK PAUSED";
+  $("kyeShiToggleBtn").disabled = limitReached;
+  $("kyeShiToggleBtn").textContent = running
+    ? "SUSPEND KYE-SHI"
+    : limitReached
+      ? "LIMIT REACHED"
+      : "RESUME KYE-SHI";
+  $("kyeShiEndBtn").textContent = kyeShi.resumeMatch
+    ? "END & RESUME MATCH"
+    : "END KYE-SHI";
 }
 
 function renderKyeShiWinnerButtons(match) {
-  const decisionAvailable = match?.phase === 'ROUND' && match.kyeShi?.active && match.kyeShi.limitReached;
-  $('redDeclareWinnerButton')?.classList.toggle('hidden', !decisionAvailable);
-  $('blueDeclareWinnerButton')?.classList.toggle('hidden', !decisionAvailable);
+  const decisionAvailable =
+    match?.phase === "ROUND" &&
+    match.kyeShi?.active &&
+    match.kyeShi.limitReached;
+  $("redDeclareWinnerButton")?.classList.toggle("hidden", !decisionAvailable);
+  $("blueDeclareWinnerButton")?.classList.toggle("hidden", !decisionAvailable);
 }
 
 function parseTime(value) {
   const text = String(value).trim();
-  const parts = text.split(':');
+  const parts = text.split(":");
   if (parts.length === 1) return Math.max(1000, Number(parts[0] || 0) * 1000);
-  return Math.max(1000, ((Number(parts[0] || 0) * 60) + Number(parts[1] || 0)) * 1000);
+  return Math.max(
+    1000,
+    (Number(parts[0] || 0) * 60 + Number(parts[1] || 0)) * 1000,
+  );
 }
 
 function openHost() {
-  role = 'host';
-  requestedRole = 'host';
+  role = "host";
+  requestedRole = "host";
   requestedCorner = 0;
-  hostAccessToken = $('hostAccessToken')?.value.trim() || '';
-  send({ type: 'role', role: 'host', accessToken: hostAccessToken });
-  showScreen('host');
+  hostAccessToken = $("hostAccessToken")?.value.trim() || "";
+  send({ type: "role", role: "host", accessToken: hostAccessToken });
+  showScreen("host");
 }
 
 function nameChange(player, value) {
-  send({ type: 'host', action: 'name', player, name: value });
+  send({ type: "host", action: "name", player, name: value });
 }
-function playPause() { send({ type: 'host', action: 'playPause' }); }
-function resetRoundTimer() { send({ type: 'host', action: 'resetRoundTimer' }); }
-function startKyeShi() { send({ type: 'host', action: 'startKyeShi' }); }
+function playPause() {
+  send({ type: "host", action: "playPause" });
+}
+function resetRoundTimer() {
+  send({ type: "host", action: "resetRoundTimer" });
+}
+function startKyeShi() {
+  send({ type: "host", action: "startKyeShi" });
+}
 function toggleKyeShi() {
   if (!lastState?.kyeShi) return;
   if (lastState.kyeShi.running) {
-    if (confirm('Suspend the Kye-shi timer?')) send({ type: 'host', action: 'pauseKyeShi' });
+    if (confirm("Suspend the Kye-shi timer?"))
+      send({ type: "host", action: "pauseKyeShi" });
   } else {
-    send({ type: 'host', action: 'resumeKyeShi' });
+    send({ type: "host", action: "resumeKyeShi" });
   }
 }
 function endKyeShi() {
-  if (confirm('End Kye-shi and resume the match timer?')) send({ type: 'host', action: 'endKyeShi' });
+  if (confirm("End Kye-shi and resume the match timer?"))
+    send({ type: "host", action: "endKyeShi" });
 }
 function declareWinner(player) {
-  const name = player === 'RED' ? 'HONG' : 'CHUNG';
+  const name = player === "RED" ? "HONG" : "CHUNG";
   if (confirm(`Declare ${name} the winner of the entire match?`)) {
-    send({ type: 'host', action: 'declareKyeShiWinner', player });
+    send({ type: "host", action: "declareKyeShiWinner", player });
   }
 }
-function manualPoint(player, points) { send({ type: 'host', action: 'point', player, points }); }
-function manualHeadPoint(player) { send({ type: 'host', action: 'headPoint', player }); }
-function manualGam(player) { send({ type: 'host', action: 'gamjeom', player }); }
+function manualPoint(player, points) {
+  send({ type: "host", action: "point", player, points });
+}
+function manualHeadPoint(player) {
+  send({ type: "host", action: "headPoint", player });
+}
+function manualGam(player) {
+  send({ type: "host", action: "gamjeom", player });
+}
 
 function editScore(player) {
   if (!lastState) return;
-  const current = player === 'RED' ? lastState.red.score : lastState.blue.score;
+  const current = player === "RED" ? lastState.red.score : lastState.blue.score;
   const value = prompt(`Set ${player} score`, current);
-  if (value !== null) send({ type: 'host', action: 'editScore', player, value: Number(value) });
+  if (value !== null)
+    send({ type: "host", action: "editScore", player, value: Number(value) });
 }
 function editGam(player) {
   if (!lastState) return;
-  const current = player === 'RED' ? lastState.red.gamjeom : lastState.blue.gamjeom;
+  const current =
+    player === "RED" ? lastState.red.gamjeom : lastState.blue.gamjeom;
   const value = prompt(`Set ${player} gam-jeom`, current);
-  if (value !== null) send({ type: 'host', action: 'editGamjeom', player, value: Number(value) });
+  if (value !== null)
+    send({ type: "host", action: "editGamjeom", player, value: Number(value) });
 }
 
-function openSettings() { $('settingsModal').classList.remove('hidden'); }
-function closeSettings() { $('settingsModal').classList.add('hidden'); }
+function openSettings() {
+  $("settingsModal").classList.remove("hidden");
+}
+function closeSettings() {
+  $("settingsModal").classList.add("hidden");
+}
 function powerActionLabel(action = powerAction) {
-  return String(action || '').toUpperCase() === 'SHUTDOWN' ? 'SHUTDOWN' : 'REBOOT';
+  return String(action || "").toUpperCase() === "SHUTDOWN"
+    ? "SHUTDOWN"
+    : "REBOOT";
 }
 function openPowerAction(action) {
-  const normalized = String(action || '').toLowerCase();
-  if (normalized !== 'reboot' && normalized !== 'shutdown') return;
+  const normalized = String(action || "").toLowerCase();
+  if (normalized !== "reboot" && normalized !== "shutdown") return;
   closeSettings();
   powerAction = normalized;
   powerActionScheduled = false;
-  $('powerActionTitle').textContent = powerActionLabel(normalized);
-  $('powerActionMessage').textContent = `${powerActionLabel(normalized)} the Raspberry Pi? The scoreboard will become unavailable.`;
-  $('powerCountdown').classList.add('hidden');
-  $('powerCountdownStatus').textContent = 'The action will begin after a 15-second countdown.';
-  $('powerConfirmButton').textContent = `START ${powerActionLabel(normalized)}`;
-  $('powerConfirmButton').disabled = false;
-  $('powerCancelButton').disabled = false;
-  $('powerModal').classList.remove('hidden');
+  $("powerActionTitle").textContent = powerActionLabel(normalized);
+  $("powerActionMessage").textContent =
+    `${powerActionLabel(normalized)} SFTS? The scoreboard will become unavailable.`;
+  $("powerCountdown").classList.add("hidden");
+  $("powerCountdownStatus").textContent =
+    "The action will begin after a 15-second countdown.";
+  $("powerConfirmButton").textContent = `START ${powerActionLabel(normalized)}`;
+  $("powerConfirmButton").disabled = false;
+  $("powerCancelButton").disabled = false;
+  $("powerModal").classList.remove("hidden");
 }
 function confirmPowerAction() {
   if (!powerAction || powerActionScheduled) return;
   powerActionScheduled = true;
-  $('powerConfirmButton').disabled = true;
-  $('powerCountdownStatus').textContent = 'Requesting system power action...';
-  send({ type: 'host', action: 'systemPower', powerAction });
+  $("powerConfirmButton").disabled = true;
+  $("powerCountdownStatus").textContent = "Requesting system power action...";
+  send({ type: "host", action: "systemPower", powerAction });
 }
 function beginPowerCountdown(message) {
-  powerAction = String(message.action || '').toLowerCase();
+  powerAction = String(message.action || "").toLowerCase();
   powerActionScheduled = true;
   powerDeadlineAt = Number(message.deadlineAt) || Date.now() + 15000;
-  $('powerActionTitle').textContent = powerActionLabel(powerAction);
-  $('powerActionMessage').textContent = `${powerActionLabel(powerAction)} has been scheduled. Keep this window open to cancel.`;
-  $('powerCountdown').classList.remove('hidden');
-  $('powerConfirmButton').classList.add('hidden');
-  $('powerCancelButton').disabled = false;
-  $('powerCountdownStatus').textContent = `${powerActionLabel(powerAction)} will start in 15 seconds.`;
-  $('powerModal').classList.remove('hidden');
+  $("powerActionTitle").textContent = powerActionLabel(powerAction);
+  $("powerActionMessage").textContent =
+    `${powerActionLabel(powerAction)} has been scheduled. Keep this window open to cancel.`;
+  $("powerCountdown").classList.remove("hidden");
+  $("powerConfirmButton").classList.add("hidden");
+  $("powerCancelButton").disabled = false;
+  $("powerCountdownStatus").textContent =
+    `${powerActionLabel(powerAction)} will start in 15 seconds.`;
+  $("powerModal").classList.remove("hidden");
   clearInterval(powerCountdownTimer);
   updatePowerCountdown();
   powerCountdownTimer = setInterval(updatePowerCountdown, 100);
 }
 function updatePowerCountdown() {
   const remainingMs = Math.max(0, powerDeadlineAt - Date.now());
-  $('powerCountdown').textContent = String(Math.ceil(remainingMs / 1000));
+  $("powerCountdown").textContent = String(Math.ceil(remainingMs / 1000));
   if (remainingMs <= 0) {
     clearInterval(powerCountdownTimer);
     powerCountdownTimer = null;
-    $('powerCountdownStatus').textContent = `${powerActionLabel()} STARTING...`;
+    $("powerCountdownStatus").textContent = `${powerActionLabel()} STARTING...`;
   }
 }
 function cancelPowerAction() {
   if (powerActionScheduled) {
-    $('powerCancelButton').disabled = true;
-    $('powerCountdownStatus').textContent = 'Cancelling system power action...';
-    send({ type: 'host', action: 'cancelSystemPower' });
+    $("powerCancelButton").disabled = true;
+    $("powerCountdownStatus").textContent = "Cancelling system power action...";
+    send({ type: "host", action: "cancelSystemPower" });
     return;
   }
   closePowerModal();
@@ -320,57 +394,59 @@ function cancelPowerAction() {
 function closePowerModal() {
   clearInterval(powerCountdownTimer);
   powerCountdownTimer = null;
-  powerAction = '';
+  powerAction = "";
   powerActionScheduled = false;
   powerDeadlineAt = 0;
-  $('powerModal').classList.add('hidden');
-  $('powerCountdown').classList.add('hidden');
-  $('powerConfirmButton').classList.remove('hidden');
-  $('powerConfirmButton').disabled = false;
-  $('powerCancelButton').disabled = false;
+  $("powerModal").classList.add("hidden");
+  $("powerCountdown").classList.add("hidden");
+  $("powerConfirmButton").classList.remove("hidden");
+  $("powerConfirmButton").disabled = false;
+  $("powerCancelButton").disabled = false;
 }
 function openPlayerSettings() {
   closeSettings();
   if (!lastState) return;
-  $('playerRedName').value = lastState.red.playerName || '';
-  $('playerRedWeight').value = lastState.red.weightCategory || '';
-  $('playerRedDistrict').value = lastState.red.district || '';
-  $('playerRedStateCode').value = lastState.red.stateCode || '';
-  $('playerBlueName').value = lastState.blue.playerName || '';
-  $('playerBlueWeight').value = lastState.blue.weightCategory || '';
-  $('playerBlueDistrict').value = lastState.blue.district || '';
-  $('playerBlueStateCode').value = lastState.blue.stateCode || '';
+  $("playerRedName").value = lastState.red.playerName || "";
+  $("playerRedWeight").value = lastState.red.weightCategory || "";
+  $("playerRedDistrict").value = lastState.red.district || "";
+  $("playerRedStateCode").value = lastState.red.stateCode || "";
+  $("playerBlueName").value = lastState.blue.playerName || "";
+  $("playerBlueWeight").value = lastState.blue.weightCategory || "";
+  $("playerBlueDistrict").value = lastState.blue.district || "";
+  $("playerBlueStateCode").value = lastState.blue.stateCode || "";
   renderTournament(lastTournament);
-  $('playerSettingsModal').classList.remove('hidden');
+  $("playerSettingsModal").classList.remove("hidden");
 }
-function closePlayerSettings() { $('playerSettingsModal').classList.add('hidden'); }
+function closePlayerSettings() {
+  $("playerSettingsModal").classList.add("hidden");
+}
 function savePlayerSettings() {
   send({
-    type: 'host',
-    action: 'playerSettings',
+    type: "host",
+    action: "playerSettings",
     players: {
       RED: {
-        playerName: $('playerRedName').value,
-        weightCategory: $('playerRedWeight').value,
-        stateCode: $('playerRedStateCode').value,
-        district: $('playerRedDistrict').value
+        playerName: $("playerRedName").value,
+        weightCategory: $("playerRedWeight").value,
+        stateCode: $("playerRedStateCode").value,
+        district: $("playerRedDistrict").value,
       },
       BLUE: {
-        playerName: $('playerBlueName').value,
-        weightCategory: $('playerBlueWeight').value,
-        stateCode: $('playerBlueStateCode').value,
-        district: $('playerBlueDistrict').value
-      }
-    }
+        playerName: $("playerBlueName").value,
+        weightCategory: $("playerBlueWeight").value,
+        stateCode: $("playerBlueStateCode").value,
+        district: $("playerBlueDistrict").value,
+      },
+    },
   });
   closePlayerSettings();
 }
 
 function renderTournament(tournament) {
-  const status = $('tournamentImportStatus');
+  const status = $("tournamentImportStatus");
   if (!status) return;
   if (!tournament || !tournament.players || !tournament.players.length) {
-    status.textContent = 'NO TOURNAMENT SHEET IMPORTED';
+    status.textContent = "NO TOURNAMENT SHEET IMPORTED";
     return;
   }
   const groupCount = (tournament.groups || []).length;
@@ -379,14 +455,16 @@ function renderTournament(tournament) {
 
 async function downloadFile(path, fallbackName) {
   if (!hostToken) {
-    toast('HOST SESSION REQUIRED');
+    toast("HOST SESSION REQUIRED");
     return;
   }
   try {
-    const response = await fetch(path, { headers: { 'X-SFTS-Host-Token': hostToken } });
+    const response = await fetch(path, {
+      headers: { "X-SFTS-Host-Token": hostToken },
+    });
     if (!response.ok) throw new Error(`DOWNLOAD FAILED (${response.status})`);
     const blob = await response.blob();
-    const link = document.createElement('a');
+    const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
     link.download = fallbackName;
     document.body.appendChild(link);
@@ -394,133 +472,159 @@ async function downloadFile(path, fallbackName) {
     link.remove();
     setTimeout(() => URL.revokeObjectURL(link.href), 1000);
   } catch (error) {
-    toast(error.message || 'DOWNLOAD FAILED');
+    toast(error.message || "DOWNLOAD FAILED");
   }
 }
 
 function downloadPlayerTemplate() {
-  downloadFile('/api/tournament/template.xlsx', 'sfts-player-template.xlsx');
+  downloadFile("/api/tournament/template.xlsx", "sfts-player-template.xlsx");
 }
 
 async function uploadPlayerSheet() {
-  const input = $('playerSheetFile');
+  const input = $("playerSheetFile");
   const file = input && input.files[0];
   if (!file) {
-    toast('SELECT AN EXCEL FILE');
+    toast("SELECT AN EXCEL FILE");
     return;
   }
   if (!hostToken) {
-    toast('HOST SESSION REQUIRED');
+    toast("HOST SESSION REQUIRED");
     return;
   }
-  const status = $('tournamentImportStatus');
-  status.textContent = 'IMPORTING PLAYER SHEET...';
+  const status = $("tournamentImportStatus");
+  status.textContent = "IMPORTING PLAYER SHEET...";
   try {
-    const response = await fetch('/api/tournament/import', {
-      method: 'POST',
+    const response = await fetch("/api/tournament/import", {
+      method: "POST",
       headers: {
-        'Content-Type': file.type || 'application/octet-stream',
-        'X-SFTS-Host-Token': hostToken
+        "Content-Type": file.type || "application/octet-stream",
+        "X-SFTS-Host-Token": hostToken,
       },
-      body: file
+      body: file,
     });
     const result = await response.json();
     if (!response.ok || !result.ok) {
-      const details = result.errors && result.errors.length ? `: ${result.errors.join('; ')}` : '';
-      throw new Error(`${result.message || 'IMPORT FAILED'}${details}`);
+      const details =
+        result.errors && result.errors.length
+          ? `: ${result.errors.join("; ")}`
+          : "";
+      throw new Error(`${result.message || "IMPORT FAILED"}${details}`);
     }
     lastTournament = result.tournament;
     renderTournament(result.tournament);
-    toast('SCHEDULE GENERATED');
+    toast("SCHEDULE GENERATED");
   } catch (error) {
-    status.textContent = error.message || 'IMPORT FAILED';
-    toast('PLAYER SHEET IMPORT FAILED');
+    status.textContent = error.message || "IMPORT FAILED";
+    toast("PLAYER SHEET IMPORT FAILED");
   }
 }
 
 function openSchedule() {
   closePlayerSettings();
   renderSchedule(lastTournament);
-  $('scheduleModal').classList.remove('hidden');
+  $("scheduleModal").classList.remove("hidden");
 }
 
-function closeSchedule() { $('scheduleModal').classList.add('hidden'); }
+function closeSchedule() {
+  $("scheduleModal").classList.add("hidden");
+}
 
 function renderSchedule(tournament) {
-  const summary = $('scheduleSummary');
-  const table = $('scheduleTable');
+  const summary = $("scheduleSummary");
+  const table = $("scheduleTable");
   if (!summary || !table) return;
   if (!tournament || !tournament.players || !tournament.players.length) {
-    summary.textContent = 'NO TOURNAMENT SHEET IMPORTED';
-    table.innerHTML = '<p>Import a player sheet from PLAYER SETTINGS first.</p>';
+    summary.textContent = "NO TOURNAMENT SHEET IMPORTED";
+    table.innerHTML =
+      "<p>Import a player sheet from PLAYER SETTINGS first.</p>";
     return;
   }
   const groups = tournament.groups || [];
-  const byeCount = groups.reduce((total, group) => total + (group.byePlayerIds || []).length, 0);
+  const byeCount = groups.reduce(
+    (total, group) => total + (group.byePlayerIds || []).length,
+    0,
+  );
   summary.textContent = `${tournament.players.length} players · ${groups.length} groups · ${(tournament.schedule || []).length} bouts · ${byeCount} bye allocation(s) · seed ${tournament.seed}`;
   const entries = [
     ...(tournament.schedule || []),
-    ...(tournament.byes || []).map(bye => ({
-      boutNo: '—', groupId: bye.groupId, gender: bye.gender, weightCategory: bye.weightCategory,
-      round: bye.round, redPlayerName: bye.playerName, bluePlayerName: 'BYE', status: 'BYE', isBye: true
-    }))
+    ...(tournament.byes || []).map((bye) => ({
+      boutNo: "—",
+      groupId: bye.groupId,
+      gender: bye.gender,
+      weightCategory: bye.weightCategory,
+      round: bye.round,
+      redPlayerName: bye.playerName,
+      bluePlayerName: "BYE",
+      status: "BYE",
+      isBye: true,
+    })),
   ];
   if (!entries.length) {
-    table.innerHTML = '<p>No bouts were generated. Check that each group has at least two players.</p>';
+    table.innerHTML =
+      "<p>No bouts were generated. Check that each group has at least two players.</p>";
     return;
   }
   table.innerHTML = `<table>
     <thead><tr><th>BOUT</th><th>GROUP</th><th>GENDER</th><th>WEIGHT</th><th>ROUND</th><th>RED</th><th>BLUE</th><th>WINNER</th><th>STATUS</th><th>ACTIONS</th></tr></thead>
-    <tbody>${entries.map(bout => {
-      const canLoad = !bout.isBye && (bout.status === 'SCHEDULED' || bout.status === 'IN_PROGRESS');
-      const canAnnounce = !bout.isBye && (bout.status === 'SCHEDULED' || bout.status === 'IN_PROGRESS');
-      return `<tr class="${bout.status === 'COMPLETED' ? 'completed' : bout.status === 'IN_PROGRESS' ? 'inProgress' : ''}">
+    <tbody>${entries
+      .map((bout) => {
+        const canLoad =
+          !bout.isBye &&
+          (bout.status === "SCHEDULED" || bout.status === "IN_PROGRESS");
+        const canAnnounce =
+          !bout.isBye &&
+          (bout.status === "SCHEDULED" || bout.status === "IN_PROGRESS");
+        return `<tr class="${bout.status === "COMPLETED" ? "completed" : bout.status === "IN_PROGRESS" ? "inProgress" : ""}">
         <td>${bout.boutNo}</td><td>${escapeHtml(bout.groupId)}</td><td>${escapeHtml(bout.gender)}</td>
         <td>${escapeHtml(bout.weightCategory)}</td><td>${bout.round}</td>
         <td>${escapeHtml(bout.redPlayerName)}</td><td>${escapeHtml(bout.bluePlayerName)}</td>
-        <td>${escapeHtml(bout.winnerName || '—')}</td>
+        <td>${escapeHtml(bout.winnerName || "—")}</td>
         <td>${escapeHtml(bout.status)}</td>
         <td class="scheduleRowActions">
-          ${canLoad ? `<button onclick="loadScheduledBout(${bout.boutNo})">LOAD</button>` : ''}
-          ${canAnnounce ? `<button onclick="announceScheduledBout(${bout.boutNo})">ANNOUNCE</button>` : ''}
-          ${bout.status === 'TIE_PENDING' ? `<button onclick="resolveScheduledTie(${bout.boutNo}, 'RED')">RED WINS</button><button onclick="resolveScheduledTie(${bout.boutNo}, 'BLUE')">BLUE WINS</button>` : ''}
+          ${canLoad ? `<button onclick="loadScheduledBout(${bout.boutNo})">LOAD</button>` : ""}
+          ${canAnnounce ? `<button onclick="announceScheduledBout(${bout.boutNo})">ANNOUNCE</button>` : ""}
+          ${bout.status === "TIE_PENDING" ? `<button onclick="resolveScheduledTie(${bout.boutNo}, 'RED')">RED WINS</button><button onclick="resolveScheduledTie(${bout.boutNo}, 'BLUE')">BLUE WINS</button>` : ""}
         </td>
       </tr>`;
-    }).join('')}</tbody>
+      })
+      .join("")}</tbody>
   </table>`;
 }
 
 function downloadTournamentSchedule(format) {
-  const extension = format === 'csv' ? 'csv' : 'xlsx';
-  downloadFile(`/api/tournament/schedule.${extension}`, `sfts-tournament-schedule.${extension}`);
+  const extension = format === "csv" ? "csv" : "xlsx";
+  downloadFile(
+    `/api/tournament/schedule.${extension}`,
+    `sfts-tournament-schedule.${extension}`,
+  );
 }
 
 function printSchedule() {
-  if ($('scheduleModal').classList.contains('hidden')) openSchedule();
+  if ($("scheduleModal").classList.contains("hidden")) openSchedule();
   setTimeout(() => window.print(), 100);
 }
 
 function announceScheduledBout(boutNo) {
-  send({ type: 'host', action: 'announceBout', boutNo });
+  send({ type: "host", action: "announceBout", boutNo });
 }
 
 function resolveScheduledTie(boutNo, winner) {
   if (!confirm(`Resolve this tied bout in favor of ${winner}?`)) return;
-  send({ type: 'host', action: 'resolveTie', boutNo, winner });
+  send({ type: "host", action: "resolveTie", boutNo, winner });
 }
 
 function loadScheduledBout(boutNo) {
-  send({ type: 'host', action: 'loadBout', boutNo });
+  send({ type: "host", action: "loadBout", boutNo });
   closeSchedule();
 }
 
 function browserAnnounce(text) {
-  if (!('speechSynthesis' in window)) return;
+  if (!("speechSynthesis" in window)) return;
   window.speechSynthesis.cancel();
   window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
 }
 
-function announceText(text, audioUrl = '') {
+function announceText(text, audioUrl = "") {
   if (!text) return;
   toast(text);
   if (announcementAudio) {
@@ -528,7 +632,7 @@ function announceText(text, audioUrl = '') {
     announcementAudio.currentTime = 0;
     announcementAudio = null;
   }
-  if (audioUrl && typeof Audio === 'function') {
+  if (audioUrl && typeof Audio === "function") {
     const audio = new Audio(audioUrl);
     let fallbackUsed = false;
     const fallback = () => {
@@ -536,14 +640,19 @@ function announceText(text, audioUrl = '') {
       fallbackUsed = true;
       browserAnnounce(text);
     };
-    audio.addEventListener('error', fallback, { once: true });
-    audio.addEventListener('ended', () => {
-      if (announcementAudio === audio) announcementAudio = null;
-    }, { once: true });
+    audio.addEventListener("error", fallback, { once: true });
+    audio.addEventListener(
+      "ended",
+      () => {
+        if (announcementAudio === audio) announcementAudio = null;
+      },
+      { once: true },
+    );
     announcementAudio = audio;
     try {
       const playPromise = audio.play();
-      if (playPromise && typeof playPromise.catch === 'function') playPromise.catch(fallback);
+      if (playPromise && typeof playPromise.catch === "function")
+        playPromise.catch(fallback);
     } catch {
       fallback();
     }
@@ -552,98 +661,113 @@ function announceText(text, audioUrl = '') {
   browserAnnounce(text);
 }
 function resetCurrentMatch() {
-  if (confirm('Reset the current match?')) send({ type: 'host', action: 'resetMatch' });
+  if (confirm("Reset the current match?"))
+    send({ type: "host", action: "resetMatch" });
   closeSettings();
 }
 
 function openTimerEditor() {
   closeSettings();
-  if (lastState) $('timeInput').value = formatTime(lastState.configuredRoundMs);
-  $('timerModal').classList.remove('hidden');
+  if (lastState) $("timeInput").value = formatTime(lastState.configuredRoundMs);
+  $("timerModal").classList.remove("hidden");
 }
-function closeTimerEditor() { $('timerModal').classList.add('hidden'); }
+function closeTimerEditor() {
+  $("timerModal").classList.add("hidden");
+}
 function saveTimer() {
-  send({ type: 'host', action: 'setTime', ms: parseTime($('timeInput').value) });
+  send({
+    type: "host",
+    action: "setTime",
+    ms: parseTime($("timeInput").value),
+  });
   closeTimerEditor();
 }
 
 function openHistory() {
   closeSettings();
-  const box = $('historyList');
+  const box = $("historyList");
   if (!historyCache.length) {
-    box.innerHTML = '<p>No completed matches yet.</p>';
+    box.innerHTML = "<p>No completed matches yet.</p>";
   } else {
-    box.innerHTML = historyCache.map(item => `
+    box.innerHTML = historyCache
+      .map(
+        (item) => `
       <div class="historyItem">
-        <div><b>MATCH ${String(item.matchNo).padStart(3, '0')}</b></div>
+        <div><b>MATCH ${String(item.matchNo).padStart(3, "0")}</b></div>
         <div>${escapeHtml(item.redName)} vs ${escapeHtml(item.blueName)}</div>
-        <div><strong>${escapeHtml(item.winnerName)}</strong> — ${escapeHtml(item.reason || '')}</div>
+        <div><strong>${escapeHtml(item.winnerName)}</strong> — ${escapeHtml(item.reason || "")}</div>
         <div>${item.rounds.length} round(s)</div>
       </div>
-    `).join('');
+    `,
+      )
+      .join("");
   }
-  $('historyModal').classList.remove('hidden');
+  $("historyModal").classList.remove("hidden");
 }
-function closeHistory() { $('historyModal').classList.add('hidden'); }
+function closeHistory() {
+  $("historyModal").classList.add("hidden");
+}
 
 function showRoundSummary(record) {
   currentRoundRecord = record;
   const redName = record.red.playerName || record.red.name;
   const blueName = record.blue.playerName || record.blue.name;
-  $('roundTitle').textContent = record.winner
-    ? `${record.winner === 'RED' ? redName : blueName} WON ROUND ${record.round}`
+  $("roundTitle").textContent = record.winner
+    ? `${record.winner === "RED" ? redName : blueName} WON ROUND ${record.round}`
     : `ROUND ${record.round} COMPLETE`;
-  $('roundReason').textContent = record.reason;
-  $('summaryRedName').textContent = redName;
-  $('summaryBlueName').textContent = blueName;
-  $('summaryRedScore').textContent = record.red.score;
-  $('summaryBlueScore').textContent = record.blue.score;
-  $('summaryRedGam').textContent = record.red.gamjeom;
-  $('summaryBlueGam').textContent = record.blue.gamjeom;
-  $('summaryRedP1').textContent = record.red.stats.plus1;
-  $('summaryRedP2').textContent = record.red.stats.plus2;
-  $('summaryRedP3').textContent = record.red.stats.plus3;
-  $('summaryBlueP1').textContent = record.blue.stats.plus1;
-  $('summaryBlueP2').textContent = record.blue.stats.plus2;
-  $('summaryBlueP3').textContent = record.blue.stats.plus3;
-  $('roundOverlay').classList.remove('hidden');
+  $("roundReason").textContent = record.reason;
+  $("summaryRedName").textContent = redName;
+  $("summaryBlueName").textContent = blueName;
+  $("summaryRedScore").textContent = record.red.score;
+  $("summaryBlueScore").textContent = record.blue.score;
+  $("summaryRedGam").textContent = record.red.gamjeom;
+  $("summaryBlueGam").textContent = record.blue.gamjeom;
+  $("summaryRedP1").textContent = record.red.stats.plus1;
+  $("summaryRedP2").textContent = record.red.stats.plus2;
+  $("summaryRedP3").textContent = record.red.stats.plus3;
+  $("summaryBlueP1").textContent = record.blue.stats.plus1;
+  $("summaryBlueP2").textContent = record.blue.stats.plus2;
+  $("summaryBlueP3").textContent = record.blue.stats.plus3;
+  $("roundOverlay").classList.remove("hidden");
 }
-function closeRoundOverlay() { $('roundOverlay').classList.add('hidden'); }
+function closeRoundOverlay() {
+  $("roundOverlay").classList.add("hidden");
+}
 
 function showWinnerSlide(winner, match) {
   if (!winner) return;
-  const side = winner === 'RED' ? match.red : match.blue;
+  const side = winner === "RED" ? match.red : match.blue;
   const name = side.playerName || side.name;
-  $('winnerNameText').textContent = name;
-  $('winnerSlide').classList.remove('redWinner', 'blueWinner', 'hidden');
-  $('winnerSlide').classList.add(winner === 'RED' ? 'redWinner' : 'blueWinner');
+  $("winnerNameText").textContent = name;
+  $("winnerSlide").classList.remove("redWinner", "blueWinner", "hidden");
+  $("winnerSlide").classList.add(winner === "RED" ? "redWinner" : "blueWinner");
 }
 function startNewMatch() {
-  send({ type: 'host', action: 'newMatch' });
-  $('winnerSlide').classList.add('hidden');
-  $('roundOverlay').classList.add('hidden');
+  send({ type: "host", action: "newMatch" });
+  $("winnerSlide").classList.add("hidden");
+  $("roundOverlay").classList.add("hidden");
 }
 
 function openTestMode() {
   closeSettings();
   resetTestUi();
-  showScreen('testMode');
-  send({ type: 'host', action: 'testStart' });
+  showScreen("testMode");
+  send({ type: "host", action: "testStart" });
 }
 function closeTestMode() {
-  send({ type: 'host', action: 'testStop' });
-  showScreen('host');
+  send({ type: "host", action: "testStop" });
+  showScreen("host");
 }
 function changeRemoteMode(value) {
-  send({ type: 'host', action: 'setRemoteMode', count: Number(value) });
+  send({ type: "host", action: "setRemoteMode", count: Number(value) });
 }
 function renderRemoteMode(count) {
   const activeCount = Math.min(4, Math.max(1, Number(count) || 4));
-  const select = $('remoteMode');
+  const select = $("remoteMode");
   if (select) select.value = String(activeCount);
   for (let corner = 1; corner <= 4; corner += 1) {
     const card = $(`joy${corner}`);
-    if (card) card.classList.toggle('hidden', corner > activeCount);
+    if (card) card.classList.toggle("hidden", corner > activeCount);
   }
 }
 function renderRemoteStatuses(remotes) {
@@ -651,41 +775,58 @@ function renderRemoteStatuses(remotes) {
   for (let corner = 1; corner <= 4; corner += 1) {
     const info = $(`remoteInfo${corner}`);
     if (!info) continue;
-    const status = statuses.find(item => Number(item.corner) === corner);
+    const status = statuses.find((item) => Number(item.corner) === corner);
     const connected = status?.connected === true;
-    const rssi = Number.isInteger(status?.rssi) ? `${status.rssi} dBm` : '—';
-    const battery = Number.isFinite(status?.battery) ? `${status.battery}%` : '—';
-    info.textContent = `${connected ? 'CONNECTED' : 'DISCONNECTED'} · RSSI ${rssi} · BATTERY ${battery}`;
-    info.classList.toggle('connected', connected);
-    info.classList.toggle('disconnected', !connected);
+    const rssi = Number.isInteger(status?.rssi) ? `${status.rssi} dBm` : "—";
+    const battery = Number.isFinite(status?.battery)
+      ? `${status.battery}%`
+      : "—";
+    info.textContent = `${connected ? "CONNECTED" : "DISCONNECTED"} · RSSI ${rssi} · BATTERY ${battery}`;
+    info.classList.toggle("connected", connected);
+    info.classList.toggle("disconnected", !connected);
   }
 }
 function resetTestUi() {
   for (let i = 1; i <= 4; i++) {
     const joy = $(`joy${i}`);
     if (!joy) continue;
-    joy.classList.remove('passed');
-    joy.querySelectorAll('i').forEach(el => el.classList.remove('litRed', 'litBlue'));
+    joy.classList.remove("passed");
+    joy
+      .querySelectorAll("i")
+      .forEach((el) => el.classList.remove("litRed", "litBlue"));
   }
 }
-function markTest(corner, player, points, button = '') {
+function markTest(corner, player, points, button = "") {
   const joy = $(`joy${corner}`);
   if (!joy) return;
   const buttonId = button || `${player}_${points}`;
-  const item = joy.querySelector(`[data-key="${buttonId.replace('_', '-')}"]`);
-  if (item) item.classList.add(player === 'RED' ? 'litRed' : 'litBlue');
-  const all = ['RED-1','RED-2','RED-3','RED-TECHNICAL','BLUE-1','BLUE-2','BLUE-3','BLUE-TECHNICAL'];
-  const done = all.every(key => {
+  const item = joy.querySelector(`[data-key="${buttonId.replace("_", "-")}"]`);
+  if (item) item.classList.add(player === "RED" ? "litRed" : "litBlue");
+  const all = [
+    "RED-1",
+    "RED-2",
+    "RED-3",
+    "RED-TECHNICAL",
+    "BLUE-1",
+    "BLUE-2",
+    "BLUE-3",
+    "BLUE-TECHNICAL",
+  ];
+  const done = all.every((key) => {
     const el = joy.querySelector(`[data-key="${key}"]`);
-    return el && (el.classList.contains('litRed') || el.classList.contains('litBlue'));
+    return (
+      el &&
+      (el.classList.contains("litRed") || el.classList.contains("litBlue"))
+    );
   });
-  if (done) joy.classList.add('passed');
+  if (done) joy.classList.add("passed");
 }
 
 function audio() {
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (!audioCtx)
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 }
-function beep(freq, dur, type = 'sine', gain = 0.15) {
+function beep(freq, dur, type = "sine", gain = 0.15) {
   try {
     audio();
     const osc = audioCtx.createOscillator();
@@ -701,18 +842,24 @@ function beep(freq, dur, type = 'sine', gain = 0.15) {
   } catch (e) {}
 }
 function playPointSound(points) {
-  if (points === 1) beep(620, 0.13, 'square');
-  if (points === 2) beep(800, 0.18, 'square');
-  if (points === 3) beep(980, 0.24, 'square');
+  if (points === 1) beep(620, 0.13, "square");
+  if (points === 2) beep(800, 0.18, "square");
+  if (points === 3) beep(980, 0.24, "square");
 }
 function playWhistle() {
-  beep(1500, 0.65, 'square', 0.11);
-  setTimeout(() => beep(1750, 0.65, 'square', 0.11), 650);
-  setTimeout(() => beep(1500, 0.65, 'square', 0.11), 1300);
+  beep(1500, 0.65, "square", 0.11);
+  setTimeout(() => beep(1750, 0.65, "square", 0.11), 650);
+  setTimeout(() => beep(1500, 0.65, "square", 0.11), 1300);
 }
 
 function escapeHtml(text) {
-  return String(text).replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+  return String(text).replace(
+    /[&<>"']/g,
+    (ch) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        ch
+      ],
+  );
 }
 
 window.openHost = openHost;
