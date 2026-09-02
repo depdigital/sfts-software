@@ -190,9 +190,13 @@ test('server restores match history and tournament progress after restart', asyn
 
     host.send(JSON.stringify({ type: 'host', action: 'loadBout', boutNo: 1 }));
     await waitForMessage(host, message => message.type === 'state' && message.tournament.activeBoutNo === 1);
+    host.send(JSON.stringify({ type: 'host', action: 'playPause' }));
+    await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'ROUND' && message.match.running);
     host.send(JSON.stringify({ type: 'host', action: 'editScore', player: 'RED', value: 15 }));
     await waitForMessage(host, message => message.type === 'roundEnd' && message.record.winner === 'RED');
     await waitForMessage(host, message => message.type === 'state' && message.match.round === 2);
+    host.send(JSON.stringify({ type: 'host', action: 'playPause' }));
+    await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'ROUND' && message.match.running);
     host.send(JSON.stringify({ type: 'host', action: 'editScore', player: 'RED', value: 15 }));
     await waitForMessage(host, message => message.type === 'matchEnd' && message.winner === 'RED');
     await waitForMessage(host, message => message.type === 'state' && message.tournament.schedule[0].status === 'COMPLETED');

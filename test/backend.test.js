@@ -174,6 +174,12 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   assert.equal(configuredPlayers.match.red.playerName, 'LEE');
 
   host.send(JSON.stringify({ type: 'host', action: 'headPoint', player: 'RED' }));
+  const pausedManual = await waitForMessage(host, message => message.type === 'error' && message.code === 'ROUND_NOT_ACTIVE');
+  assert.equal(pausedManual.code, 'ROUND_NOT_ACTIVE');
+  host.send(JSON.stringify({ type: 'host', action: 'playPause' }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'ROUND' && message.match.running);
+
+  host.send(JSON.stringify({ type: 'host', action: 'headPoint', player: 'RED' }));
   await waitForMessage(host, message => message.type === 'scoreSound' && message.player === 'RED' && message.points === 3);
   const manualRedHead = await waitForMessage(host, message => (
     message.type === 'state' && message.match.red.score === 3 && message.match.red.stats.plus3 === 1
@@ -187,6 +193,8 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   assert.equal(manualBlueHead.match.blue.score, 3);
   host.send(JSON.stringify({ type: 'host', action: 'resetMatch' }));
   await waitForMessage(host, message => message.type === 'state' && message.match.red.score === 0 && message.match.blue.score === 0);
+  host.send(JSON.stringify({ type: 'host', action: 'playPause' }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'ROUND' && message.match.running);
 
   const referees = [];
   for (let corner = 1; corner <= 4; corner += 1) {
@@ -202,6 +210,8 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   assert.deepEqual(testState.match.votes, {});
   host.send(JSON.stringify({ type: 'host', action: 'testStop' }));
   await waitForMessage(host, message => message.type === 'state' && !message.match.test.active);
+  host.send(JSON.stringify({ type: 'host', action: 'playPause' }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'ROUND' && message.match.running);
 
   const duplicateCorner = await connect();
   const duplicateResult = await assign(duplicateCorner, 'referee', 1);
@@ -282,13 +292,16 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   });
   remote.send(remoteEvent);
   const firstAck = await waitForMessage(remote, message => message.type === 'remote_event_ack' && message.sequence === 1);
-  assert.equal(firstAck.accepted, true);
+  assert.equal(firstAck.accepted, false);
+  assert.equal(firstAck.reason, 'MATCH_NOT_RUNNING');
   remote.send(remoteEvent);
   const duplicateAck = await waitForMessage(remote, message => message.type === 'remote_event_ack' && message.sequence === 1);
   assert.deepEqual(duplicateAck, firstAck);
 
   host.send(JSON.stringify({ type: 'host', action: 'resetMatch' }));
   await waitForMessage(host, message => message.type === 'state' && message.match.red.score === 0);
+  host.send(JSON.stringify({ type: 'host', action: 'setTime', ms: 10000 }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.timerMs === 10000);
   host.send(JSON.stringify({ type: 'host', action: 'setRemoteMode', count: 2 }));
   await waitForMessage(host, message => message.type === 'state' && message.match.remoteCount === 2);
   remote.send(JSON.stringify({
@@ -298,6 +311,8 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   assert.equal(disabledRemote.reason, 'REMOTE_DISABLED');
   host.send(JSON.stringify({ type: 'host', action: 'setRemoteMode', count: 4 }));
   await waitForMessage(host, message => message.type === 'state' && message.match.remoteCount === 4);
+  host.send(JSON.stringify({ type: 'host', action: 'playPause' }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'ROUND' && message.match.running);
   remote.send(JSON.stringify({
     type: 'remote_event', deviceId: 'C4', sessionId: 'test-session-c4', sequence: 3, button: 'RED_2'
   }));
@@ -321,8 +336,12 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   await waitForMessage(technicalRemote, message => message.type === 'remote_state');
   host.send(JSON.stringify({ type: 'host', action: 'resetMatch' }));
   await waitForMessage(host, message => message.type === 'state' && message.match.red.score === 0);
+  host.send(JSON.stringify({ type: 'host', action: 'setTime', ms: 10000 }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.timerMs === 10000);
   host.send(JSON.stringify({ type: 'host', action: 'setRemoteMode', count: 1 }));
   await waitForMessage(host, message => message.type === 'state' && message.match.remoteCount === 1);
+  host.send(JSON.stringify({ type: 'host', action: 'playPause' }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'ROUND' && message.match.running);
   technicalRemote.send(JSON.stringify({
     type: 'remote_event', deviceId: 'C1', sessionId: 'test-session-c1', sequence: 1, button: 'RED_TECHNICAL'
   }));
@@ -383,9 +402,15 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
 
   host.send(JSON.stringify({ type: 'host', action: 'loadBout', boutNo: 1 }));
   const firstBracketLoad = await waitForMessage(host, message => message.type === 'state' && message.tournament.activeBoutNo === 1);
+  host.send(JSON.stringify({ type: 'host', action: 'setTime', ms: 1000 }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.timerMs === 1000);
+  host.send(JSON.stringify({ type: 'host', action: 'playPause' }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'ROUND' && message.match.running);
   host.send(JSON.stringify({ type: 'host', action: 'editScore', player: 'RED', value: 15 }));
   await waitForMessage(host, message => message.type === 'roundEnd' && message.record.winner === 'RED');
   await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'ROUND' && message.match.round === 2);
+  host.send(JSON.stringify({ type: 'host', action: 'playPause' }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'ROUND' && message.match.running);
   host.send(JSON.stringify({ type: 'host', action: 'editScore', player: 'RED', value: 15 }));
   await waitForMessage(host, message => message.type === 'matchEnd' && message.winner === 'RED');
   const advanced = await waitForMessage(host, message => (
@@ -400,12 +425,19 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   const secondBracketLoad = await waitForMessage(host, message => message.type === 'state' && message.tournament.activeBoutNo === 2);
   assert.ok(secondBracketLoad.match.matchNo > firstBracketLoad.match.matchNo);
   for (let round = 1; round <= 3; round += 1) {
+    if (round > 1 || !secondBracketLoad.match.running) {
+      host.send(JSON.stringify({ type: 'host', action: 'playPause' }));
+      await waitForMessage(host, message => message.type === 'state' &&
+        message.match.matchNo === secondBracketLoad.match.matchNo &&
+        message.match.phase === 'ROUND' && message.match.running);
+    }
     host.send(JSON.stringify({ type: 'host', action: 'editScore', player: 'RED', value: 1 }));
     host.send(JSON.stringify({ type: 'host', action: 'editScore', player: 'BLUE', value: 1 }));
-    host.send(JSON.stringify({ type: 'host', action: 'playPause' }));
     await waitForMessage(host, message => message.type === 'roundEnd' && message.record.winner === null);
     if (round < 3) {
-      await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'ROUND' && message.match.round === round + 1);
+      await waitForMessage(host, message => message.type === 'state' &&
+        message.match.matchNo === secondBracketLoad.match.matchNo &&
+        message.match.phase === 'ROUND' && message.match.round === round + 1);
     }
   }
   await waitForMessage(host, message => message.type === 'matchEnd' && message.winner === null);

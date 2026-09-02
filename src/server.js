@@ -1027,7 +1027,7 @@ function remoteAck(ws, sequence, details) {
 }
 
 function scoringIsAllowed() {
-  return match.phase === 'ROUND' && !match.test.active;
+  return match.phase === 'ROUND' && match.running && !match.test.active;
 }
 
 function syncTimer(now = performance.now()) {
@@ -1056,6 +1056,10 @@ function setRunning(running) {
     if (!match.running) return;
     match.running = false;
     timerLastAt = null;
+    // A pause must not preserve a vote that was started before the pause.
+    // Otherwise a later press after PLAY could complete an old combination.
+    match.votes = {};
+    clearAllRemoteCombinations();
     return;
   }
   if (match.timerMs <= 0) return;
@@ -1633,6 +1637,13 @@ function handleRemoteEvent(ws, msg) {
     rememberRemoteAck(session, sequence, ack);
     return;
   }
+  if (!match.running) {
+    clearRemoteCombination(ws.corner);
+    delete match.votes[ws.corner];
+    const ack = remoteAck(ws, sequence, { accepted: false, reason: 'MATCH_NOT_RUNNING', awarded: false });
+    rememberRemoteAck(session, sequence, ack);
+    return;
+  }
 
   if (vote.technical) {
     const base = remoteLastBasePress.get(ws.corner);
@@ -1900,7 +1911,7 @@ wss.on('connection', ws => {
           state();
           return;
         }
-        if (match.phase !== 'ROUND') return;
+        if (!scoringIsAllowed()) return;
         recordRefereeVote(ws.corner, { player, points });
         return;
       }

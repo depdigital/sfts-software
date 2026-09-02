@@ -18,7 +18,12 @@
       <img class="homeLogo" src="/assets/sfts-logo.jpg" alt="SFTS logo" />
       <label class="homeAccessToken">
         HOST ACCESS TOKEN
-        <input id="hostAccessToken" type="password" autocomplete="off" placeholder="Enter the token shown in the server window" />
+        <input
+          id="hostAccessToken"
+          type="password"
+          autocomplete="off"
+          placeholder="Enter the token shown in the server window"
+        />
       </label>
       <button class="homeBtn" onclick="openHost()">LAUNCH SCOREBOARD</button>
     </section>
@@ -69,10 +74,12 @@
 
       <section class="bottomArea">
         <div class="controlGrid redButtons">
-          <button onclick="manualPoint('RED', 2)">
-            <b>+2</b> CHEST
-          </button>
-          <button id="redHeadButton" type="button" onclick="manualHeadPoint('RED')">
+          <button onclick="manualPoint('RED', 2)"><b>+2</b> CHEST</button>
+          <button
+            id="redHeadButton"
+            type="button"
+            onclick="manualHeadPoint('RED')"
+          >
             <b>+3</b> HEAD
           </button>
           <button onclick="manualPoint('RED', 1)"><b>+1</b> PUNCH</button>
@@ -91,10 +98,12 @@
         </div>
 
         <div class="controlGrid blueButtons">
-          <button onclick="manualPoint('BLUE', 2)">
-            <b>+2</b> CHEST
-          </button>
-          <button id="blueHeadButton" type="button" onclick="manualHeadPoint('BLUE')">
+          <button onclick="manualPoint('BLUE', 2)"><b>+2</b> CHEST</button>
+          <button
+            id="blueHeadButton"
+            type="button"
+            onclick="manualHeadPoint('BLUE')"
+          >
             <b>+3</b> HEAD
           </button>
           <button onclick="manualPoint('BLUE', 1)"><b>+1</b> PUNCH</button>
@@ -283,13 +292,24 @@
         <section class="tournamentImportPanel">
           <h3>TOURNAMENT PLAYERS &amp; SCHEDULE</h3>
           <p>Upload a sheet with Name, Gender, and Weight Category columns.</p>
-          <input id="playerSheetFile" class="playerSettingsInput" type="file" accept=".xlsx,.xls,.csv" />
+          <input
+            id="playerSheetFile"
+            class="playerSettingsInput"
+            type="file"
+            accept=".xlsx,.xls,.csv"
+          />
           <div class="tournamentImportActions">
-            <button onclick="uploadPlayerSheet()">IMPORT &amp; GENERATE SCHEDULE</button>
-            <button onclick="downloadPlayerTemplate()">DOWNLOAD TEMPLATE</button>
+            <button onclick="uploadPlayerSheet()">
+              IMPORT &amp; GENERATE SCHEDULE
+            </button>
+            <button onclick="downloadPlayerTemplate()">
+              DOWNLOAD TEMPLATE
+            </button>
             <button onclick="openSchedule()">VIEW SCHEDULE</button>
           </div>
-          <div id="tournamentImportStatus" class="tournamentImportStatus">NO TOURNAMENT SHEET IMPORTED</div>
+          <div id="tournamentImportStatus" class="tournamentImportStatus">
+            NO TOURNAMENT SHEET IMPORTED
+          </div>
         </section>
         <button onclick="savePlayerSettings()">SAVE PLAYER SETTINGS</button>
         <button onclick="closePlayerSettings()">CLOSE</button>
@@ -318,8 +338,12 @@
         <h2>TOURNAMENT SCHEDULE</h2>
         <div id="scheduleSummary" class="scheduleSummary"></div>
         <div class="scheduleActions">
-          <button onclick="downloadTournamentSchedule('xlsx')">DOWNLOAD EXCEL</button>
-          <button onclick="downloadTournamentSchedule('csv')">DOWNLOAD CSV</button>
+          <button onclick="downloadTournamentSchedule('xlsx')">
+            DOWNLOAD EXCEL
+          </button>
+          <button onclick="downloadTournamentSchedule('csv')">
+            DOWNLOAD CSV
+          </button>
           <button onclick="printSchedule()">PRINT SCHEDULE</button>
         </div>
         <div id="scheduleTable" class="scheduleTable"></div>
@@ -369,7 +393,8 @@
       <header class="testHeader">
         <img src="/assets/sfts-logo.jpg" class="testLogo" alt="SFTS" />
         <div class="testHeaderTitle">REMOTE SETTINGS</div>
-        <label class="remoteModeControl"><span>MODE</span>
+        <label class="remoteModeControl"
+          ><span>MODE</span>
           <select id="remoteMode" onchange="changeRemoteMode(this.value)">
             <option value="1">1 REMOTE</option>
             <option value="2">2 REMOTES</option>
@@ -377,72 +402,86 @@
             <option value="4">4 REMOTES</option>
           </select>
         </label>
-        <button class="exitTestButton" onclick="closeTestMode()">
-          BACK
-        </button>
+        <button class="exitTestButton" onclick="closeTestMode()">BACK</button>
       </header>
       <p class="testHelp">
-        Press all eight buttons on each enabled remote corner. Each press lights up below.
-        When all eight buttons work, a ✓ appears on that remote.
+        Press all eight buttons on each enabled remote corner. Each press lights
+        up the respective buttons in the dashboard, ✓ on test pass.
       </p>
       <div class="joystickGrid">
         <div id="joy1" class="joystickCard">
           <h3>CORNER 1</h3>
-          <div id="remoteInfo1" class="remoteTelemetry disconnected">DISCONNECTED · RSSI — · BATTERY —</div>
+          <div id="remoteInfo1" class="remoteTelemetry disconnected">
+            DISCONNECTED · RSSI — · BATTERY —
+          </div>
           <div class="joystickBody">
             <div class="joyButtons redJoyBtns">
               <i data-key="RED-1">+1</i><i data-key="RED-2">+2</i
-              ><i data-key="RED-3">+3</i><i data-key="RED-TECHNICAL">TECHNICAL KICK</i>
+              ><i data-key="RED-3">+3</i
+              ><i data-key="RED-TECHNICAL">TECHNICAL KICK</i>
             </div>
             <div class="joyCenter">🎮<span class="joyCheck">✓</span></div>
             <div class="joyButtons blueJoyBtns">
               <i data-key="BLUE-1">+1</i><i data-key="BLUE-2">+2</i
-              ><i data-key="BLUE-3">+3</i><i data-key="BLUE-TECHNICAL">TECHNICAL KICK</i>
+              ><i data-key="BLUE-3">+3</i
+              ><i data-key="BLUE-TECHNICAL">TECHNICAL KICK</i>
             </div>
           </div>
         </div>
         <div id="joy2" class="joystickCard">
           <h3>CORNER 2</h3>
-          <div id="remoteInfo2" class="remoteTelemetry disconnected">DISCONNECTED · RSSI — · BATTERY —</div>
+          <div id="remoteInfo2" class="remoteTelemetry disconnected">
+            DISCONNECTED · RSSI — · BATTERY —
+          </div>
           <div class="joystickBody">
             <div class="joyButtons redJoyBtns">
               <i data-key="RED-1">+1</i><i data-key="RED-2">+2</i
-              ><i data-key="RED-3">+3</i><i data-key="RED-TECHNICAL">TECHNICAL KICK</i>
+              ><i data-key="RED-3">+3</i
+              ><i data-key="RED-TECHNICAL">TECHNICAL KICK</i>
             </div>
             <div class="joyCenter">🎮<span class="joyCheck">✓</span></div>
             <div class="joyButtons blueJoyBtns">
               <i data-key="BLUE-1">+1</i><i data-key="BLUE-2">+2</i
-              ><i data-key="BLUE-3">+3</i><i data-key="BLUE-TECHNICAL">TECHNICAL KICK</i>
+              ><i data-key="BLUE-3">+3</i
+              ><i data-key="BLUE-TECHNICAL">TECHNICAL KICK</i>
             </div>
           </div>
         </div>
         <div id="joy3" class="joystickCard">
           <h3>CORNER 3</h3>
-          <div id="remoteInfo3" class="remoteTelemetry disconnected">DISCONNECTED · RSSI — · BATTERY —</div>
+          <div id="remoteInfo3" class="remoteTelemetry disconnected">
+            DISCONNECTED · RSSI — · BATTERY —
+          </div>
           <div class="joystickBody">
             <div class="joyButtons redJoyBtns">
               <i data-key="RED-1">+1</i><i data-key="RED-2">+2</i
-              ><i data-key="RED-3">+3</i><i data-key="RED-TECHNICAL">TECHNICAL KICK</i>
+              ><i data-key="RED-3">+3</i
+              ><i data-key="RED-TECHNICAL">TECHNICAL KICK</i>
             </div>
             <div class="joyCenter">🎮<span class="joyCheck">✓</span></div>
             <div class="joyButtons blueJoyBtns">
               <i data-key="BLUE-1">+1</i><i data-key="BLUE-2">+2</i
-              ><i data-key="BLUE-3">+3</i><i data-key="BLUE-TECHNICAL">TECHNICAL KICK</i>
+              ><i data-key="BLUE-3">+3</i
+              ><i data-key="BLUE-TECHNICAL">TECHNICAL KICK</i>
             </div>
           </div>
         </div>
         <div id="joy4" class="joystickCard">
           <h3>CORNER 4</h3>
-          <div id="remoteInfo4" class="remoteTelemetry disconnected">DISCONNECTED · RSSI — · BATTERY —</div>
+          <div id="remoteInfo4" class="remoteTelemetry disconnected">
+            DISCONNECTED · RSSI — · BATTERY —
+          </div>
           <div class="joystickBody">
             <div class="joyButtons redJoyBtns">
               <i data-key="RED-1">+1</i><i data-key="RED-2">+2</i
-              ><i data-key="RED-3">+3</i><i data-key="RED-TECHNICAL">TECHNICAL KICK</i>
+              ><i data-key="RED-3">+3</i
+              ><i data-key="RED-TECHNICAL">TECHNICAL KICK</i>
             </div>
             <div class="joyCenter">🎮<span class="joyCheck">✓</span></div>
             <div class="joyButtons blueJoyBtns">
               <i data-key="BLUE-1">+1</i><i data-key="BLUE-2">+2</i
-              ><i data-key="BLUE-3">+3</i><i data-key="BLUE-TECHNICAL">TECHNICAL KICK</i>
+              ><i data-key="BLUE-3">+3</i
+              ><i data-key="BLUE-TECHNICAL">TECHNICAL KICK</i>
             </div>
           </div>
         </div>
