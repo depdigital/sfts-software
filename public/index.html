@@ -15,8 +15,10 @@
     <div id="toast"></div>
 
     <section id="home" class="screen homeScreen">
-      <img class="homeLogo" src="/assets/sfts-logo.jpg" alt="SFTS logo" />
-      <label class="homeAccessToken">
+      <img class="homeLogo" src="/assets/sfts-logo.png" alt="SFTS logo" />
+      <div class="homeSubtitle">STRIKE FORCE TAEKWONDO SCORING</div>
+      <div class="homePoweredBy">Powered by Strike Force Combat Academy</div>
+      <label class="homeAccessToken hidden" aria-hidden="true">
         HOST ACCESS TOKEN
         <input
           id="hostAccessToken"
@@ -26,6 +28,7 @@
         />
       </label>
       <button class="homeBtn" onclick="openHost()">LAUNCH</button>
+      <div class="homeFooter">Official technology partner Craftronixlab Technologies</div>
     </section>
 
     <section id="host" class="screen hidden hostScreen">
@@ -41,7 +44,11 @@
             PLAYER NAME — · WEIGHT — · STATE — · DISTRICT —
           </div>
           <div id="redScore" class="scoreNumber">0</div>
-          <button id="redDeclareWinnerButton" class="declareWinnerButton hidden" onclick="declareWinner('RED')">
+          <button
+            id="redDeclareWinnerButton"
+            class="declareWinnerButton hidden"
+            onclick="declareWinner('RED')"
+          >
             DECLARE WINNER
           </button>
         </div>
@@ -99,7 +106,11 @@
             PLAYER NAME — · WEIGHT — · STATE — · DISTRICT —
           </div>
           <div id="blueScore" class="scoreNumber">0</div>
-          <button id="blueDeclareWinnerButton" class="declareWinnerButton hidden" onclick="declareWinner('BLUE')">
+          <button
+            id="blueDeclareWinnerButton"
+            class="declareWinnerButton hidden"
+            onclick="declareWinner('BLUE')"
+          >
             DECLARE WINNER
           </button>
         </div>
@@ -414,7 +425,7 @@
     </section>
 
     <section id="winnerSlide" class="winnerSlide hidden">
-      <img src="/assets/sfts-logo.jpg" class="winnerLogo" alt="SFTS" />
+      <img src="/assets/sfts-logo.png" class="winnerLogo" alt="SFTS" />
       <div id="winnerNameText" class="winnerNameText">PLAYER NAME</div>
       <div class="winnerWord">WINNER</div>
       <button class="newMatchButton" onclick="startNewMatch()">
@@ -424,7 +435,7 @@
 
     <section id="testMode" class="screen hidden testModeScreen">
       <header class="testHeader">
-        <img src="/assets/sfts-logo.jpg" class="testLogo" alt="SFTS" />
+        <img src="/assets/sfts-logo.png" class="testLogo" alt="SFTS" />
         <div class="testHeaderTitle">REMOTE SETTINGS</div>
         <label class="remoteModeControl"
           ><span>MODE</span>
