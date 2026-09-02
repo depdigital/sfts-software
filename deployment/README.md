@@ -87,6 +87,8 @@ The countdown can be changed when needed with `SFTS_REBOOT_DELAY_SECONDS`, for e
 
 The installer creates `/etc/sfts/sfts-scoreboard.env` from the example only when that file does not already exist. Existing environment settings and the project `data` directory are preserved.
 
+Installer runs are serialized with a system lock, generated systemd units are validated before installation, and environment updates are written atomically. Re-running the installer is therefore safe while another maintenance command is not already modifying the deployment.
+
 ## Service behavior
 
 The service:
@@ -97,6 +99,7 @@ The service:
 - Enables local kiosk authorization with `SFTS_KIOSK_MODE=true`.
 - Restarts after an unexpected server failure.
 - Stores match state in the project `data` directory.
+- Runs with systemd filesystem, device, kernel, privilege, and network-family restrictions appropriate for a LAN-only scoreboard service.
 - Does not print remote token values during installation.
 
 Open the host dashboard on the Pi at:

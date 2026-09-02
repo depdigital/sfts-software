@@ -79,15 +79,15 @@ set_audio_volume() {
     if wpctl set-volume "${audio_sink}" "${AUDIO_VOLUME}" >/dev/null 2>&1 &&
        wpctl set-mute "${audio_sink}" 0 >/dev/null 2>&1; then
       if [[ "${audio_sink}" == "@DEFAULT_AUDIO_SINK@" ]]; then
-        log "Default audio output set to 85% and unmuted"
+        log "Default audio output set to 95% and unmuted"
       else
-        log "Analog audio output selected, set to 85%, and unmuted"
+        log "Analog audio output selected, set to 95%, and unmuted"
       fi
       return 0
     fi
     sleep 1
   done
-  log "Could not set the default audio output to 85%; continuing kiosk startup"
+  log "Could not set the default audio output to 95%; continuing kiosk startup"
 }
 
 cleanup() {

@@ -2,6 +2,8 @@
 Description=SFTS Taekwondo Scoring System
 After=network-online.target sfts-piper.service
 Wants=network-online.target sfts-piper.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -15,6 +17,14 @@ RestartSec=5
 UMask=0027
 NoNewPrivileges=true
 PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=full
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 
 [Install]
 WantedBy=multi-user.target

@@ -11,6 +11,7 @@ ENV_FILE="${ENV_DIR}/sfts-scoreboard.env"
 SERVICE_TMP=""
 PIPER_SERVICE_TMP=""
 LIGHTDM_MAIN_TMP=""
+ENV_TMP=""
 REBOOT_DELAY_SECONDS="${SFTS_REBOOT_DELAY_SECONDS:-10}"
 SKIP_REBOOT="${SFTS_SKIP_REBOOT:-false}"
 PIPER_MODEL_NAME="${SFTS_PIPER_MODEL:-en_GB-alan-medium}"
@@ -48,6 +49,9 @@ cleanup() {
   fi
   if [[ -n "${LIGHTDM_MAIN_TMP:-}" ]]; then
     rm -f "${LIGHTDM_MAIN_TMP}"
+  fi
+  if [[ -n "${ENV_TMP:-}" ]]; then
+    rm -f "${ENV_TMP}"
   fi
 }
 
@@ -148,6 +152,12 @@ fi
 
 [[ -x /usr/bin/node ]] || die "Node.js was not installed at /usr/bin/node"
 command -v runuser >/dev/null 2>&1 || die "runuser is required to install dependencies as ${SERVICE_USER}"
+command -v flock >/dev/null 2>&1 || die "flock is required to prevent concurrent installations"
+INSTALL_LOCK_FILE="/run/lock/sfts-scoreboard-install.lock"
+install -d -m 0755 /run/lock
+exec 8>"${INSTALL_LOCK_FILE}"
+flock -n 8 || die "another SFTS installer is already running"
+log "Installer lock acquired"
 
 NODE_MAJOR="$(/usr/bin/node -p 'process.versions.node.split(".")[0]')"
 [[ "${NODE_MAJOR}" =~ ^[0-9]+$ && "${NODE_MAJOR}" -ge 18 ]] || die "Node.js 18 or newer is required; found $(/usr/bin/node --version)"
@@ -215,6 +225,9 @@ configure_piper() {
     -e "s|@PIPER_LENGTH_SCALE@|${piper_length_scale_value}|g" \
     -e "s|@PIPER_SENTENCE_SILENCE@|${piper_sentence_silence_value}|g" \
     "${PIPER_SERVICE_TEMPLATE}" > "${PIPER_SERVICE_TMP}"
+  if command -v systemd-analyze >/dev/null 2>&1; then
+    systemd-analyze verify "${PIPER_SERVICE_TMP}" >/dev/null || die "generated Piper systemd unit failed validation"
+  fi
   install -m 0644 -o root -g root "${PIPER_SERVICE_TMP}" "${PIPER_SERVICE_DEST}"
   rm -f "${PIPER_SERVICE_TMP}"
   PIPER_SERVICE_TMP=""
@@ -257,17 +270,22 @@ if [[ ! -e "${ENV_FILE}" ]]; then
 else
   log "Preserving existing ${ENV_FILE}"
 fi
-sed -i -E '/^SFTS_TTS_(COMMAND|MODEL|CACHE_DIR)=/d' "${ENV_FILE}"
-if grep -Eq '^SFTS_TTS_ENGINE=' "${ENV_FILE}"; then
-  sed -i -E 's|^SFTS_TTS_ENGINE=.*$|SFTS_TTS_ENGINE=piper|' "${ENV_FILE}"
+ENV_TMP="$(mktemp "${ENV_DIR}/.sfts-scoreboard.env.XXXXXX")"
+sed -E '/^SFTS_TTS_(COMMAND|MODEL|CACHE_DIR)=/d' "${ENV_FILE}" > "${ENV_TMP}"
+if grep -Eq '^SFTS_TTS_ENGINE=' "${ENV_TMP}"; then
+  sed -i -E 's|^SFTS_TTS_ENGINE=.*$|SFTS_TTS_ENGINE=piper|' "${ENV_TMP}"
 else
-  printf '%s\n' 'SFTS_TTS_ENGINE=piper' >> "${ENV_FILE}"
+  printf '%s\n' 'SFTS_TTS_ENGINE=piper' >> "${ENV_TMP}"
 fi
-if grep -Eq '^SFTS_TTS_URL=' "${ENV_FILE}"; then
-  sed -i -E 's|^SFTS_TTS_URL=.*$|SFTS_TTS_URL=http://127.0.0.1:5000/synthesize|' "${ENV_FILE}"
+if grep -Eq '^SFTS_TTS_URL=' "${ENV_TMP}"; then
+  sed -i -E 's|^SFTS_TTS_URL=.*$|SFTS_TTS_URL=http://127.0.0.1:5000/synthesize|' "${ENV_TMP}"
 else
-  printf '%s\n' 'SFTS_TTS_URL=http://127.0.0.1:5000/synthesize' >> "${ENV_FILE}"
+  printf '%s\n' 'SFTS_TTS_URL=http://127.0.0.1:5000/synthesize' >> "${ENV_TMP}"
 fi
+chown root:"${SERVICE_GROUP}" "${ENV_TMP}"
+chmod 0640 "${ENV_TMP}"
+mv -f -- "${ENV_TMP}" "${ENV_FILE}"
+ENV_TMP=""
 log "Configured announcements to use the local Piper HTTP service"
 success "Application data and environment are ready"
 
@@ -283,6 +301,9 @@ sed \
   -e "s|@SERVICE_USER@|${USER_VALUE}|g" \
   -e "s|@SERVICE_GROUP@|${GROUP_VALUE}|g" \
   "${SERVICE_TEMPLATE}" > "${SERVICE_TMP}"
+if command -v systemd-analyze >/dev/null 2>&1; then
+  systemd-analyze verify "${SERVICE_TMP}" >/dev/null || die "generated scoreboard systemd unit failed validation"
+fi
 
 install -m 0644 -o root -g root "${SERVICE_TMP}" "${SERVICE_DEST}"
 systemctl daemon-reload
