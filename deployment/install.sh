@@ -354,10 +354,17 @@ configure_desktop_kiosk() {
   [[ -n "${display_manager_service}" ]] || display_manager_service="lightdm.service"
   systemctl enable "${display_manager_service}"
 
-  lightdm_show_config="$(lightdm --show-config 2>/dev/null || true)"
-  if ! grep -Fq 'autologin-session=sfts-scoreboard-kiosk' <<< "${lightdm_show_config}"; then
-    printf '%s\n' "${lightdm_show_config}" >&2
-    die "LightDM did not select sfts-scoreboard-kiosk for autologin"
+  lightdm_show_config="$(/usr/sbin/lightdm --show-config 2>&1 || true)"
+  if [[ -n "${lightdm_show_config}" ]]; then
+    if ! grep -Eq 'autologin-session[[:space:]]*=[[:space:]]*sfts-scoreboard-kiosk' <<< "${lightdm_show_config}"; then
+      printf '%s\n' "${lightdm_show_config}" >&2
+      die "LightDM did not select sfts-scoreboard-kiosk for autologin"
+    fi
+  elif ! grep -Eq '^[[:space:]]*autologin-session[[:space:]]*=[[:space:]]*sfts-scoreboard-kiosk[[:space:]]*$' "${lightdm_main_config}" 2>/dev/null && \
+      ! grep -Eq '^[[:space:]]*autologin-session[[:space:]]*=[[:space:]]*sfts-scoreboard-kiosk[[:space:]]*$' "${lightdm_config}" 2>/dev/null; then
+    die "LightDM configuration does not select sfts-scoreboard-kiosk for autologin"
+  else
+    log "LightDM did not print effective configuration; verified the active configuration files"
   fi
 
   kiosk_config_root="/etc/sfts/sfts-scoreboard-kiosk"
