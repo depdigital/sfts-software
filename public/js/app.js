@@ -16,6 +16,7 @@ let powerAction = "";
 let powerActionScheduled = false;
 let powerDeadlineAt = 0;
 let powerCountdownTimer = null;
+let usbImportOnly = false;
 
 const $ = (id) => document.getElementById(id);
 
@@ -44,6 +45,8 @@ function connectSocket() {
       lastState = msg.match;
       lastTournament = msg.tournament || null;
       historyCache = msg.matchHistory || [];
+      usbImportOnly = msg.usbImportOnly === true;
+      renderUsbImportMode();
       renderState(msg.match);
       renderRemoteStatuses(msg.remotes);
       renderTournament(msg.tournament);
@@ -415,7 +418,9 @@ function openPlayerSettings() {
   $("playerBlueDistrict").value = lastState.blue.district || "";
   $("playerBlueStateCode").value = lastState.blue.stateCode || "";
   renderTournament(lastTournament);
+  renderUsbImportMode();
   $("playerSettingsModal").classList.remove("hidden");
+  if (usbImportOnly) void refreshUsbFiles();
 }
 function closePlayerSettings() {
   $("playerSettingsModal").classList.add("hidden");
@@ -477,7 +482,141 @@ async function downloadFile(path, fallbackName) {
 }
 
 function downloadPlayerTemplate() {
+  if (usbImportOnly) {
+    void savePlayerTemplateToUsb();
+    return;
+  }
   downloadFile("/api/tournament/template.xlsx", "sfts-player-template.xlsx");
+}
+
+function renderUsbImportMode() {
+  $("nativeTournamentImport")?.classList.toggle("hidden", usbImportOnly);
+  $("usbTournamentImport")?.classList.toggle("hidden", !usbImportOnly);
+}
+
+function renderUsbStatus(result) {
+  const status = $("usbDriveStatus");
+  const select = $("usbFileSelect");
+  const importButton = $("usbImportButton");
+  if (!status || !select || !importButton) return;
+  const files = Array.isArray(result?.files) ? result.files : [];
+  const mounted = result?.connected === true && result?.mounted === true;
+  status.textContent = result?.message || (mounted ? `USB READY · ${files.length} FILE(S)` : "USB DRIVE NOT READY");
+  status.classList.toggle("connected", mounted);
+  status.classList.toggle("disconnected", !mounted);
+  select.replaceChildren();
+  if (!files.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = mounted ? "NO SPREADSHEET FILES FOUND" : "REFRESH USB TO CHECK AGAIN";
+    select.appendChild(option);
+  } else {
+    for (const file of files) {
+      const option = document.createElement("option");
+      option.value = file.name;
+      option.textContent = file.name;
+      select.appendChild(option);
+    }
+  }
+  select.disabled = !files.length;
+  importButton.disabled = !files.length;
+}
+
+async function refreshUsbFiles() {
+  if (!hostToken) {
+    toast("HOST SESSION REQUIRED");
+    return;
+  }
+  const status = $("usbDriveStatus");
+  if (status) {
+    status.textContent = "CHECKING USB DRIVE...";
+    status.classList.remove("connected", "disconnected");
+  }
+  try {
+    const response = await fetch("/api/usb/status", {
+      headers: { "X-SFTS-Host-Token": hostToken },
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.message || "USB CHECK FAILED");
+    renderUsbStatus(result);
+  } catch (error) {
+    renderUsbStatus({ files: [], message: error.message || "USB CHECK FAILED" });
+    toast(error.message || "USB CHECK FAILED");
+  }
+}
+
+async function importUsbFile() {
+  const fileName = $("usbFileSelect")?.value;
+  if (!fileName) {
+    toast("SELECT A USB FILE");
+    return;
+  }
+  if (!hostToken) {
+    toast("HOST SESSION REQUIRED");
+    return;
+  }
+  const status = $("tournamentImportStatus");
+  if (status) status.textContent = "IMPORTING USB PLAYER SHEET...";
+  try {
+    const response = await fetch("/api/usb/import", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-SFTS-Host-Token": hostToken,
+      },
+      body: JSON.stringify({ fileName }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) {
+      const details = result.errors?.length ? `: ${result.errors.join("; ")}` : "";
+      throw new Error(`${result.message || "USB IMPORT FAILED"}${details}`);
+    }
+    lastTournament = result.tournament;
+    renderTournament(result.tournament);
+    toast("SCHEDULE GENERATED FROM USB");
+  } catch (error) {
+    if (status) status.textContent = error.message || "USB IMPORT FAILED";
+    toast(error.message || "USB IMPORT FAILED");
+  }
+}
+
+async function savePlayerTemplateToUsb() {
+  if (!hostToken) {
+    toast("HOST SESSION REQUIRED");
+    return;
+  }
+  try {
+    const response = await fetch("/api/usb/template", {
+      method: "POST",
+      headers: { "X-SFTS-Host-Token": hostToken },
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.message || "COULD NOT SAVE TEMPLATE TO USB");
+    toast(result.message || "PLAYER TEMPLATE SAVED TO USB");
+    void refreshUsbFiles();
+  } catch (error) {
+    toast(error.message || "COULD NOT SAVE TEMPLATE TO USB");
+  }
+}
+
+async function unmountUsb() {
+  if (!hostToken) {
+    toast("HOST SESSION REQUIRED");
+    return;
+  }
+  if (!window.confirm("Unmount the USB drive safely before removing it?")) return;
+  try {
+    const response = await fetch("/api/usb/unmount", {
+      method: "POST",
+      headers: { "X-SFTS-Host-Token": hostToken },
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.message || "COULD NOT UNMOUNT USB DRIVE");
+    renderUsbStatus({ files: [], message: result.message || "USB DRIVE UNMOUNTED SAFELY" });
+    toast(result.message || "USB DRIVE UNMOUNTED SAFELY");
+  } catch (error) {
+    toast(error.message || "COULD NOT UNMOUNT USB DRIVE");
+  }
 }
 
 async function uploadPlayerSheet() {
@@ -886,6 +1025,10 @@ window.closePlayerSettings = closePlayerSettings;
 window.savePlayerSettings = savePlayerSettings;
 window.uploadPlayerSheet = uploadPlayerSheet;
 window.downloadPlayerTemplate = downloadPlayerTemplate;
+window.refreshUsbFiles = refreshUsbFiles;
+window.importUsbFile = importUsbFile;
+window.savePlayerTemplateToUsb = savePlayerTemplateToUsb;
+window.unmountUsb = unmountUsb;
 window.openSchedule = openSchedule;
 window.closeSchedule = closeSchedule;
 window.downloadTournamentSchedule = downloadTournamentSchedule;

@@ -353,19 +353,44 @@
         <section class="tournamentImportPanel">
           <h3>TOURNAMENT PLAYERS &amp; SCHEDULE</h3>
           <p>Upload a sheet with Name, Gender, and Weight Category columns.</p>
-          <input
-            id="playerSheetFile"
-            class="playerSettingsInput"
-            type="file"
-            accept=".xlsx,.xls,.csv"
-          />
+          <div id="nativeTournamentImport">
+            <input
+              id="playerSheetFile"
+              class="playerSettingsInput"
+              type="file"
+              accept=".xlsx,.xls,.csv"
+            />
+            <div class="tournamentImportActions">
+              <button onclick="uploadPlayerSheet()">
+                IMPORT &amp; GENERATE SCHEDULE
+              </button>
+              <button onclick="downloadPlayerTemplate()">
+                DOWNLOAD TEMPLATE
+              </button>
+            </div>
+          </div>
+          <div id="usbTournamentImport" class="hidden">
+            <div class="usbImportToolbar">
+              <div id="usbDriveStatus" class="usbDriveStatus">USB NOT CHECKED</div>
+              <button onclick="refreshUsbFiles()">REFRESH USB</button>
+              <button onclick="unmountUsb()">UNMOUNT USB SAFELY</button>
+            </div>
+            <label class="usbFileLabel">
+              USB PLAYER SHEETS
+              <select id="usbFileSelect" class="playerSettingsSelect" disabled>
+                <option value="">REFRESH USB TO LIST FILES</option>
+              </select>
+            </label>
+            <div class="tournamentImportActions">
+              <button id="usbImportButton" onclick="importUsbFile()" disabled>
+                IMPORT &amp; GENERATE SCHEDULE
+              </button>
+              <button onclick="savePlayerTemplateToUsb()">
+                SAVE TEMPLATE TO USB
+              </button>
+            </div>
+          </div>
           <div class="tournamentImportActions">
-            <button onclick="uploadPlayerSheet()">
-              IMPORT &amp; GENERATE SCHEDULE
-            </button>
-            <button onclick="downloadPlayerTemplate()">
-              DOWNLOAD TEMPLATE
-            </button>
             <button onclick="openSchedule()">VIEW SCHEDULE</button>
           </div>
           <div id="tournamentImportStatus" class="tournamentImportStatus">

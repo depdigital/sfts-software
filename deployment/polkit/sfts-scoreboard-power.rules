@@ -10,4 +10,11 @@ polkit.addRule(function(action, subject) {
       ].indexOf(action.id) >= 0) {
     return polkit.Result.YES;
   }
+  if (subject.user == "@SERVICE_USER@" &&
+      [
+        "org.freedesktop.udisks2.filesystem-mount",
+        "org.freedesktop.udisks2.filesystem-unmount-others"
+      ].indexOf(action.id) >= 0) {
+    return polkit.Result.YES;
+  }
 });

@@ -57,7 +57,8 @@ async function startServer(port, dataDir) {
       SFTS_BREAK_MS: '50',
       SFTS_ALLOW_UNPAIRED_REMOTES: 'true',
       SFTS_HOST_TOKEN: 'test-host-token',
-      SFTS_KIOSK_MODE: 'true'
+      SFTS_KIOSK_MODE: 'true',
+      SFTS_USB_IMPORT_ONLY: 'false'
     },
     stdio: ['ignore', 'pipe', 'pipe']
   });

@@ -2,6 +2,7 @@ import express from "express";
 import crypto from "node:crypto";
 import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { lstat, readFile, readdir, realpath, stat, writeFile } from "node:fs/promises";
 import http from "http";
 import os from "os";
 import path from "path";
@@ -58,6 +59,12 @@ const VOTE_SETTLE_MS = 750;
 const TECHNICAL_COMBO_WINDOW_MS = 1000;
 const SYSTEM_POWER_DELAY_MS = 15_000;
 const SYSTEMCTL_BIN = '/usr/bin/systemctl';
+const LSBLK_BIN = '/usr/bin/lsblk';
+const UDISKSCTL_BIN = '/usr/bin/udisksctl';
+const USB_IMPORT_ONLY = process.env.SFTS_USB_IMPORT_ONLY === 'true';
+const USB_EXPECTED_UUID = String(process.env.SFTS_USB_UUID || '').trim().toLowerCase();
+const USB_ALLOWED_EXTENSIONS = new Set(['.xlsx', '.xls', '.csv']);
+const USB_TEMPLATE_FILE = 'sfts-player-template.xlsx';
 const KIOSK_MODE = process.env.SFTS_KIOSK_MODE === 'true';
 const INDIAN_STATE_CODES = new Set([
   'AN', 'AP', 'AR', 'AS', 'BR', 'CH', 'CG', 'DD', 'DL', 'DN', 'GA', 'GJ',
@@ -606,7 +613,8 @@ function fullState() {
     match: deep(match),
     matchHistory: deep(matchHistory),
     tournament: deep(tournament),
-    remotes: [...remoteStatuses.values()].map(status => deep(status))
+    remotes: [...remoteStatuses.values()].map(status => deep(status)),
+    usbImportOnly: USB_IMPORT_ONLY
   };
 }
 function remoteState(ws) {
@@ -734,6 +742,175 @@ function requireHostRequest(req, res, next) {
     return;
   }
   next();
+}
+
+function execFileAsync(file, args) {
+  return new Promise((resolve, reject) => {
+    execFile(file, args, { timeout: 5000, maxBuffer: 1024 * 1024 }, (error, stdout, stderr) => {
+      if (error) {
+        error.stderr = stderr;
+        reject(error);
+        return;
+      }
+      resolve({ stdout, stderr });
+    });
+  });
+}
+
+function usbMountpoints(device) {
+  const values = Array.isArray(device.mountpoints)
+    ? device.mountpoints
+    : [device.mountpoint];
+  return values.filter(value => typeof value === 'string' && value.trim()).map(value => value.trim());
+}
+
+function flattenUsbPartitions(nodes, inheritedTransport = '') {
+  const devices = [];
+  for (const node of Array.isArray(nodes) ? nodes : []) {
+    const transport = String(node.tran || inheritedTransport || '').toLowerCase();
+    const children = Array.isArray(node.children) ? node.children : [];
+    if (transport === 'usb' && node.path && (node.type === 'part' || (node.type === 'disk' && children.length === 0))) {
+      devices.push({
+        path: node.path,
+        uuid: String(node.uuid || '').trim().toLowerCase(),
+        label: String(node.label || '').trim(),
+        mountpoints: usbMountpoints(node)
+      });
+    }
+    devices.push(...flattenUsbPartitions(children, transport));
+  }
+  return devices;
+}
+
+async function usbDevices() {
+  const { stdout } = await execFileAsync(LSBLK_BIN, [
+    '--json',
+    '--output',
+    'PATH,TYPE,TRAN,UUID,LABEL,MOUNTPOINTS'
+  ]);
+  let parsed;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    throw new Error('USB device information was invalid');
+  }
+  return flattenUsbPartitions(parsed.blockdevices);
+}
+
+function chooseUsbDevice(devices) {
+  const matching = USB_EXPECTED_UUID
+    ? devices.filter(device => device.uuid === USB_EXPECTED_UUID)
+    : devices;
+  if (!matching.length) return { device: null, message: 'USB DRIVE NOT DETECTED' };
+  if (matching.length === 1) return { device: matching[0], message: '' };
+  return { device: null, message: 'MORE THAN ONE USB STORAGE PARTITION DETECTED' };
+}
+
+async function usbContext({ mountIfNeeded = false } = {}) {
+  if (!USB_IMPORT_ONLY) {
+    return { enabled: false, connected: false, mounted: false, files: [], message: 'USB IMPORT MODE IS DISABLED' };
+  }
+  let devices;
+  try {
+    devices = await usbDevices();
+  } catch (error) {
+    return { enabled: true, connected: false, mounted: false, files: [], message: `USB CHECK FAILED: ${error.message}` };
+  }
+  let selection = chooseUsbDevice(devices);
+  if (!selection.device) {
+    return { enabled: true, connected: false, mounted: false, files: [], message: selection.message };
+  }
+  let device = selection.device;
+  if (!usbMountpoints(device).length && mountIfNeeded) {
+    try {
+      await execFileAsync(UDISKSCTL_BIN, ['mount', '--block-device', device.path]);
+      devices = await usbDevices();
+      selection = chooseUsbDevice(devices);
+      device = selection.device;
+    } catch (error) {
+      return { enabled: true, connected: true, mounted: false, files: [], message: `USB MOUNT FAILED: ${error.message}` };
+    }
+  }
+  const mountPath = device && usbMountpoints(device)[0];
+  if (!mountPath) {
+    return { enabled: true, connected: true, mounted: false, files: [], message: 'USB DRIVE DETECTED — NOT MOUNTED' };
+  }
+  try {
+    const resolvedMountPath = await realpath(mountPath);
+    const mountStats = await stat(resolvedMountPath);
+    if (!mountStats.isDirectory()) throw new Error('USB mount point is not a directory');
+    return { enabled: true, connected: true, mounted: true, files: [], message: '', device, mountPath: resolvedMountPath };
+  } catch (error) {
+    return { enabled: true, connected: true, mounted: false, files: [], message: `USB MOUNT CHECK FAILED: ${error.message}` };
+  }
+}
+
+async function usbFiles(context) {
+  if (!context.mounted) return [];
+  const entries = await readdir(context.mountPath, { withFileTypes: true });
+  const files = [];
+  for (const entry of entries) {
+    if (!entry.isFile() || !USB_ALLOWED_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) continue;
+    const candidate = path.resolve(context.mountPath, entry.name);
+    if (path.dirname(candidate) !== context.mountPath) continue;
+    let resolved;
+    try {
+      resolved = await realpath(candidate);
+      const relative = path.relative(context.mountPath, resolved);
+      if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) continue;
+      const details = await stat(resolved);
+      if (!details.isFile()) continue;
+      files.push({ name: entry.name, size: details.size, modifiedAt: details.mtime.toISOString() });
+    } catch {
+      // A file can disappear while the removable drive is being refreshed.
+    }
+  }
+  return files.sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }));
+}
+
+async function selectedUsbFile(context, fileName) {
+  if (!context.mounted) throw new Error('USB DRIVE IS NOT MOUNTED');
+  if (typeof fileName !== 'string' || !fileName || path.basename(fileName) !== fileName) {
+    throw new Error('INVALID USB FILE');
+  }
+  if (!USB_ALLOWED_EXTENSIONS.has(path.extname(fileName).toLowerCase())) {
+    throw new Error('ONLY EXCEL OR CSV FILES CAN BE IMPORTED');
+  }
+  const candidate = path.resolve(context.mountPath, fileName);
+  if (path.dirname(candidate) !== context.mountPath) throw new Error('INVALID USB FILE');
+  const resolved = await realpath(candidate);
+  const relative = path.relative(context.mountPath, resolved);
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('INVALID USB FILE');
+  const details = await stat(resolved);
+  if (!details.isFile()) throw new Error('USB FILE NOT FOUND');
+  if (details.size > MAX_IMPORT_BYTES) throw new Error('USB FILE IS TOO LARGE');
+  return resolved;
+}
+
+let usbOperation = Promise.resolve();
+function withUsbOperation(action) {
+  const operation = usbOperation.then(action, action);
+  usbOperation = operation.catch(() => {});
+  return operation;
+}
+
+async function writePlayerTemplateToUsb(context) {
+  if (!context.mounted) throw new Error('USB DRIVE IS NOT MOUNTED');
+  const target = path.join(context.mountPath, USB_TEMPLATE_FILE);
+  try {
+    if ((await lstat(target)).isSymbolicLink()) throw new Error('USB TEMPLATE TARGET IS A SYMBOLIC LINK');
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  await writeFile(target, createPlayerTemplateBuffer());
+  const details = await stat(target);
+  return { fileName: USB_TEMPLATE_FILE, size: details.size };
+}
+
+async function unmountUsb(context) {
+  if (!context.mounted || !context.device?.path) throw new Error('USB DRIVE IS NOT MOUNTED');
+  if (!/^\/dev\/[^/]+$/.test(context.device.path)) throw new Error('USB DEVICE PATH IS INVALID');
+  await execFileAsync(UDISKSCTL_BIN, ['unmount', '--block-device', context.device.path]);
 }
 
 function tournamentScheduleRows() {
@@ -942,24 +1119,7 @@ async function announceTournamentBout(bout) {
   });
 }
 
-app.post('/api/tournament/import', requireHostRequest, express.raw({ type: '*/*', limit: MAX_IMPORT_BYTES }), (req, res) => {
-  if (tournamentMatchIsBusy()) {
-    res.status(409).json({ ok: false, message: 'Finish or reset the current match before importing a new player sheet' });
-    return;
-  }
-  const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
-  try {
-    const players = importTournamentPlayers(buffer);
-    tournament = generateTournament(players);
-    state(true);
-    res.json({ ok: true, tournament: deep(tournament) });
-  } catch (error) {
-    const details = error instanceof TournamentImportError ? error.errors : [];
-    res.status(400).json({ ok: false, message: error.message || 'Player sheet import failed', errors: details });
-  }
-});
-
-app.get('/api/tournament/template.xlsx', requireHostRequest, (req, res) => {
+function createPlayerTemplateBuffer() {
   const workbook = XLSX.utils.book_new();
   const sheet = XLSX.utils.json_to_sheet([
     { 'Player ID': 'M58-01', Name: 'Arjun Mehta', Gender: 'MALE', 'Weight Category': '58 kg', 'State Code': 'DL', District: 'New Delhi', Club: 'SFTS Demo Club' },
@@ -980,7 +1140,109 @@ app.get('/api/tournament/template.xlsx', requireHostRequest, (req, res) => {
     { 'Player ID': 'M68-03', Name: 'Kabir Khan', Gender: 'MALE', 'Weight Category': '68 kg', 'State Code': 'KA', District: 'Mysuru', Club: 'SFTS Demo Club' }
   ]);
   XLSX.utils.book_append_sheet(workbook, sheet, 'Players');
-  const output = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+  return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+}
+
+app.get('/api/usb/status', requireHostRequest, async (req, res) => {
+  try {
+    const result = await withUsbOperation(async () => {
+      const context = await usbContext({ mountIfNeeded: true });
+      return { context, files: await usbFiles(context) };
+    });
+    res.json({
+      ok: true,
+      enabled: result.context.enabled,
+      connected: result.context.connected,
+      mounted: result.context.mounted,
+      files: result.files,
+      message: result.context.message
+    });
+  } catch (error) {
+    res.status(503).json({ ok: false, message: error.message || 'USB CHECK FAILED' });
+  }
+});
+
+app.post('/api/usb/import', requireHostRequest, express.json({ limit: '8kb' }), async (req, res) => {
+  if (!USB_IMPORT_ONLY) {
+    res.status(404).json({ ok: false, message: 'USB IMPORT MODE IS DISABLED' });
+    return;
+  }
+  if (tournamentMatchIsBusy()) {
+    res.status(409).json({ ok: false, message: 'Finish or reset the current match before importing a new player sheet' });
+    return;
+  }
+  try {
+    const result = await withUsbOperation(async () => {
+      const context = await usbContext();
+      const filePath = await selectedUsbFile(context, req.body?.fileName);
+      const players = importTournamentPlayers(await readFile(filePath));
+      tournament = generateTournament(players);
+      state(true);
+      return { ok: true, tournament: deep(tournament) };
+    });
+    res.json(result);
+  } catch (error) {
+    const details = error instanceof TournamentImportError ? error.errors : [];
+    res.status(400).json({ ok: false, message: error.message || 'USB player sheet import failed', errors: details });
+  }
+});
+
+app.post('/api/usb/template', requireHostRequest, async (req, res) => {
+  if (!USB_IMPORT_ONLY) {
+    res.status(404).json({ ok: false, message: 'USB IMPORT MODE IS DISABLED' });
+    return;
+  }
+  try {
+    const result = await withUsbOperation(async () => {
+      const context = await usbContext();
+      return writePlayerTemplateToUsb(context);
+    });
+    res.json({ ok: true, ...result, message: 'PLAYER TEMPLATE SAVED TO USB' });
+  } catch (error) {
+    res.status(400).json({ ok: false, message: error.message || 'COULD NOT SAVE TEMPLATE TO USB' });
+  }
+});
+
+app.post('/api/usb/unmount', requireHostRequest, async (req, res) => {
+  if (!USB_IMPORT_ONLY) {
+    res.status(404).json({ ok: false, message: 'USB IMPORT MODE IS DISABLED' });
+    return;
+  }
+  try {
+    await withUsbOperation(async () => unmountUsb(await usbContext()));
+    res.json({ ok: true, message: 'USB DRIVE UNMOUNTED SAFELY' });
+  } catch (error) {
+    res.status(400).json({ ok: false, message: error.message || 'COULD NOT UNMOUNT USB DRIVE' });
+  }
+});
+
+app.post('/api/tournament/import', requireHostRequest, express.raw({ type: '*/*', limit: MAX_IMPORT_BYTES }), (req, res) => {
+  if (USB_IMPORT_ONLY) {
+    res.status(403).json({ ok: false, message: 'USB IMPORT IS REQUIRED ON THIS DEPLOYMENT' });
+    return;
+  }
+  if (tournamentMatchIsBusy()) {
+    res.status(409).json({ ok: false, message: 'Finish or reset the current match before importing a new player sheet' });
+    return;
+  }
+  const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+  try {
+    const players = importTournamentPlayers(buffer);
+    tournament = generateTournament(players);
+    state(true);
+    res.json({ ok: true, tournament: deep(tournament) });
+  } catch (error) {
+    const details = error instanceof TournamentImportError ? error.errors : [];
+    res.status(400).json({ ok: false, message: error.message || 'Player sheet import failed', errors: details });
+  }
+});
+
+app.get('/api/tournament/template.xlsx', requireHostRequest, (req, res) => {
+  if (USB_IMPORT_ONLY) {
+    res.status(403).json({ ok: false, message: 'SAVE THE TEMPLATE TO THE USB FROM PLAYER SETTINGS' });
+    return;
+  }
+  const output = createPlayerTemplateBuffer();
   res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.attachment('sfts-player-template.xlsx');
   res.send(output);

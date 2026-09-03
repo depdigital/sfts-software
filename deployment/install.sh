@@ -136,6 +136,7 @@ command -v flock >/dev/null 2>&1 || APT_PACKAGES+=(util-linux)
 command -v wpctl >/dev/null 2>&1 || APT_PACKAGES+=(pipewire-bin)
 command -v swaybg >/dev/null 2>&1 || APT_PACKAGES+=(swaybg)
 command -v pkcheck >/dev/null 2>&1 || APT_PACKAGES+=(polkitd)
+command -v udisksctl >/dev/null 2>&1 || APT_PACKAGES+=(udisks2)
 if ! command -v chromium >/dev/null 2>&1 && ! command -v chromium-browser >/dev/null 2>&1; then
   APT_PACKAGES+=(chromium)
 fi
@@ -282,11 +283,17 @@ if grep -Eq '^SFTS_TTS_URL=' "${ENV_TMP}"; then
 else
   printf '%s\n' 'SFTS_TTS_URL=http://127.0.0.1:5000/synthesize' >> "${ENV_TMP}"
 fi
+if grep -Eq '^SFTS_USB_IMPORT_ONLY=' "${ENV_TMP}"; then
+  sed -i -E 's|^SFTS_USB_IMPORT_ONLY=.*$|SFTS_USB_IMPORT_ONLY=true|' "${ENV_TMP}"
+else
+  printf '%s\n' 'SFTS_USB_IMPORT_ONLY=true' >> "${ENV_TMP}"
+fi
 chown root:"${SERVICE_GROUP}" "${ENV_TMP}"
 chmod 0640 "${ENV_TMP}"
 mv -f -- "${ENV_TMP}" "${ENV_FILE}"
 ENV_TMP=""
 log "Configured announcements to use the local Piper HTTP service"
+log "Configured deployment imports and player templates to use the USB drive"
 success "Application data and environment are ready"
 
 step "Installing and starting the system service"

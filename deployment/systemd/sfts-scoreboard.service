@@ -17,7 +17,8 @@ RestartSec=5
 UMask=0027
 NoNewPrivileges=true
 PrivateTmp=true
-PrivateDevices=true
+# USB status, mounting, and safe unmounting require visibility of removable devices.
+PrivateDevices=false
 ProtectSystem=full
 ProtectKernelTunables=true
 ProtectKernelModules=true

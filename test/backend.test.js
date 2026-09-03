@@ -68,7 +68,8 @@ before(async () => {
       SFTS_DATA_DIR: testDataDir,
       SFTS_BREAK_MS: '50',
       SFTS_KYESHI_LIMIT_MS: '1000',
-      SFTS_HOST_TOKEN: 'test-host-token'
+      SFTS_HOST_TOKEN: 'test-host-token',
+      SFTS_USB_IMPORT_ONLY: 'false'
     },
     stdio: ['ignore', 'pipe', 'pipe']
   });

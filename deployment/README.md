@@ -99,8 +99,14 @@ The service:
 - Enables local kiosk authorization with `SFTS_KIOSK_MODE=true`.
 - Restarts after an unexpected server failure.
 - Stores match state in the project `data` directory.
-- Runs with systemd filesystem, device, kernel, privilege, and network-family restrictions appropriate for a LAN-only scoreboard service.
+- Runs with systemd filesystem, kernel, privilege, and network-family restrictions appropriate for a LAN-only scoreboard service.
 - Does not print remote token values during installation.
+
+## USB tournament files
+
+In the deployment configuration, tournament player imports and the player template use the single USB storage device connected to the Pi. The dashboard does not open the Linux file picker: `REFRESH USB` checks for one USB storage partition, mounts it through UDisks when needed, and lists only `.xlsx`, `.xls`, and `.csv` files. `SAVE TEMPLATE TO USB` writes `sfts-player-template.xlsx` directly to that drive. Use `UNMOUNT USB SAFELY` before removing the drive.
+
+If more than one USB storage partition is visible, the dashboard refuses file operations. Set `SFTS_USB_UUID` in `/etc/sfts/sfts-scoreboard.env` to the filesystem UUID of the approved event drive if the drive has multiple partitions or you want to pin the deployment to one specific drive. The USB must be writable for template export.
 
 Open the host dashboard on the Pi at:
 

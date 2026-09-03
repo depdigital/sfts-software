@@ -547,6 +547,37 @@ button {
   flex: 1 1 180px;
   margin: 0;
 }
+.usbImportToolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.usbDriveStatus {
+  flex: 1 1 260px;
+  color: #d8e2f1;
+  font-size: 13px;
+  font-weight: 800;
+}
+.usbFileLabel {
+  display: block;
+  margin-bottom: 12px;
+  color: #aebbd0;
+  font-size: 12px;
+  font-weight: 800;
+}
+.usbFileLabel select {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+}
+.usbDriveStatus.connected {
+  color: #63f38d;
+}
+.usbDriveStatus.disconnected {
+  color: #ff9b9b;
+}
 .tournamentImportStatus,
 .scheduleSummary {
   margin-top: 12px;
