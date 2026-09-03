@@ -506,8 +506,7 @@ button {
   font-size: 13px;
   line-height: 1.45;
 }
-.rulesActiveStatus,
-.rulesPreview {
+.rulesActiveStatus {
   margin: 12px 0;
   padding: 12px;
   border-radius: 8px;
@@ -538,14 +537,6 @@ button {
   margin: 0;
   padding-inline: 8px;
   font-size: 12px;
-}
-.rulesPreview strong {
-  color: #fff;
-}
-.rulesPreview pre {
-  margin: 8px 0 0;
-  white-space: pre-wrap;
-  font: inherit;
 }
 .playerSettingsModal {
   width: min(920px, 94vw);

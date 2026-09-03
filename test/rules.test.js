@@ -27,9 +27,9 @@ test('the built-in ruleset is valid and describes the current behavior', async (
   assert.equal(rules.penalties.gamJeom.roundLossAt, 5);
   assert.deepEqual(rulesMetadata(rules), {
     id: 'sfts-current',
-    name: 'SFTS Current Rules',
-    federation: 'SFTS',
-    ruleVersion: 'current',
+    name: 'SFTS Default Rules',
+    federation: 'WTF',
+    ruleVersion: 'default',
     effectiveFrom: null,
     source: 'Built-in SFTS rules',
     schemaVersion: 1
@@ -76,11 +76,11 @@ test('rules are written atomically and the previous active pack is backed up', a
     const secondRules = await defaultRules();
     secondRules.ruleset.ruleVersion = 'second';
     await writeRulesAtomically(firstRules, { activePath, backupPath, backupRules: firstRules });
-    assert.equal((await readRulesFile(backupPath)).ruleset.ruleVersion, 'current');
+    assert.equal((await readRulesFile(backupPath)).ruleset.ruleVersion, 'default');
     await writeRulesAtomically(secondRules, { activePath, backupPath });
 
     assert.equal((await readRulesFile(activePath)).ruleset.ruleVersion, 'second');
-    assert.equal((await readRulesFile(backupPath)).ruleset.ruleVersion, 'current');
+    assert.equal((await readRulesFile(backupPath)).ruleset.ruleVersion, 'default');
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

@@ -1319,24 +1319,6 @@ app.get('/api/rules/status', requireHostRequest, async (req, res) => {
   }
 });
 
-app.post('/api/rules/preview', requireHostRequest, express.json({ limit: '8kb' }), async (req, res) => {
-  if (!USB_IMPORT_ONLY) {
-    res.status(404).json({ ok: false, message: 'USB RULE IMPORT IS DISABLED' });
-    return;
-  }
-  try {
-    const rulePack = await withUsbOperation(() => readUsbRulesFile(req.body?.fileName));
-    res.json({
-      ok: true,
-      ruleset: rulesMetadata(rulePack),
-      summary: rulesSummary(rulePack),
-      activeRuleset: activeRulesMetadata
-    });
-  } catch (error) {
-    res.status(400).json({ ok: false, message: error.message || 'RULE PACK PREVIEW FAILED' });
-  }
-});
-
 app.post('/api/rules/apply', requireHostRequest, express.json({ limit: '8kb' }), async (req, res) => {
   if (!USB_IMPORT_ONLY) {
     res.status(404).json({ ok: false, message: 'USB RULE IMPORT IS DISABLED' });

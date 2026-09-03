@@ -2,9 +2,9 @@
   "schemaVersion": 1,
   "ruleset": {
     "id": "sfts-current",
-    "name": "SFTS Current Rules",
-    "federation": "SFTS",
-    "ruleVersion": "current",
+    "name": "SFTS Default Rules",
+    "federation": "WTF",
+    "ruleVersion": "default",
     "effectiveFrom": null,
     "source": "Built-in SFTS rules"
   },

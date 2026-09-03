@@ -581,8 +581,10 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(html, /onclick="openTestMode\(\)">REMOTE SETTINGS<\/button>/);
   assert.match(html, /onclick="openRules\(\)">RULES<\/button>/);
   assert.match(html, /id="usbRulesFile"/);
+  assert.match(html, /id="refreshRulesButton"/);
   assert.match(html, /id="defaultRulesButton"/);
   assert.doesNotMatch(html, /ROLL BACK PREVIOUS/);
+  assert.doesNotMatch(html, /PREVIEW RULE PACK/);
   assert.match(html, /id="remoteMode"/);
   assert.match(html, />\s*BACK\s*<\/button>/);
   assert.match(html, /id="remoteInfo1"/);
@@ -613,7 +615,6 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(jsText, /declareKyeShiWinner/);
   assert.match(jsText, /systemPowerScheduled/);
   assert.match(jsText, /cancelSystemPower/);
-  assert.match(jsText, /api\/rules\/preview/);
   assert.match(jsText, /api\/rules\/apply/);
   assert.match(jsText, /api\/rules\/default/);
   assert.doesNotMatch(jsText, /api\/rules\/rollback/);

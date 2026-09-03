@@ -606,10 +606,10 @@ function renderActiveRuleset(ruleset) {
 function renderRulesUsbStatus(result) {
   const status = $("rulesUsbStatus");
   const select = $("usbRulesFile");
-  const previewButton = $("previewRulesButton");
+  const refreshButton = $("refreshRulesButton");
   const applyButton = $("applyRulesButton");
   const defaultButton = $("defaultRulesButton");
-  if (!status || !select || !previewButton || !applyButton || !defaultButton) return;
+  if (!status || !select || !refreshButton || !applyButton || !defaultButton) return;
   const files = Array.isArray(result?.rulesFiles) ? result.rulesFiles : [];
   const mounted = result?.connected === true && result?.mounted === true;
   status.textContent = result?.message || (mounted ? `USB READY · ${files.length} RULE PACK(S)` : "USB DRIVE NOT READY");
@@ -630,7 +630,7 @@ function renderRulesUsbStatus(result) {
     }
   }
   select.disabled = !files.length;
-  previewButton.disabled = !files.length;
+  refreshButton.disabled = false;
   applyButton.disabled = !files.length;
   defaultButton.disabled = false;
   if (result?.activeRuleset) {
@@ -662,41 +662,6 @@ async function refreshRulesFiles() {
   }
 }
 
-function renderRulesPreview(result) {
-  const preview = $("rulesPreview");
-  if (!preview) return;
-  preview.textContent = `PREVIEW: ${result.ruleset?.name || result.ruleset?.id || "RULESET"} · VERSION ${result.ruleset?.ruleVersion || "UNKNOWN"}\n\n${JSON.stringify(result.summary || {}, null, 2)}`;
-  preview.classList.remove("hidden");
-}
-
-async function previewRulesFile() {
-  const fileName = $("usbRulesFile")?.value;
-  if (!fileName) {
-    toast("SELECT A RULE PACK");
-    return;
-  }
-  if (!hostToken) {
-    toast("HOST SESSION REQUIRED");
-    return;
-  }
-  try {
-    const response = await fetch("/api/rules/preview", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-SFTS-Host-Token": hostToken,
-      },
-      body: JSON.stringify({ fileName }),
-    });
-    const result = await response.json();
-    if (!response.ok || !result.ok) throw new Error(result.message || "RULE PACK PREVIEW FAILED");
-    renderRulesPreview(result);
-    toast("RULE PACK VALIDATED");
-  } catch (error) {
-    toast(error.message || "RULE PACK PREVIEW FAILED");
-  }
-}
-
 async function applyRulesFile() {
   const fileName = $("usbRulesFile")?.value;
   if (!fileName) {
@@ -721,7 +686,6 @@ async function applyRulesFile() {
     if (!response.ok || !result.ok) throw new Error(result.message || "RULESET APPLY FAILED");
     activeRuleset = result.ruleset || activeRuleset;
     renderActiveRuleset(activeRuleset);
-    renderRulesPreview(result);
     toast(result.message || "RULESET APPLIED SUCCESSFULLY");
     void refreshRulesFiles();
   } catch (error) {
@@ -744,7 +708,6 @@ async function loadDefaultRules() {
     if (!response.ok || !result.ok) throw new Error(result.message || "DEFAULT RULESET LOAD FAILED");
     activeRuleset = result.ruleset || activeRuleset;
     renderActiveRuleset(activeRuleset);
-    renderRulesPreview(result);
     toast(result.message || "DEFAULT RULESET LOADED");
   } catch (error) {
     toast(error.message || "DEFAULT RULESET LOAD FAILED");
@@ -1266,7 +1229,6 @@ window.uploadPlayerSheet = uploadPlayerSheet;
 window.downloadPlayerTemplate = downloadPlayerTemplate;
 window.refreshUsbFiles = refreshUsbFiles;
 window.refreshRulesFiles = refreshRulesFiles;
-window.previewRulesFile = previewRulesFile;
 window.applyRulesFile = applyRulesFile;
 window.loadDefaultRules = loadDefaultRules;
 window.importUsbFile = importUsbFile;

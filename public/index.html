@@ -189,7 +189,6 @@
           <div class="usbImportToolbar">
             <div id="rulesUsbStatus" class="usbDriveStatus">USB NOT CHECKED</div>
             <div class="usbDeviceActions">
-              <button onclick="refreshRulesFiles()">REFRESH USB</button>
               <button onclick="unmountUsb()">UNMOUNT USB SAFELY</button>
             </div>
           </div>
@@ -200,11 +199,10 @@
             </select>
           </label>
           <div class="rulesActions">
-            <button id="previewRulesButton" onclick="previewRulesFile()" disabled>PREVIEW RULE PACK</button>
+            <button id="refreshRulesButton" onclick="refreshRulesFiles()">REFRESH USB</button>
             <button id="applyRulesButton" onclick="applyRulesFile()" disabled>APPLY RULE PACK</button>
             <button id="defaultRulesButton" onclick="loadDefaultRules()">DEFAULT</button>
           </div>
-          <div id="rulesPreview" class="rulesPreview hidden"></div>
         </section>
         <button onclick="closeRules()">CLOSE</button>
       </div>
