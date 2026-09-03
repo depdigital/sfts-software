@@ -447,6 +447,28 @@ function savePlayerSettings() {
   closePlayerSettings();
 }
 
+function announceManualPlayers() {
+  const details = {
+    RED: {
+      playerName: $("playerRedName").value,
+      weightCategory: $("playerRedWeight").value,
+      stateCode: $("playerRedStateCode").value,
+      district: $("playerRedDistrict").value,
+    },
+    BLUE: {
+      playerName: $("playerBlueName").value,
+      weightCategory: $("playerBlueWeight").value,
+      stateCode: $("playerBlueStateCode").value,
+      district: $("playerBlueDistrict").value,
+    },
+  };
+  if (!details.RED.playerName.trim() || !details.BLUE.playerName.trim()) {
+    toast("ENTER BOTH PLAYER NAMES FIRST");
+    return;
+  }
+  send({ type: "host", action: "announcePlayers", details });
+}
+
 function renderTournament(tournament) {
   const status = $("tournamentImportStatus");
   if (!status) return;
@@ -1023,6 +1045,7 @@ window.closePowerModal = closePowerModal;
 window.openPlayerSettings = openPlayerSettings;
 window.closePlayerSettings = closePlayerSettings;
 window.savePlayerSettings = savePlayerSettings;
+window.announceManualPlayers = announceManualPlayers;
 window.uploadPlayerSheet = uploadPlayerSheet;
 window.downloadPlayerTemplate = downloadPlayerTemplate;
 window.refreshUsbFiles = refreshUsbFiles;

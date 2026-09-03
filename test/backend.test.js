@@ -111,6 +111,27 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   const initial = await waitForMessage(host, message => message.type === 'state');
   assert.equal(initial.match.phase, 'ROUND');
 
+  host.send(JSON.stringify({
+    type: 'host',
+    action: 'announcePlayers',
+    details: {
+      RED: {
+        playerName: 'Manual Red',
+        weightCategory: '-58 kg',
+        stateCode: 'DL',
+        district: 'New Delhi'
+      },
+      BLUE: {
+        playerName: 'Manual Blue',
+        weightCategory: '-58 kg',
+        stateCode: 'UP',
+        district: 'Noida'
+      }
+    }
+  }));
+  const playerAnnouncement = await waitForMessage(host, message => message.type === 'announcement');
+  assert.equal(playerAnnouncement.text, 'Bout 1: Manual Red versus Manual Blue, -58 kg');
+
   host.send(JSON.stringify({ type: 'host', action: 'systemPower', powerAction: 'reboot' }));
   const powerScheduled = await waitForMessage(host, message => message.type === 'systemPowerScheduled');
   assert.equal(powerScheduled.action, 'reboot');

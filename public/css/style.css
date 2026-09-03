@@ -551,11 +551,19 @@ button {
   margin-top: 12px;
 }
 .usbImportToolbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 12px;
+}
+.usbDeviceActions {
+  display: flex;
+  gap: 8px;
+}
+.usbDeviceActions button {
+  margin: 0;
+  white-space: nowrap;
 }
 .usbDriveStatus {
   flex: 1 1 260px;
@@ -580,6 +588,16 @@ button {
 }
 .usbDriveStatus.disconnected {
   color: #ff9b9b;
+}
+.playersAnnounceButton {
+  width: 100%;
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  background: linear-gradient(90deg, #721719 0%, #721719 50%, #08557b 50%, #08557b 100%);
 }
 .tournamentImportStatus,
 .scheduleSummary {
@@ -1054,6 +1072,17 @@ button {
   }
 }
 @media (max-width: 700px) {
+  .usbImportToolbar {
+    grid-template-columns: 1fr;
+  }
+  .usbDeviceActions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+  .usbDeviceActions button {
+    min-width: 0;
+    padding-inline: 8px;
+  }
   .mainBoard,
   .bottomArea {
     grid-template-columns: minmax(0, 1fr) 150px minmax(0, 1fr);

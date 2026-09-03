@@ -350,6 +350,9 @@
             </label>
           </div>
         </div>
+        <button class="playersAnnounceButton" onclick="announceManualPlayers()">
+          ANNOUNCE RED VS BLUE
+        </button>
         <section class="tournamentImportPanel">
           <h3>TOURNAMENT PLAYERS &amp; SCHEDULE</h3>
           <p>Upload a sheet with Name, Gender, and Weight Category columns.</p>
@@ -372,8 +375,10 @@
           <div id="usbTournamentImport" class="hidden">
             <div class="usbImportToolbar">
               <div id="usbDriveStatus" class="usbDriveStatus">USB NOT CHECKED</div>
-              <button onclick="refreshUsbFiles()">REFRESH USB</button>
-              <button onclick="unmountUsb()">UNMOUNT USB SAFELY</button>
+              <div class="usbDeviceActions">
+                <button onclick="refreshUsbFiles()">REFRESH USB</button>
+                <button onclick="unmountUsb()">UNMOUNT USB SAFELY</button>
+              </div>
             </div>
             <label class="usbFileLabel">
               USB PLAYER SHEETS
