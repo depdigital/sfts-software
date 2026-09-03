@@ -1119,7 +1119,7 @@ function showRemoteDisconnectPopup(corner) {
   remoteDisconnectPopupTimer = setTimeout(() => {
     popup.classList.remove("show");
     remoteDisconnectPopupTimer = null;
-  }, 1000);
+  }, 2000);
 }
 
 function renderRemoteStatuses(remotes, activeRemoteCount = lastState?.remoteCount) {
