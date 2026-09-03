@@ -576,14 +576,14 @@ function renderRulesUsbStatus(result) {
   if (!status || !select || !previewButton || !applyButton || !rollbackButton) return;
   const files = Array.isArray(result?.rulesFiles) ? result.rulesFiles : [];
   const mounted = result?.connected === true && result?.mounted === true;
-  status.textContent = result?.message || (mounted ? `USB READY · ${files.length} JSON RULE PACK(S)` : "USB DRIVE NOT READY");
+  status.textContent = result?.message || (mounted ? `USB READY · ${files.length} RULE PACK(S)` : "USB DRIVE NOT READY");
   status.classList.toggle("connected", mounted);
   status.classList.toggle("disconnected", !mounted);
   select.replaceChildren();
   if (!files.length) {
     const option = document.createElement("option");
     option.value = "";
-    option.textContent = mounted ? "NO JSON RULE PACKS FOUND" : "REFRESH USB TO CHECK AGAIN";
+    option.textContent = mounted ? "NO RULE PACKS FOUND" : "REFRESH USB TO CHECK AGAIN";
     select.appendChild(option);
   } else {
     for (const file of files) {
@@ -636,7 +636,7 @@ function renderRulesPreview(result) {
 async function previewRulesFile() {
   const fileName = $("usbRulesFile")?.value;
   if (!fileName) {
-    toast("SELECT A JSON RULE PACK");
+    toast("SELECT A RULE PACK");
     return;
   }
   if (!hostToken) {
@@ -664,7 +664,7 @@ async function previewRulesFile() {
 async function applyRulesFile() {
   const fileName = $("usbRulesFile")?.value;
   if (!fileName) {
-    toast("SELECT A JSON RULE PACK");
+    toast("SELECT A RULE PACK");
     return;
   }
   if (!window.confirm("Apply this ruleset? The current match must be finished or reset first.")) return;

@@ -1273,7 +1273,7 @@ async function readUsbRulesFile(fileName) {
   const filePath = await selectedUsbFile(context, fileName, {
     allowedExtensions: USB_RULE_ALLOWED_EXTENSIONS,
     maxBytes: rulesConstants.maxBytes,
-    extensionMessage: 'ONLY JSON RULE PACKS CAN BE IMPORTED'
+    extensionMessage: 'ONLY RULE PACK FILES CAN BE IMPORTED'
   });
   return readRulesFile(filePath);
 }
