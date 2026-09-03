@@ -37,9 +37,16 @@ flock -n 9 || exit 0
 stop_desktop_chrome() {
   local current_user_id
   local desktop_process
+  local desktop_supervisor
 
   current_user_id="$(id -u)"
   if command -v pkill >/dev/null 2>&1; then
+    # Raspberry Pi OS's global labwc autostart wraps these processes with
+    # lwrespawn. Stop the supervisors first, otherwise they immediately
+    # recreate the panel and desktop after the child process is killed.
+    for desktop_supervisor in pcmanfm-pi wf-panel-pi; do
+      pkill -u "${current_user_id}" -f "/usr/bin/lwrespawn /usr/bin/${desktop_supervisor}" 2>/dev/null || true
+    done
     for desktop_process in waybar wf-panel-pi lxpanel pcmanfm pcmanfm-qt; do
       pkill -u "${current_user_id}" -x "${desktop_process}" 2>/dev/null || true
     done
