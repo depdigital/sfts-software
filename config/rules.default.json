@@ -32,6 +32,11 @@
   },
   "scoring": {
     "basePointValues": [1, 2, 3],
+    "basePointLabels": {
+      "1": "PUNCH",
+      "2": "CHEST",
+      "3": "HEAD"
+    },
     "acceptedPointValues": [1, 2, 3, 4, 6],
     "technicalInput": {
       "enabled": true,

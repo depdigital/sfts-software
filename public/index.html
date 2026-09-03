@@ -118,15 +118,16 @@
 
       <section class="bottomArea">
         <div class="controlGrid redButtons">
-          <button onclick="manualPoint('RED', 2)"><b>+2</b> CHEST</button>
+          <button id="redChestButton" data-score-point="2" onclick="manualConfiguredPoint('RED', 'redChestButton')"><b>+2</b> <span>CHEST</span></button>
           <button
             id="redHeadButton"
+            data-score-point="3"
             type="button"
-            onclick="manualHeadPoint('RED')"
+            onclick="manualConfiguredPoint('RED', 'redHeadButton')"
           >
-            <b>+3</b> HEAD
+            <b>+3</b> <span>HEAD</span>
           </button>
-          <button onclick="manualPoint('RED', 1)"><b>+1</b> PUNCH</button>
+          <button id="redPunchButton" data-score-point="1" onclick="manualConfiguredPoint('RED', 'redPunchButton')"><b>+1</b> <span>PUNCH</span></button>
           <button onclick="manualGam('RED')">GAM-JEOM</button>
           <button onclick="editScore('RED')">EDIT SCORE</button>
           <button onclick="editGam('RED')">EDIT GAM-JEOM</button>
@@ -142,15 +143,16 @@
         </div>
 
         <div class="controlGrid blueButtons">
-          <button onclick="manualPoint('BLUE', 2)"><b>+2</b> CHEST</button>
+          <button id="blueChestButton" data-score-point="2" onclick="manualConfiguredPoint('BLUE', 'blueChestButton')"><b>+2</b> <span>CHEST</span></button>
           <button
             id="blueHeadButton"
+            data-score-point="3"
             type="button"
-            onclick="manualHeadPoint('BLUE')"
+            onclick="manualConfiguredPoint('BLUE', 'blueHeadButton')"
           >
-            <b>+3</b> HEAD
+            <b>+3</b> <span>HEAD</span>
           </button>
-          <button onclick="manualPoint('BLUE', 1)"><b>+1</b> PUNCH</button>
+          <button id="bluePunchButton" data-score-point="1" onclick="manualConfiguredPoint('BLUE', 'bluePunchButton')"><b>+1</b> <span>PUNCH</span></button>
           <button onclick="manualGam('BLUE')">GAM-JEOM</button>
           <button onclick="editScore('BLUE')">EDIT SCORE</button>
           <button onclick="editGam('BLUE')">EDIT GAM-JEOM</button>
@@ -487,9 +489,9 @@
             <h3 id="summaryRedName">HONG</h3>
             <div id="summaryRedScore" class="summaryScore">0</div>
             <p><span>GAM-JEOM</span><b id="summaryRedGam">0</b></p>
-            <p><span>+1 PUNCH</span><b id="summaryRedP1">0</b></p>
-            <p><span>+2 CHEST</span><b id="summaryRedP2">0</b></p>
-            <p><span>+3 FACE</span><b id="summaryRedP3">0</b></p>
+            <p><span id="summaryRedP1Label">+1 PUNCH</span><b id="summaryRedP1">0</b></p>
+            <p><span id="summaryRedP2Label">+2 CHEST</span><b id="summaryRedP2">0</b></p>
+            <p><span id="summaryRedP3Label">+3 FACE</span><b id="summaryRedP3">0</b></p>
           </div>
           <div class="roundMiddle">
             <div id="roundReason" class="roundReason">TIME 0:00</div>
@@ -500,9 +502,9 @@
             <h3 id="summaryBlueName">CHUNG</h3>
             <div id="summaryBlueScore" class="summaryScore">0</div>
             <p><span>GAM-JEOM</span><b id="summaryBlueGam">0</b></p>
-            <p><span>+1 PUNCH</span><b id="summaryBlueP1">0</b></p>
-            <p><span>+2 CHEST</span><b id="summaryBlueP2">0</b></p>
-            <p><span>+3 FACE</span><b id="summaryBlueP3">0</b></p>
+            <p><span id="summaryBlueP1Label">+1 PUNCH</span><b id="summaryBlueP1">0</b></p>
+            <p><span id="summaryBlueP2Label">+2 CHEST</span><b id="summaryBlueP2">0</b></p>
+            <p><span id="summaryBlueP3Label">+3 FACE</span><b id="summaryBlueP3">0</b></p>
           </div>
         </div>
       </div>

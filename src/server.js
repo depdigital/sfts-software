@@ -560,6 +560,16 @@ function configureRuntimeRules(nextRules) {
   match.kyeShi.limitMs = KYESHI_LIMIT_MS;
 }
 
+function scoringRulesState() {
+  return {
+    basePointValues: [...rules.scoring.basePointValues],
+    basePointLabels: { ...rules.scoring.basePointLabels },
+    acceptedPointValues: [...rules.scoring.acceptedPointValues],
+    technicalInput: deep(rules.scoring.technicalInput),
+    gamJeomPointValue: rules.scoring.gamJeomPointValue
+  };
+}
+
 function persistenceSnapshot() {
   const savedMatch = deep(match);
   savedMatch.running = false;
@@ -658,7 +668,8 @@ function fullState() {
     tournament: deep(tournament),
     remotes: [...remoteStatuses.values()].map(status => deep(status)),
     usbImportOnly: USB_IMPORT_ONLY,
-    ruleset: deep(activeRulesMetadata)
+    ruleset: deep(activeRulesMetadata),
+    scoringRules: scoringRulesState()
   };
 }
 function remoteState(ws) {
@@ -1257,6 +1268,7 @@ function rulesSummary(rulePack) {
     roundDurationSeconds: rulePack.match.roundDurationSeconds,
     breakDurationSeconds: rulePack.match.breakDurationSeconds,
     basePointValues: rulePack.scoring.basePointValues,
+    basePointLabels: rulePack.scoring.basePointLabels,
     acceptedPointValues: rulePack.scoring.acceptedPointValues,
     technicalInput: rulePack.scoring.technicalInput,
     gamJeomPointValue: rulePack.scoring.gamJeomPointValue,

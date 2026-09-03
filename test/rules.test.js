@@ -21,6 +21,7 @@ test('the built-in ruleset is valid and describes the current behavior', async (
 
   assert.equal(rules.match.format, 'BEST_OF_THREE');
   assert.deepEqual(rules.scoring.basePointValues, [1, 2, 3]);
+  assert.equal(rules.scoring.basePointLabels['1'], 'PUNCH');
   assert.equal(rules.scoring.technicalInput.pointsByBasePoints['3'], 6);
   assert.equal(rules.decisions.pointGap.difference, 15);
   assert.equal(rules.penalties.gamJeom.roundLossAt, 5);

@@ -18,6 +18,7 @@ let powerDeadlineAt = 0;
 let powerCountdownTimer = null;
 let usbImportOnly = false;
 let activeRuleset = null;
+let scoringRules = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -48,9 +49,11 @@ function connectSocket() {
       historyCache = msg.matchHistory || [];
       usbImportOnly = msg.usbImportOnly === true;
       activeRuleset = msg.ruleset || msg.match?.ruleset || activeRuleset;
+      scoringRules = msg.scoringRules || scoringRules;
       renderUsbImportMode();
       renderState(msg.match);
       renderActiveRuleset(activeRuleset);
+      renderScoringControls();
       renderRemoteStatuses(msg.remotes);
       renderTournament(msg.tournament);
       if (!$("scheduleModal").classList.contains("hidden"))
@@ -181,6 +184,30 @@ function renderState(match) {
   }
 }
 
+function renderScoringControls() {
+  if (!scoringRules?.basePointValues?.length) return;
+  const controls = [
+    ["redPunchButton", 1],
+    ["redChestButton", 2],
+    ["redHeadButton", 3],
+    ["bluePunchButton", 1],
+    ["blueChestButton", 2],
+    ["blueHeadButton", 3],
+  ];
+  for (const [id, point] of controls) {
+    const button = $(id);
+    if (!button) continue;
+    const enabled = scoringRules.basePointValues.includes(point);
+    const label = scoringRules.basePointLabels?.[String(point)] || "POINTS";
+    button.dataset.scorePoint = String(point);
+    button.disabled = !enabled;
+    const value = button.querySelector("b");
+    const text = button.querySelector("span");
+    if (value) value.textContent = `+${point}`;
+    if (text) text.textContent = label;
+  }
+}
+
 function playerMetaText(player) {
   const name = String(player.playerName || "").trim() || "PLAYER NAME —";
   const weight = String(player.weightCategory || "").trim() || "WEIGHT —";
@@ -303,6 +330,15 @@ function declareWinner(player) {
 }
 function manualPoint(player, points) {
   send({ type: "host", action: "point", player, points });
+}
+function manualConfiguredPoint(player, buttonId) {
+  const button = $(buttonId);
+  const points = Number(button?.dataset.scorePoint);
+  if (!Number.isInteger(points) || !scoringRules?.basePointValues?.includes(points)) {
+    toast("SCORING OPTION NOT AVAILABLE IN ACTIVE RULES");
+    return;
+  }
+  manualPoint(player, points);
 }
 function manualHeadPoint(player) {
   send({ type: "host", action: "headPoint", player });
@@ -1057,6 +1093,11 @@ function showRoundSummary(record) {
   $("summaryBlueScore").textContent = record.blue.score;
   $("summaryRedGam").textContent = record.red.gamjeom;
   $("summaryBlueGam").textContent = record.blue.gamjeom;
+  for (const point of [1, 2, 3]) {
+    const label = scoringRules?.basePointLabels?.[String(point)] || "POINTS";
+    $(`summaryRedP${point}Label`).textContent = `+${point} ${label}`;
+    $(`summaryBlueP${point}Label`).textContent = `+${point} ${label}`;
+  }
   $("summaryRedP1").textContent = record.red.stats.plus1;
   $("summaryRedP2").textContent = record.red.stats.plus2;
   $("summaryRedP3").textContent = record.red.stats.plus3;
@@ -1206,6 +1247,7 @@ window.toggleKyeShi = toggleKyeShi;
 window.endKyeShi = endKyeShi;
 window.declareWinner = declareWinner;
 window.manualPoint = manualPoint;
+window.manualConfiguredPoint = manualConfiguredPoint;
 window.manualHeadPoint = manualHeadPoint;
 window.manualGam = manualGam;
 window.editScore = editScore;

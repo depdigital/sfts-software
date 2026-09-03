@@ -111,6 +111,8 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   const initial = await waitForMessage(host, message => message.type === 'state');
   assert.equal(initial.match.phase, 'ROUND');
   assert.equal(initial.ruleset.id, 'sfts-current');
+  assert.deepEqual(initial.scoringRules.basePointValues, [1, 2, 3]);
+  assert.equal(initial.scoringRules.basePointLabels['2'], 'CHEST');
   const rulesStatus = await fetch(`http://127.0.0.1:${port}/api/rules/status`, {
     headers: { 'X-SFTS-Host-Token': hostRole.hostToken }
   });

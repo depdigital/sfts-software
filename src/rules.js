@@ -125,6 +125,13 @@ export function validateRules(input) {
 
   const scoring = requireObject(rules.scoring, 'scoring');
   requireExactArray(scoring.basePointValues, [1, 2, 3], 'scoring.basePointValues');
+  if (scoring.basePointLabels === undefined) {
+    scoring.basePointLabels = { '1': 'PUNCH', '2': 'CHEST', '3': 'HEAD' };
+  }
+  const basePointLabels = requireObject(scoring.basePointLabels, 'scoring.basePointLabels');
+  for (const point of scoring.basePointValues) {
+    requireString(basePointLabels[String(point)], `scoring.basePointLabels.${point}`);
+  }
   const acceptedPointValues = requireNumberArray(scoring.acceptedPointValues, 'scoring.acceptedPointValues', { minimum: 1 });
   if (scoring.basePointValues.some(point => !acceptedPointValues.includes(point))) {
     fail('scoring.acceptedPointValues must include all base point values');
