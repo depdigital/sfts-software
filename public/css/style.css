@@ -547,6 +547,9 @@ button {
   flex: 1 1 180px;
   margin: 0;
 }
+.scheduleViewAction {
+  margin-top: 12px;
+}
 .usbImportToolbar {
   display: flex;
   align-items: center;

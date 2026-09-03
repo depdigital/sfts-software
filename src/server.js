@@ -764,20 +764,26 @@ function usbMountpoints(device) {
   return values.filter(value => typeof value === 'string' && value.trim()).map(value => value.trim());
 }
 
-function flattenUsbPartitions(nodes, inheritedTransport = '') {
+function flattenUsbPartitions(nodes, inheritedTransport = '', inheritedDiskPath = '') {
   const devices = [];
   for (const node of Array.isArray(nodes) ? nodes : []) {
     const transport = String(node.tran || inheritedTransport || '').toLowerCase();
     const children = Array.isArray(node.children) ? node.children : [];
-    if (transport === 'usb' && node.path && (node.type === 'part' || (node.type === 'disk' && children.length === 0))) {
+    const diskPath = node.type === 'disk' ? node.path : inheritedDiskPath;
+    const mountpoints = usbMountpoints(node);
+    if (transport === 'usb' && node.path &&
+        (node.type === 'part' || (node.type === 'disk' && children.length === 0)) &&
+        (node.fstype || mountpoints.length)) {
       devices.push({
         path: node.path,
+        diskPath,
         uuid: String(node.uuid || '').trim().toLowerCase(),
         label: String(node.label || '').trim(),
-        mountpoints: usbMountpoints(node)
+        fstype: String(node.fstype || '').trim().toLowerCase(),
+        mountpoints
       });
     }
-    devices.push(...flattenUsbPartitions(children, transport));
+    devices.push(...flattenUsbPartitions(children, transport, diskPath));
   }
   return devices;
 }
@@ -785,8 +791,9 @@ function flattenUsbPartitions(nodes, inheritedTransport = '') {
 async function usbDevices() {
   const { stdout } = await execFileAsync(LSBLK_BIN, [
     '--json',
+    '--tree',
     '--output',
-    'PATH,TYPE,TRAN,UUID,LABEL,MOUNTPOINTS'
+    'PATH,TYPE,TRAN,RM,FSTYPE,UUID,LABEL,MOUNTPOINTS'
   ]);
   let parsed;
   try {
@@ -803,6 +810,13 @@ function chooseUsbDevice(devices) {
     : devices;
   if (!matching.length) return { device: null, message: 'USB DRIVE NOT DETECTED' };
   if (matching.length === 1) return { device: matching[0], message: '' };
+  if (USB_EXPECTED_UUID) return { device: null, message: 'USB UUID MATCHED MORE THAN ONE PARTITION' };
+  const diskPaths = new Set(matching.map(device => device.diskPath || device.path));
+  if (diskPaths.size !== 1) return { device: null, message: 'MORE THAN ONE USB FLASH DRIVE DETECTED' };
+  const mounted = matching.filter(device => usbMountpoints(device).length === 1);
+  if (mounted.length === 1) return { device: mounted[0], message: '' };
+  const filesystems = matching.filter(device => device.fstype || usbMountpoints(device).length);
+  if (filesystems.length === 1) return { device: filesystems[0], message: '' };
   return { device: null, message: 'MORE THAN ONE USB STORAGE PARTITION DETECTED' };
 }
 
