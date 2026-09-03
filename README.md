@@ -26,7 +26,7 @@ The event does not need internet. The dashboard, JavaScript, CSS, logo, tourname
 
 ### Rules configuration foundation
 
-The current match behavior is described by [`config/rules.default.json`](config/rules.default.json). At startup, the server first checks for an optional `data/active-rules.json` file (or the path in `SFTS_RULES_FILE`), validates it, and safely falls back to the built-in rules if it is missing or invalid. Rule updates are not exposed in the dashboard yet; the future Rules screen and USB import workflow will be added in a later stage.
+The current match behavior is described by [`config/rules.default.json`](config/rules.default.json). At startup, the server first checks for an optional `data/active-rules.json` file (or the path in `SFTS_RULES_FILE`), validates it, and safely falls back to the built-in rules if it is missing or invalid. The host SETTINGS screen provides a Rules workflow for previewing and applying validated JSON packs from the USB drive, with an automatic local backup for rollback.
 
 ## Install and run
 

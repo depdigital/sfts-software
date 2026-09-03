@@ -3,7 +3,13 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { loadRules, rulesMetadata, validateRules } from '../src/rules.js';
+import {
+  loadRules,
+  readRulesFile,
+  rulesMetadata,
+  validateRules,
+  writeRulesAtomically
+} from '../src/rules.js';
 
 async function defaultRules() {
   const contents = await readFile(path.join(process.cwd(), 'config', 'rules.default.json'), 'utf8');
@@ -55,6 +61,25 @@ test('a valid active rules file is loaded and an invalid one falls back to defau
     assert.equal(fallback.ruleset.id, 'sfts-current');
     assert.equal(fallback.decisions.pointGap.difference, 15);
     assert.equal(warnings.length, 1);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('rules are written atomically and the previous active pack is backed up', async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), 'sfts-rules-write-'));
+  const activePath = path.join(tempDir, 'active-rules.json');
+  const backupPath = path.join(tempDir, 'active-rules.json.backup');
+  try {
+    const firstRules = await defaultRules();
+    const secondRules = await defaultRules();
+    secondRules.ruleset.ruleVersion = 'second';
+    await writeRulesAtomically(firstRules, { activePath, backupPath, backupRules: firstRules });
+    assert.equal((await readRulesFile(backupPath)).ruleset.ruleVersion, 'current');
+    await writeRulesAtomically(secondRules, { activePath, backupPath });
+
+    assert.equal((await readRulesFile(activePath)).ruleset.ruleVersion, 'second');
+    assert.equal((await readRulesFile(backupPath)).ruleset.ruleVersion, 'current');
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

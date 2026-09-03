@@ -17,6 +17,7 @@ let powerActionScheduled = false;
 let powerDeadlineAt = 0;
 let powerCountdownTimer = null;
 let usbImportOnly = false;
+let activeRuleset = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -46,8 +47,10 @@ function connectSocket() {
       lastTournament = msg.tournament || null;
       historyCache = msg.matchHistory || [];
       usbImportOnly = msg.usbImportOnly === true;
+      activeRuleset = msg.ruleset || msg.match?.ruleset || activeRuleset;
       renderUsbImportMode();
       renderState(msg.match);
+      renderActiveRuleset(activeRuleset);
       renderRemoteStatuses(msg.remotes);
       renderTournament(msg.tournament);
       if (!$("scheduleModal").classList.contains("hidden"))
@@ -330,6 +333,15 @@ function openSettings() {
 function closeSettings() {
   $("settingsModal").classList.add("hidden");
 }
+function openRules() {
+  closeSettings();
+  renderActiveRuleset(activeRuleset || lastState?.ruleset);
+  $("rulesModal").classList.remove("hidden");
+  void refreshRulesFiles();
+}
+function closeRules() {
+  $("rulesModal").classList.add("hidden");
+}
 function powerActionLabel(action = powerAction) {
   return String(action || "").toUpperCase() === "SHUTDOWN"
     ? "SHUTDOWN"
@@ -542,6 +554,166 @@ function renderUsbStatus(result) {
   }
   select.disabled = !files.length;
   importButton.disabled = !files.length;
+  if (Array.isArray(result?.rulesFiles)) renderRulesUsbStatus(result);
+}
+
+function renderActiveRuleset(ruleset) {
+  const status = $("activeRulesStatus");
+  if (!status) return;
+  if (!ruleset) {
+    status.textContent = "ACTIVE RULESET NOT AVAILABLE";
+    return;
+  }
+  status.textContent = `ACTIVE: ${ruleset.name || ruleset.id || "UNKNOWN"} · ${ruleset.federation || ""} · VERSION ${ruleset.ruleVersion || "UNKNOWN"}`;
+}
+
+function renderRulesUsbStatus(result) {
+  const status = $("rulesUsbStatus");
+  const select = $("usbRulesFile");
+  const previewButton = $("previewRulesButton");
+  const applyButton = $("applyRulesButton");
+  const rollbackButton = $("rollbackRulesButton");
+  if (!status || !select || !previewButton || !applyButton || !rollbackButton) return;
+  const files = Array.isArray(result?.rulesFiles) ? result.rulesFiles : [];
+  const mounted = result?.connected === true && result?.mounted === true;
+  status.textContent = result?.message || (mounted ? `USB READY · ${files.length} JSON RULE PACK(S)` : "USB DRIVE NOT READY");
+  status.classList.toggle("connected", mounted);
+  status.classList.toggle("disconnected", !mounted);
+  select.replaceChildren();
+  if (!files.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = mounted ? "NO JSON RULE PACKS FOUND" : "REFRESH USB TO CHECK AGAIN";
+    select.appendChild(option);
+  } else {
+    for (const file of files) {
+      const option = document.createElement("option");
+      option.value = file.name;
+      option.textContent = file.name;
+      select.appendChild(option);
+    }
+  }
+  select.disabled = !files.length;
+  previewButton.disabled = !files.length;
+  applyButton.disabled = !files.length;
+  rollbackButton.disabled = result?.canRollback !== true;
+  if (result?.activeRuleset) {
+    activeRuleset = result.activeRuleset;
+    renderActiveRuleset(activeRuleset);
+  }
+}
+
+async function refreshRulesFiles() {
+  if (!hostToken) {
+    toast("HOST SESSION REQUIRED");
+    return;
+  }
+  const status = $("rulesUsbStatus");
+  if (status) {
+    status.textContent = "CHECKING USB DRIVE...";
+    status.classList.remove("connected", "disconnected");
+  }
+  try {
+    const response = await fetch("/api/rules/status", {
+      headers: { "X-SFTS-Host-Token": hostToken },
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.message || "RULE STATUS CHECK FAILED");
+    renderRulesUsbStatus(result);
+  } catch (error) {
+    renderRulesUsbStatus({ rulesFiles: [], message: error.message || "RULE STATUS CHECK FAILED" });
+    toast(error.message || "RULE STATUS CHECK FAILED");
+  }
+}
+
+function renderRulesPreview(result) {
+  const preview = $("rulesPreview");
+  if (!preview) return;
+  preview.textContent = `PREVIEW: ${result.ruleset?.name || result.ruleset?.id || "RULESET"} · VERSION ${result.ruleset?.ruleVersion || "UNKNOWN"}\n\n${JSON.stringify(result.summary || {}, null, 2)}`;
+  preview.classList.remove("hidden");
+}
+
+async function previewRulesFile() {
+  const fileName = $("usbRulesFile")?.value;
+  if (!fileName) {
+    toast("SELECT A JSON RULE PACK");
+    return;
+  }
+  if (!hostToken) {
+    toast("HOST SESSION REQUIRED");
+    return;
+  }
+  try {
+    const response = await fetch("/api/rules/preview", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-SFTS-Host-Token": hostToken,
+      },
+      body: JSON.stringify({ fileName }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.message || "RULE PACK PREVIEW FAILED");
+    renderRulesPreview(result);
+    toast("RULE PACK VALIDATED");
+  } catch (error) {
+    toast(error.message || "RULE PACK PREVIEW FAILED");
+  }
+}
+
+async function applyRulesFile() {
+  const fileName = $("usbRulesFile")?.value;
+  if (!fileName) {
+    toast("SELECT A JSON RULE PACK");
+    return;
+  }
+  if (!window.confirm("Apply this ruleset? The current match must be finished or reset first.")) return;
+  if (!hostToken) {
+    toast("HOST SESSION REQUIRED");
+    return;
+  }
+  try {
+    const response = await fetch("/api/rules/apply", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-SFTS-Host-Token": hostToken,
+      },
+      body: JSON.stringify({ fileName }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.message || "RULESET APPLY FAILED");
+    activeRuleset = result.ruleset || activeRuleset;
+    renderActiveRuleset(activeRuleset);
+    renderRulesPreview(result);
+    toast(result.message || "RULESET APPLIED SUCCESSFULLY");
+    void refreshRulesFiles();
+  } catch (error) {
+    toast(error.message || "RULESET APPLY FAILED");
+  }
+}
+
+async function rollbackRules() {
+  if (!window.confirm("Restore the previous ruleset? The current match must be finished or reset first.")) return;
+  if (!hostToken) {
+    toast("HOST SESSION REQUIRED");
+    return;
+  }
+  try {
+    const response = await fetch("/api/rules/rollback", {
+      method: "POST",
+      headers: { "X-SFTS-Host-Token": hostToken },
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.message || "RULESET ROLLBACK FAILED");
+    activeRuleset = result.ruleset || activeRuleset;
+    renderActiveRuleset(activeRuleset);
+    renderRulesPreview(result);
+    toast(result.message || "PREVIOUS RULESET RESTORED");
+    void refreshRulesFiles();
+  } catch (error) {
+    toast(error.message || "RULESET ROLLBACK FAILED");
+  }
 }
 
 async function refreshUsbFiles() {
@@ -635,6 +807,8 @@ async function unmountUsb() {
     const result = await response.json();
     if (!response.ok || !result.ok) throw new Error(result.message || "COULD NOT UNMOUNT USB DRIVE");
     renderUsbStatus({ files: [], message: result.message || "USB DRIVE UNMOUNTED SAFELY" });
+    const canRollback = $("rollbackRulesButton")?.disabled !== true;
+    renderRulesUsbStatus({ rulesFiles: [], message: result.message || "USB DRIVE UNMOUNTED SAFELY", canRollback });
     toast(result.message || "USB DRIVE UNMOUNTED SAFELY");
   } catch (error) {
     toast(error.message || "COULD NOT UNMOUNT USB DRIVE");
@@ -1038,6 +1212,8 @@ window.editScore = editScore;
 window.editGam = editGam;
 window.openSettings = openSettings;
 window.closeSettings = closeSettings;
+window.openRules = openRules;
+window.closeRules = closeRules;
 window.openPowerAction = openPowerAction;
 window.confirmPowerAction = confirmPowerAction;
 window.cancelPowerAction = cancelPowerAction;
@@ -1049,6 +1225,10 @@ window.announceManualPlayers = announceManualPlayers;
 window.uploadPlayerSheet = uploadPlayerSheet;
 window.downloadPlayerTemplate = downloadPlayerTemplate;
 window.refreshUsbFiles = refreshUsbFiles;
+window.refreshRulesFiles = refreshRulesFiles;
+window.previewRulesFile = previewRulesFile;
+window.applyRulesFile = applyRulesFile;
+window.rollbackRules = rollbackRules;
 window.importUsbFile = importUsbFile;
 window.savePlayerTemplateToUsb = savePlayerTemplateToUsb;
 window.unmountUsb = unmountUsb;

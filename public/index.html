@@ -165,9 +165,46 @@
         <button onclick="openTimerEditor()">EDIT TIMER</button>
         <button onclick="openHistory()">MATCH HISTORY</button>
         <button onclick="openTestMode()">REMOTE SETTINGS</button>
+        <button onclick="openRules()">RULES</button>
         <button class="powerActionButton rebootButton" onclick="openPowerAction('reboot')">REBOOT</button>
         <button class="powerActionButton shutdownButton" onclick="openPowerAction('shutdown')">SHUTDOWN</button>
         <button onclick="closeSettings()">CLOSE</button>
+      </div>
+    </section>
+
+    <section id="rulesModal" class="overlay hidden">
+      <div class="modalCard wideModal rulesModal">
+        <h2>RULES</h2>
+        <p class="rulesDescription">
+          Review the active ruleset or load a validated JSON rule pack from the USB drive.
+          Rules can only be changed between matches.
+        </p>
+        <div id="activeRulesStatus" class="rulesActiveStatus">
+          ACTIVE RULESET NOT AVAILABLE
+        </div>
+        <section class="rulesImportPanel">
+          <h3>USB RULE PACK</h3>
+          <div class="usbImportToolbar">
+            <div id="rulesUsbStatus" class="usbDriveStatus">USB NOT CHECKED</div>
+            <div class="usbDeviceActions">
+              <button onclick="refreshRulesFiles()">REFRESH USB</button>
+              <button onclick="unmountUsb()">UNMOUNT USB SAFELY</button>
+            </div>
+          </div>
+          <label class="usbFileLabel">
+            JSON RULE PACK
+            <select id="usbRulesFile" class="playerSettingsSelect" disabled>
+              <option value="">REFRESH USB TO LIST JSON RULE PACKS</option>
+            </select>
+          </label>
+          <div class="rulesActions">
+            <button id="previewRulesButton" onclick="previewRulesFile()" disabled>PREVIEW RULE PACK</button>
+            <button id="applyRulesButton" onclick="applyRulesFile()" disabled>APPLY RULE PACK</button>
+            <button id="rollbackRulesButton" onclick="rollbackRules()" disabled>ROLL BACK PREVIOUS</button>
+          </div>
+          <div id="rulesPreview" class="rulesPreview hidden"></div>
+        </section>
+        <button onclick="closeRules()">CLOSE</button>
       </div>
     </section>
 

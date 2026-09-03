@@ -11,7 +11,15 @@ import { WebSocketServer } from "ws";
 import * as XLSX from "xlsx";
 import { createTts } from "./tts.js";
 import { createPersistence } from "./persistence.js";
-import { loadRules, rulesMetadata } from "./rules.js";
+import {
+  loadRules,
+  readRulesFile,
+  rulesBackupExists,
+  rulesConstants,
+  rulesMetadata,
+  rulesPaths,
+  writeRulesAtomically
+} from "./rules.js";
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const REMOTE_CONFIG_PATH = path.join(PROJECT_ROOT, 'config', 'remote-config.json');
@@ -31,21 +39,21 @@ function loadRemoteConfig() {
 }
 
 const remoteConfig = loadRemoteConfig();
-const rules = await loadRules();
-const activeRulesMetadata = rulesMetadata(rules);
+let rules = await loadRules();
+let activeRulesMetadata = rulesMetadata(rules);
 const configuredRemoteTokens = remoteConfig.remoteTokens && typeof remoteConfig.remoteTokens === 'object'
   ? remoteConfig.remoteTokens
   : {};
 const PORT = Number(process.env.PORT || remoteConfig.port || 8080);
-const ROUND_MS_DEFAULT = rules.match.roundDurationSeconds * 1000;
-const BREAK_MS_DEFAULT = Number.isFinite(Number(process.env.SFTS_BREAK_MS))
+let ROUND_MS_DEFAULT = rules.match.roundDurationSeconds * 1000;
+let BREAK_MS_DEFAULT = Number.isFinite(Number(process.env.SFTS_BREAK_MS))
   ? Math.max(50, Number(process.env.SFTS_BREAK_MS))
   : rules.match.breakDurationSeconds * 1000;
-const MIN_TIMER_MS = rules.match.minimumRoundDurationSeconds * 1000;
-const MAX_TIMER_MS = rules.match.maximumRoundDurationSeconds * 1000;
+let MIN_TIMER_MS = rules.match.minimumRoundDurationSeconds * 1000;
+let MAX_TIMER_MS = rules.match.maximumRoundDurationSeconds * 1000;
 const TIMER_TICK_MS = 50;
 const TIMER_DISPLAY_UPDATE_MS = 100;
-const KYESHI_LIMIT_MS = Number.isFinite(Number(process.env.SFTS_KYESHI_LIMIT_MS))
+let KYESHI_LIMIT_MS = Number.isFinite(Number(process.env.SFTS_KYESHI_LIMIT_MS))
   ? Math.max(1_000, Number(process.env.SFTS_KYESHI_LIMIT_MS))
   : rules.medical.kyeShi.limitSeconds * 1000;
 const HEARTBEAT_MS = 10_000;
@@ -60,9 +68,9 @@ const REMOTE_ACK_CACHE_SIZE = 100;
 const WS_MESSAGE_LIMIT = 120;
 const WS_MESSAGE_WINDOW_MS = 1000;
 const VOTE_SETTLE_MS = 750;
-const TECHNICAL_COMBO_WINDOW_MS = rules.scoring.technicalInput.windowMilliseconds;
-const MIN_ACTIVE_REMOTES = rules.voting.minimumActiveRemotes;
-const MAX_ACTIVE_REMOTES = rules.voting.maximumActiveRemotes;
+let TECHNICAL_COMBO_WINDOW_MS = rules.scoring.technicalInput.windowMilliseconds;
+let MIN_ACTIVE_REMOTES = rules.voting.minimumActiveRemotes;
+let MAX_ACTIVE_REMOTES = rules.voting.maximumActiveRemotes;
 const SYSTEM_POWER_DELAY_MS = 15_000;
 const SYSTEMCTL_BIN = '/usr/bin/systemctl';
 const LSBLK_BIN = '/usr/bin/lsblk';
@@ -70,6 +78,7 @@ const UDISKSCTL_BIN = '/usr/bin/udisksctl';
 const USB_IMPORT_ONLY = process.env.SFTS_USB_IMPORT_ONLY === 'true';
 const USB_EXPECTED_UUID = String(process.env.SFTS_USB_UUID || '').trim().toLowerCase();
 const USB_ALLOWED_EXTENSIONS = new Set(['.xlsx', '.xls', '.csv']);
+const USB_RULE_ALLOWED_EXTENSIONS = new Set(['.json']);
 const USB_TEMPLATE_FILE = 'sfts-player-template.xlsx';
 const KIOSK_MODE = process.env.SFTS_KIOSK_MODE === 'true';
 const INDIAN_STATE_CODES = new Set([
@@ -526,6 +535,31 @@ let pendingSystemPower = null;
 
 function deep(v) { return JSON.parse(JSON.stringify(v)); }
 
+function configureRuntimeRules(nextRules) {
+  rules = nextRules;
+  activeRulesMetadata = rulesMetadata(rules);
+  ROUND_MS_DEFAULT = rules.match.roundDurationSeconds * 1000;
+  BREAK_MS_DEFAULT = Number.isFinite(Number(process.env.SFTS_BREAK_MS))
+    ? Math.max(50, Number(process.env.SFTS_BREAK_MS))
+    : rules.match.breakDurationSeconds * 1000;
+  MIN_TIMER_MS = rules.match.minimumRoundDurationSeconds * 1000;
+  MAX_TIMER_MS = rules.match.maximumRoundDurationSeconds * 1000;
+  KYESHI_LIMIT_MS = Number.isFinite(Number(process.env.SFTS_KYESHI_LIMIT_MS))
+    ? Math.max(1_000, Number(process.env.SFTS_KYESHI_LIMIT_MS))
+    : rules.medical.kyeShi.limitSeconds * 1000;
+  TECHNICAL_COMBO_WINDOW_MS = rules.scoring.technicalInput.windowMilliseconds;
+  MIN_ACTIVE_REMOTES = rules.voting.minimumActiveRemotes;
+  MAX_ACTIVE_REMOTES = rules.voting.maximumActiveRemotes;
+
+  if (typeof match === 'undefined') return;
+  match.ruleset = deep(activeRulesMetadata);
+  match.breakMs = BREAK_MS_DEFAULT;
+  match.configuredRoundMs = ROUND_MS_DEFAULT;
+  if (match.phase === 'ROUND' && !match.roundStarted) match.timerMs = ROUND_MS_DEFAULT;
+  match.remoteCount = Math.min(MAX_ACTIVE_REMOTES, Math.max(MIN_ACTIVE_REMOTES, match.remoteCount));
+  match.kyeShi.limitMs = KYESHI_LIMIT_MS;
+}
+
 function persistenceSnapshot() {
   const savedMatch = deep(match);
   savedMatch.running = false;
@@ -869,12 +903,12 @@ async function usbContext({ mountIfNeeded = false } = {}) {
   }
 }
 
-async function usbFiles(context) {
+async function usbFiles(context, allowedExtensions = USB_ALLOWED_EXTENSIONS) {
   if (!context.mounted) return [];
   const entries = await readdir(context.mountPath, { withFileTypes: true });
   const files = [];
   for (const entry of entries) {
-    if (!entry.isFile() || !USB_ALLOWED_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) continue;
+    if (!entry.isFile() || !allowedExtensions.has(path.extname(entry.name).toLowerCase())) continue;
     const candidate = path.resolve(context.mountPath, entry.name);
     if (path.dirname(candidate) !== context.mountPath) continue;
     let resolved;
@@ -892,13 +926,17 @@ async function usbFiles(context) {
   return files.sort((left, right) => left.name.localeCompare(right.name, undefined, { sensitivity: 'base' }));
 }
 
-async function selectedUsbFile(context, fileName) {
+async function selectedUsbFile(context, fileName, {
+  allowedExtensions = USB_ALLOWED_EXTENSIONS,
+  maxBytes = MAX_IMPORT_BYTES,
+  extensionMessage = 'ONLY EXCEL OR CSV FILES CAN BE IMPORTED'
+} = {}) {
   if (!context.mounted) throw new Error('USB DRIVE IS NOT MOUNTED');
   if (typeof fileName !== 'string' || !fileName || path.basename(fileName) !== fileName) {
     throw new Error('INVALID USB FILE');
   }
-  if (!USB_ALLOWED_EXTENSIONS.has(path.extname(fileName).toLowerCase())) {
-    throw new Error('ONLY EXCEL OR CSV FILES CAN BE IMPORTED');
+  if (!allowedExtensions.has(path.extname(fileName).toLowerCase())) {
+    throw new Error(extensionMessage);
   }
   const candidate = path.resolve(context.mountPath, fileName);
   if (path.dirname(candidate) !== context.mountPath) throw new Error('INVALID USB FILE');
@@ -907,7 +945,7 @@ async function selectedUsbFile(context, fileName) {
   if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) throw new Error('INVALID USB FILE');
   const details = await stat(resolved);
   if (!details.isFile()) throw new Error('USB FILE NOT FOUND');
-  if (details.size > MAX_IMPORT_BYTES) throw new Error('USB FILE IS TOO LARGE');
+  if (details.size > maxBytes) throw new Error('USB FILE IS TOO LARGE');
   return resolved;
 }
 
@@ -1211,11 +1249,156 @@ function createPlayerTemplateBuffer() {
   return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
 }
 
+function rulesSummary(rulePack) {
+  return {
+    format: rulePack.match.format,
+    rounds: rulePack.match.rounds,
+    roundsRequiredToWin: rulePack.match.roundsRequiredToWin,
+    roundDurationSeconds: rulePack.match.roundDurationSeconds,
+    breakDurationSeconds: rulePack.match.breakDurationSeconds,
+    basePointValues: rulePack.scoring.basePointValues,
+    acceptedPointValues: rulePack.scoring.acceptedPointValues,
+    technicalInput: rulePack.scoring.technicalInput,
+    gamJeomPointValue: rulePack.scoring.gamJeomPointValue,
+    gamJeomRoundLossAt: rulePack.penalties.gamJeom.roundLossAt,
+    pointGap: rulePack.decisions.pointGap,
+    maximumActiveRemotes: rulePack.voting.maximumActiveRemotes,
+    kyeShiLimitSeconds: rulePack.medical.kyeShi.limitSeconds,
+    tournamentFormat: rulePack.tournament.format
+  };
+}
+
+async function readUsbRulesFile(fileName) {
+  const context = await usbContext({ mountIfNeeded: true });
+  const filePath = await selectedUsbFile(context, fileName, {
+    allowedExtensions: USB_RULE_ALLOWED_EXTENSIONS,
+    maxBytes: rulesConstants.maxBytes,
+    extensionMessage: 'ONLY JSON RULE PACKS CAN BE IMPORTED'
+  });
+  return readRulesFile(filePath);
+}
+
+app.get('/api/rules/status', requireHostRequest, async (req, res) => {
+  try {
+    const canRollback = await rulesBackupExists();
+    if (!USB_IMPORT_ONLY) {
+      res.json({
+        ok: true,
+        enabled: false,
+        activeRuleset: activeRulesMetadata,
+        canRollback,
+        rulesFiles: [],
+        message: 'USB RULE IMPORT IS DISABLED'
+      });
+      return;
+    }
+    const result = await withUsbOperation(async () => {
+      const context = await usbContext({ mountIfNeeded: true });
+      return { context, rulesFiles: await usbFiles(context, USB_RULE_ALLOWED_EXTENSIONS) };
+    });
+    res.json({
+      ok: true,
+      enabled: true,
+      connected: result.context.connected,
+      mounted: result.context.mounted,
+      rulesFiles: result.rulesFiles,
+      activeRuleset: activeRulesMetadata,
+      canRollback,
+      message: result.context.message
+    });
+  } catch (error) {
+    res.status(503).json({ ok: false, message: error.message || 'RULE STATUS CHECK FAILED' });
+  }
+});
+
+app.post('/api/rules/preview', requireHostRequest, express.json({ limit: '8kb' }), async (req, res) => {
+  if (!USB_IMPORT_ONLY) {
+    res.status(404).json({ ok: false, message: 'USB RULE IMPORT IS DISABLED' });
+    return;
+  }
+  try {
+    const rulePack = await withUsbOperation(() => readUsbRulesFile(req.body?.fileName));
+    res.json({
+      ok: true,
+      ruleset: rulesMetadata(rulePack),
+      summary: rulesSummary(rulePack),
+      activeRuleset: activeRulesMetadata
+    });
+  } catch (error) {
+    res.status(400).json({ ok: false, message: error.message || 'RULE PACK PREVIEW FAILED' });
+  }
+});
+
+app.post('/api/rules/apply', requireHostRequest, express.json({ limit: '8kb' }), async (req, res) => {
+  if (!USB_IMPORT_ONLY) {
+    res.status(404).json({ ok: false, message: 'USB RULE IMPORT IS DISABLED' });
+    return;
+  }
+  if (tournamentMatchIsBusy()) {
+    res.status(409).json({ ok: false, message: 'Finish or reset the current match before applying a ruleset' });
+    return;
+  }
+  try {
+    const rulePack = await withUsbOperation(async () => {
+      if (tournamentMatchIsBusy()) throw new Error('Finish or reset the current match before applying a ruleset');
+      const nextRules = await readUsbRulesFile(req.body?.fileName);
+      await writeRulesAtomically(nextRules, { backupRules: rules });
+      configureRuntimeRules(nextRules);
+      state(true);
+      return nextRules;
+    });
+    res.json({
+      ok: true,
+      ruleset: activeRulesMetadata,
+      summary: rulesSummary(rulePack),
+      canRollback: true,
+      message: 'RULESET APPLIED SUCCESSFULLY'
+    });
+  } catch (error) {
+    res.status(400).json({ ok: false, message: error.message || 'RULESET APPLY FAILED' });
+  }
+});
+
+app.post('/api/rules/rollback', requireHostRequest, async (req, res) => {
+  if (!USB_IMPORT_ONLY) {
+    res.status(404).json({ ok: false, message: 'USB RULE IMPORT IS DISABLED' });
+    return;
+  }
+  if (tournamentMatchIsBusy()) {
+    res.status(409).json({ ok: false, message: 'Finish or reset the current match before rolling back rules' });
+    return;
+  }
+  try {
+    const rulePack = await withUsbOperation(async () => {
+      if (tournamentMatchIsBusy()) throw new Error('Finish or reset the current match before rolling back rules');
+      if (!await rulesBackupExists()) throw new Error('NO PREVIOUS RULESET BACKUP EXISTS');
+      const previousRules = await readRulesFile(rulesPaths.backup);
+      await writeRulesAtomically(previousRules);
+      configureRuntimeRules(previousRules);
+      state(true);
+      return previousRules;
+    });
+    res.json({
+      ok: true,
+      ruleset: activeRulesMetadata,
+      summary: rulesSummary(rulePack),
+      canRollback: true,
+      message: 'PREVIOUS RULESET RESTORED'
+    });
+  } catch (error) {
+    res.status(400).json({ ok: false, message: error.message || 'RULESET ROLLBACK FAILED' });
+  }
+});
+
 app.get('/api/usb/status', requireHostRequest, async (req, res) => {
   try {
     const result = await withUsbOperation(async () => {
       const context = await usbContext({ mountIfNeeded: true });
-      return { context, files: await usbFiles(context) };
+      return {
+        context,
+        files: await usbFiles(context),
+        rulesFiles: await usbFiles(context, USB_RULE_ALLOWED_EXTENSIONS)
+      };
     });
     res.json({
       ok: true,
@@ -1223,6 +1406,7 @@ app.get('/api/usb/status', requireHostRequest, async (req, res) => {
       connected: result.context.connected,
       mounted: result.context.mounted,
       files: result.files,
+      rulesFiles: result.rulesFiles,
       message: result.context.message
     });
   } catch (error) {

@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, open, readFile, rename, rm, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -115,7 +115,7 @@ export function validateRules(input) {
   if (match.rounds !== 3) fail('match.rounds must be 3 for this software version');
   if (match.roundsRequiredToWin !== 2) fail('match.roundsRequiredToWin must be 2 for this software version');
   requireInteger(match.roundDurationSeconds, 'match.roundDurationSeconds', { minimum: 1 });
-  requireInteger(match.breakDurationSeconds, 'match.breakDurationSeconds', { minimum: 0 });
+  requireInteger(match.breakDurationSeconds, 'match.breakDurationSeconds', { minimum: 1 });
   requireInteger(match.minimumRoundDurationSeconds, 'match.minimumRoundDurationSeconds', { minimum: 1 });
   requireInteger(match.maximumRoundDurationSeconds, 'match.maximumRoundDurationSeconds', { minimum: 1 });
   if (match.minimumRoundDurationSeconds > match.roundDurationSeconds ||
@@ -204,7 +204,7 @@ export function rulesMetadata(rules) {
   };
 }
 
-async function readRulesFile(filePath) {
+export async function readRulesFile(filePath) {
   const contents = await readFile(filePath);
   if (contents.byteLength > MAX_RULES_BYTES) throw new Error(`file is larger than ${MAX_RULES_BYTES} bytes`);
   return validateRules(JSON.parse(contents.toString('utf8')));
@@ -222,7 +222,8 @@ export async function loadRules({ activePath = DEFAULT_ACTIVE_RULES_PATH, defaul
 
 export const rulesPaths = Object.freeze({
   default: DEFAULT_RULES_PATH,
-  active: DEFAULT_ACTIVE_RULES_PATH
+  active: DEFAULT_ACTIVE_RULES_PATH,
+  backup: `${DEFAULT_ACTIVE_RULES_PATH}.backup`
 });
 
 export const rulesConstants = Object.freeze({
@@ -230,3 +231,76 @@ export const rulesConstants = Object.freeze({
   schemaVersion: SUPPORTED_RULE_SCHEMA_VERSION,
   softwareVersion: SOFTWARE_VERSION
 });
+
+export async function rulesBackupExists(backupPath = rulesPaths.backup) {
+  try {
+    const details = await stat(backupPath);
+    return details.isFile();
+  } catch {
+    return false;
+  }
+}
+
+export async function writeRulesAtomically(input, {
+  activePath = rulesPaths.active,
+  backupPath = rulesPaths.backup,
+  backupRules = null
+} = {}) {
+  const rules = validateRules(input);
+  await mkdir(path.dirname(activePath), { recursive: true });
+  await mkdir(path.dirname(backupPath), { recursive: true });
+
+  let activeExists = false;
+  try {
+    if ((await lstat(backupPath)).isSymbolicLink()) throw new Error('rules backup path must not be a symbolic link');
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  let backupExists = false;
+  try {
+    backupExists = (await lstat(backupPath)).isFile();
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  try {
+    if ((await lstat(activePath)).isSymbolicLink()) throw new Error('active rules path must not be a symbolic link');
+    activeExists = true;
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+
+  if (activeExists) {
+    await copyFile(activePath, backupPath);
+  } else if (!backupExists && backupRules !== null) {
+    const previousRules = validateRules(backupRules);
+    const backupTemporaryPath = `${backupPath}.tmp-${process.pid}-${Date.now()}`;
+    try {
+      const handle = await open(backupTemporaryPath, 'wx', 0o640);
+      try {
+        await handle.writeFile(`${JSON.stringify(previousRules, null, 2)}\n`, 'utf8');
+        await handle.sync();
+      } finally {
+        await handle.close();
+      }
+      await rename(backupTemporaryPath, backupPath);
+    } catch (error) {
+      await rm(backupTemporaryPath, { force: true }).catch(() => {});
+      throw error;
+    }
+  }
+
+  const temporaryPath = `${activePath}.tmp-${process.pid}-${Date.now()}`;
+  try {
+    const handle = await open(temporaryPath, 'wx', 0o640);
+    try {
+      await handle.writeFile(`${JSON.stringify(rules, null, 2)}\n`, 'utf8');
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    await rename(temporaryPath, activePath);
+  } catch (error) {
+    await rm(temporaryPath, { force: true }).catch(() => {});
+    throw error;
+  }
+}
