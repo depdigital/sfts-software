@@ -877,8 +877,15 @@ button {
 .joyCenter {
   position: relative;
   text-align: center;
-  font-size: 68px;
+}
+.joyController {
+  display: block;
+  width: 84px;
+  height: 84px;
+  margin: 0 auto;
+  object-fit: contain;
   filter: grayscale(1);
+  pointer-events: none;
 }
 .joyCheck {
   position: absolute;
