@@ -14,7 +14,6 @@ import { createPersistence } from "./persistence.js";
 import {
   loadRules,
   readRulesFile,
-  rulesBackupExists,
   rulesConstants,
   rulesMetadata,
   rulesPaths,
@@ -1292,13 +1291,11 @@ async function readUsbRulesFile(fileName) {
 
 app.get('/api/rules/status', requireHostRequest, async (req, res) => {
   try {
-    const canRollback = await rulesBackupExists();
     if (!USB_IMPORT_ONLY) {
       res.json({
         ok: true,
         enabled: false,
         activeRuleset: activeRulesMetadata,
-        canRollback,
         rulesFiles: [],
         message: 'USB RULE IMPORT IS DISABLED'
       });
@@ -1315,7 +1312,6 @@ app.get('/api/rules/status', requireHostRequest, async (req, res) => {
       mounted: result.context.mounted,
       rulesFiles: result.rulesFiles,
       activeRuleset: activeRulesMetadata,
-      canRollback,
       message: result.context.message
     });
   } catch (error) {
@@ -1363,7 +1359,6 @@ app.post('/api/rules/apply', requireHostRequest, express.json({ limit: '8kb' }),
       ok: true,
       ruleset: activeRulesMetadata,
       summary: rulesSummary(rulePack),
-      canRollback: true,
       message: 'RULESET APPLIED SUCCESSFULLY'
     });
   } catch (error) {
@@ -1371,34 +1366,28 @@ app.post('/api/rules/apply', requireHostRequest, express.json({ limit: '8kb' }),
   }
 });
 
-app.post('/api/rules/rollback', requireHostRequest, async (req, res) => {
-  if (!USB_IMPORT_ONLY) {
-    res.status(404).json({ ok: false, message: 'USB RULE IMPORT IS DISABLED' });
-    return;
-  }
+app.post('/api/rules/default', requireHostRequest, async (req, res) => {
   if (tournamentMatchIsBusy()) {
-    res.status(409).json({ ok: false, message: 'Finish or reset the current match before rolling back rules' });
+    res.status(409).json({ ok: false, message: 'Finish or reset the current match before loading default rules' });
     return;
   }
   try {
     const rulePack = await withUsbOperation(async () => {
-      if (tournamentMatchIsBusy()) throw new Error('Finish or reset the current match before rolling back rules');
-      if (!await rulesBackupExists()) throw new Error('NO PREVIOUS RULESET BACKUP EXISTS');
-      const previousRules = await readRulesFile(rulesPaths.backup);
-      await writeRulesAtomically(previousRules);
-      configureRuntimeRules(previousRules);
+      if (tournamentMatchIsBusy()) throw new Error('Finish or reset the current match before loading default rules');
+      const defaultRules = await readRulesFile(rulesPaths.default);
+      await writeRulesAtomically(defaultRules);
+      configureRuntimeRules(defaultRules);
       state(true);
-      return previousRules;
+      return defaultRules;
     });
     res.json({
       ok: true,
       ruleset: activeRulesMetadata,
       summary: rulesSummary(rulePack),
-      canRollback: true,
-      message: 'PREVIOUS RULESET RESTORED'
+      message: 'DEFAULT RULESET LOADED'
     });
   } catch (error) {
-    res.status(400).json({ ok: false, message: error.message || 'RULESET ROLLBACK FAILED' });
+    res.status(400).json({ ok: false, message: error.message || 'DEFAULT RULESET LOAD FAILED' });
   }
 });
 

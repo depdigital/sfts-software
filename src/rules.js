@@ -1,4 +1,4 @@
-import { copyFile, lstat, mkdir, open, readFile, rename, rm, stat } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, open, readFile, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -238,15 +238,6 @@ export const rulesConstants = Object.freeze({
   schemaVersion: SUPPORTED_RULE_SCHEMA_VERSION,
   softwareVersion: SOFTWARE_VERSION
 });
-
-export async function rulesBackupExists(backupPath = rulesPaths.backup) {
-  try {
-    const details = await stat(backupPath);
-    return details.isFile();
-  } catch {
-    return false;
-  }
-}
 
 export async function writeRulesAtomically(input, {
   activePath = rulesPaths.active,

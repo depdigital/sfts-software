@@ -118,6 +118,14 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   });
   assert.equal(rulesStatus.status, 200);
   assert.equal((await rulesStatus.json()).activeRuleset.id, 'sfts-current');
+  const defaultRulesResponse = await fetch(`http://127.0.0.1:${port}/api/rules/default`, {
+    method: 'POST',
+    headers: { 'X-SFTS-Host-Token': hostRole.hostToken }
+  });
+  assert.equal(defaultRulesResponse.status, 200);
+  const defaultRulesBody = await defaultRulesResponse.json();
+  assert.equal(defaultRulesBody.message, 'DEFAULT RULESET LOADED');
+  assert.equal(defaultRulesBody.summary.basePointLabels['2'], 'CHEST');
 
   host.send(JSON.stringify({
     type: 'host',
@@ -573,6 +581,8 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(html, /onclick="openTestMode\(\)">REMOTE SETTINGS<\/button>/);
   assert.match(html, /onclick="openRules\(\)">RULES<\/button>/);
   assert.match(html, /id="usbRulesFile"/);
+  assert.match(html, /id="defaultRulesButton"/);
+  assert.doesNotMatch(html, /ROLL BACK PREVIOUS/);
   assert.match(html, /id="remoteMode"/);
   assert.match(html, />\s*BACK\s*<\/button>/);
   assert.match(html, /id="remoteInfo1"/);
@@ -605,7 +615,8 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(jsText, /cancelSystemPower/);
   assert.match(jsText, /api\/rules\/preview/);
   assert.match(jsText, /api\/rules\/apply/);
-  assert.match(jsText, /api\/rules\/rollback/);
+  assert.match(jsText, /api\/rules\/default/);
+  assert.doesNotMatch(jsText, /api\/rules\/rollback/);
 
   const info = await fetch(`http://127.0.0.1:${port}/api/info`);
   assert.equal(info.status, 404);

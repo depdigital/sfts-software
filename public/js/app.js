@@ -608,8 +608,8 @@ function renderRulesUsbStatus(result) {
   const select = $("usbRulesFile");
   const previewButton = $("previewRulesButton");
   const applyButton = $("applyRulesButton");
-  const rollbackButton = $("rollbackRulesButton");
-  if (!status || !select || !previewButton || !applyButton || !rollbackButton) return;
+  const defaultButton = $("defaultRulesButton");
+  if (!status || !select || !previewButton || !applyButton || !defaultButton) return;
   const files = Array.isArray(result?.rulesFiles) ? result.rulesFiles : [];
   const mounted = result?.connected === true && result?.mounted === true;
   status.textContent = result?.message || (mounted ? `USB READY · ${files.length} RULE PACK(S)` : "USB DRIVE NOT READY");
@@ -632,7 +632,7 @@ function renderRulesUsbStatus(result) {
   select.disabled = !files.length;
   previewButton.disabled = !files.length;
   applyButton.disabled = !files.length;
-  rollbackButton.disabled = result?.canRollback !== true;
+  defaultButton.disabled = false;
   if (result?.activeRuleset) {
     activeRuleset = result.activeRuleset;
     renderActiveRuleset(activeRuleset);
@@ -729,26 +729,25 @@ async function applyRulesFile() {
   }
 }
 
-async function rollbackRules() {
-  if (!window.confirm("Restore the previous ruleset? The current match must be finished or reset first.")) return;
+async function loadDefaultRules() {
+  if (!window.confirm("Load the default rules? The current match must be finished or reset first.")) return;
   if (!hostToken) {
     toast("HOST SESSION REQUIRED");
     return;
   }
   try {
-    const response = await fetch("/api/rules/rollback", {
+    const response = await fetch("/api/rules/default", {
       method: "POST",
       headers: { "X-SFTS-Host-Token": hostToken },
     });
     const result = await response.json();
-    if (!response.ok || !result.ok) throw new Error(result.message || "RULESET ROLLBACK FAILED");
+    if (!response.ok || !result.ok) throw new Error(result.message || "DEFAULT RULESET LOAD FAILED");
     activeRuleset = result.ruleset || activeRuleset;
     renderActiveRuleset(activeRuleset);
     renderRulesPreview(result);
-    toast(result.message || "PREVIOUS RULESET RESTORED");
-    void refreshRulesFiles();
+    toast(result.message || "DEFAULT RULESET LOADED");
   } catch (error) {
-    toast(error.message || "RULESET ROLLBACK FAILED");
+    toast(error.message || "DEFAULT RULESET LOAD FAILED");
   }
 }
 
@@ -843,8 +842,7 @@ async function unmountUsb() {
     const result = await response.json();
     if (!response.ok || !result.ok) throw new Error(result.message || "COULD NOT UNMOUNT USB DRIVE");
     renderUsbStatus({ files: [], message: result.message || "USB DRIVE UNMOUNTED SAFELY" });
-    const canRollback = $("rollbackRulesButton")?.disabled !== true;
-    renderRulesUsbStatus({ rulesFiles: [], message: result.message || "USB DRIVE UNMOUNTED SAFELY", canRollback });
+    renderRulesUsbStatus({ rulesFiles: [], message: result.message || "USB DRIVE UNMOUNTED SAFELY" });
     toast(result.message || "USB DRIVE UNMOUNTED SAFELY");
   } catch (error) {
     toast(error.message || "COULD NOT UNMOUNT USB DRIVE");
@@ -1270,7 +1268,7 @@ window.refreshUsbFiles = refreshUsbFiles;
 window.refreshRulesFiles = refreshRulesFiles;
 window.previewRulesFile = previewRulesFile;
 window.applyRulesFile = applyRulesFile;
-window.rollbackRules = rollbackRules;
+window.loadDefaultRules = loadDefaultRules;
 window.importUsbFile = importUsbFile;
 window.savePlayerTemplateToUsb = savePlayerTemplateToUsb;
 window.unmountUsb = unmountUsb;
