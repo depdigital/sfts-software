@@ -42,6 +42,30 @@ button {
   transform: translate(-50%, 0);
 }
 
+.remoteDisconnectPopup {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 250;
+  padding: 22px 34px;
+  border: 3px solid #ff5c5c;
+  border-radius: 14px;
+  background: rgba(77, 9, 16, 0.96);
+  color: #fff;
+  font-size: clamp(24px, 4vw, 54px);
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-align: center;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.94);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+.remoteDisconnectPopup.show {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
 .homeScreen {
   display: flex;
   flex-direction: column;

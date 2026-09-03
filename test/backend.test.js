@@ -583,6 +583,7 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(html, /id="usbRulesFile"/);
   assert.match(html, /id="refreshRulesButton"/);
   assert.match(html, /id="defaultRulesButton"/);
+  assert.match(html, /id="remoteDisconnectPopup"/);
   assert.doesNotMatch(html, /ROLL BACK PREVIOUS/);
   assert.doesNotMatch(html, /PREVIEW RULE PACK/);
   assert.match(html, /id="remoteMode"/);
@@ -618,6 +619,8 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(jsText, /api\/rules\/apply/);
   assert.match(jsText, /api\/rules\/default/);
   assert.doesNotMatch(jsText, /api\/rules\/rollback/);
+  assert.match(jsText, /REMOTE \$\{corner\} DISCONNECTED/);
+  assert.match(jsText, /corner <= activeCount/);
 
   const info = await fetch(`http://127.0.0.1:${port}/api/info`);
   assert.equal(info.status, 404);

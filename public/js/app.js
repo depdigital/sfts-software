@@ -19,6 +19,8 @@ let powerCountdownTimer = null;
 let usbImportOnly = false;
 let activeRuleset = null;
 let scoringRules = null;
+let remoteStatusSnapshot = null;
+let remoteDisconnectPopupTimer = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -54,7 +56,7 @@ function connectSocket() {
       renderState(msg.match);
       renderActiveRuleset(activeRuleset);
       renderScoringControls();
-      renderRemoteStatuses(msg.remotes);
+      renderRemoteStatuses(msg.remotes, msg.match?.remoteCount);
       renderTournament(msg.tournament);
       if (!$("scheduleModal").classList.contains("hidden"))
         renderSchedule(msg.tournament);
@@ -114,6 +116,7 @@ function connectSocket() {
     }
   };
   ws.onclose = () => {
+    remoteStatusSnapshot = null;
     if (reconnectTimer) return;
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
@@ -1107,13 +1110,32 @@ function renderRemoteMode(count) {
     if (card) card.classList.toggle("hidden", corner > activeCount);
   }
 }
-function renderRemoteStatuses(remotes) {
+function showRemoteDisconnectPopup(corner) {
+  const popup = $("remoteDisconnectPopup");
+  if (!popup) return;
+  popup.textContent = `REMOTE ${corner} DISCONNECTED`;
+  popup.classList.add("show");
+  if (remoteDisconnectPopupTimer) clearTimeout(remoteDisconnectPopupTimer);
+  remoteDisconnectPopupTimer = setTimeout(() => {
+    popup.classList.remove("show");
+    remoteDisconnectPopupTimer = null;
+  }, 1000);
+}
+
+function renderRemoteStatuses(remotes, activeRemoteCount = lastState?.remoteCount) {
   const statuses = Array.isArray(remotes) ? remotes : [];
+  const activeCount = Math.min(4, Math.max(1, Number(activeRemoteCount) || 4));
+  const previousStatuses = remoteStatusSnapshot;
+  const nextStatuses = new Map();
   for (let corner = 1; corner <= 4; corner += 1) {
     const info = $(`remoteInfo${corner}`);
-    if (!info) continue;
     const status = statuses.find((item) => Number(item.corner) === corner);
     const connected = status?.connected === true;
+    if (previousStatuses?.get(corner) === true && !connected && corner <= activeCount) {
+      showRemoteDisconnectPopup(corner);
+    }
+    nextStatuses.set(corner, connected);
+    if (!info) continue;
     const rssi = Number.isInteger(status?.rssi) ? `${status.rssi} dBm` : "—";
     const battery = Number.isFinite(status?.battery)
       ? `${status.battery}%`
@@ -1122,6 +1144,7 @@ function renderRemoteStatuses(remotes) {
     info.classList.toggle("connected", connected);
     info.classList.toggle("disconnected", !connected);
   }
+  remoteStatusSnapshot = nextStatuses;
 }
 function resetTestUi() {
   for (let i = 1; i <= 4; i++) {
