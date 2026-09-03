@@ -1,0 +1,87 @@
+<?xml version="1.0"?>
+<labwc_config>
+  <!-- Dedicated kiosk configuration. Do not load Labwc default bindings. -->
+  <keyboard>
+    <numlock>off</numlock>
+
+    <!-- Keep hardware volume controls available to the event operator. -->
+    <keybind key="XF86AudioRaiseVolume">
+      <action name="Execute">
+        <command>wfpanelctl volumepulse volu</command>
+      </action>
+    </keybind>
+    <keybind key="XF86AudioLowerVolume">
+      <action name="Execute">
+        <command>wfpanelctl volumepulse vold</command>
+      </action>
+    </keybind>
+    <keybind key="XF86AudioMute">
+      <action name="Execute">
+        <command>wfpanelctl volumepulse mute</command>
+      </action>
+    </keybind>
+
+    <!-- Keep the platform power-key handler. Dashboard power actions remain
+         protected by their own confirmation and countdown. -->
+    <keybind key="XF86PowerOff" onRelease="yes">
+      <action name="Execute">
+        <command>pwrkey</command>
+      </action>
+    </keybind>
+
+    <!-- Consume Raspberry Pi desktop escape shortcuts. -->
+    <keybind key="C-A-t" />
+    <keybind key="C-A-space" />
+    <keybind key="C-A-Delete" />
+    <keybind key="C-A-w" />
+    <keybind key="C-A-b" />
+    <keybind key="C-A-l" />
+    <keybind key="C-A-m" />
+    <keybind key="Print" />
+    <keybind key="Super_L" />
+    <keybind key="A-F2" />
+
+    <!-- Consume Labwc window and default desktop bindings. -->
+    <keybind key="A-Tab" />
+    <keybind key="A-S-Tab" />
+    <keybind key="A-F4" />
+    <keybind key="A-Space" />
+    <keybind key="W-Return" />
+    <keybind key="W-a" />
+    <keybind key="W-d" />
+    <keybind key="W-Left" />
+    <keybind key="W-Right" />
+    <keybind key="W-Up" />
+    <keybind key="W-Down" />
+    <keybind key="W-F4" />
+    <keybind key="A-Left" />
+    <keybind key="A-Right" />
+    <keybind key="A-Up" />
+    <keybind key="A-Down" />
+    <keybind key="F11" />
+    <keybind key="F12" />
+
+    <!-- Consume common virtual-terminal escape combinations. -->
+    <keybind key="C-A-F1" />
+    <keybind key="C-A-F2" />
+    <keybind key="C-A-F3" />
+    <keybind key="C-A-F4" />
+    <keybind key="C-A-F5" />
+    <keybind key="C-A-F6" />
+    <keybind key="C-A-F7" />
+    <keybind key="C-A-F8" />
+    <keybind key="C-A-F9" />
+    <keybind key="C-A-F10" />
+    <keybind key="C-A-F11" />
+    <keybind key="C-A-F12" />
+    <keybind key="C-A-BackSpace" />
+  </keyboard>
+
+  <!-- Do not expose the Labwc root menu if Chromium is ever closed. -->
+  <mouse>
+    <context name="Root">
+      <mousebind button="Right" action="Press" />
+      <mousebind button="Middle" action="Press" />
+    </context>
+  </mouse>
+</labwc_config>

@@ -91,6 +91,7 @@ ENV_TEMPLATE="${PROJECT_DIR}/deployment/config/sfts-scoreboard.env.example"
 KIOSK_SCRIPT="${PROJECT_DIR}/deployment/scripts/start-kiosk.sh"
 POLKIT_TEMPLATE="${PROJECT_DIR}/deployment/polkit/sfts-scoreboard-power.rules"
 POLKIT_DEST="/etc/polkit-1/rules.d/49-sfts-scoreboard-power.rules"
+KIOSK_RC_TEMPLATE="${PROJECT_DIR}/deployment/config/labwc-kiosk-rc.xml"
 
 [[ -f "${PROJECT_DIR}/package.json" ]] || die "package.json was not found at ${PROJECT_DIR}"
 [[ -f "${PROJECT_DIR}/package-lock.json" ]] || die "package-lock.json was not found at ${PROJECT_DIR}"
@@ -100,6 +101,7 @@ POLKIT_DEST="/etc/polkit-1/rules.d/49-sfts-scoreboard-power.rules"
 [[ -f "${PIPER_SERVICE_TEMPLATE}" ]] || die "Piper systemd service template is missing"
 [[ -f "${ENV_TEMPLATE}" ]] || die "environment template is missing"
 [[ -f "${KIOSK_SCRIPT}" ]] || die "kiosk launcher is missing"
+[[ -f "${KIOSK_RC_TEMPLATE}" ]] || die "kiosk Labwc configuration is missing"
 [[ -f "${POLKIT_TEMPLATE}" ]] || die "polkit power-permission template is missing"
 success "Installer prerequisites found"
 
@@ -406,6 +408,7 @@ configure_desktop_kiosk() {
   # Use a separate labwc configuration root so the regular Raspberry Pi
   # desktop wallpaper, panel, notifications, and icons are never started.
   install -d -m 0755 -o root -g root "${kiosk_config_root}" "${kiosk_labwc_dir}"
+  install -m 0644 -o root -g root "${KIOSK_RC_TEMPLATE}" "${kiosk_labwc_dir}/rc.xml"
   printf '%s\n' \
     '#!/usr/bin/env bash' \
     "\"${KIOSK_SCRIPT}\" &" \

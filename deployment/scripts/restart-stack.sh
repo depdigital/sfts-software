@@ -8,6 +8,9 @@ DISPLAY_SERVICE="lightdm.service"
 PIPER_URL="http://127.0.0.1:5000/info"
 SCOREBOARD_URL="http://127.0.0.1:8080/"
 WAIT_SECONDS=30
+PROJECT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
+KIOSK_RC_SOURCE="${PROJECT_DIR}/deployment/config/labwc-kiosk-rc.xml"
+KIOSK_RC_DEST="/etc/sfts/sfts-scoreboard-kiosk/labwc/rc.xml"
 
 log() {
   printf '[sfts-restart] %s\n' "$*"
@@ -21,12 +24,17 @@ fail() {
 [[ "${EUID}" -eq 0 ]] || fail "run this script with sudo"
 command -v systemctl >/dev/null 2>&1 || fail "systemctl is not available"
 command -v curl >/dev/null 2>&1 || fail "curl is not available"
+[[ -f "${KIOSK_RC_SOURCE}" ]] || fail "kiosk Labwc configuration is missing"
 
 systemctl cat "${PIPER_SERVICE}" >/dev/null 2>&1 || fail "${PIPER_SERVICE} is not installed"
 systemctl cat "${SCOREBOARD_SERVICE}" >/dev/null 2>&1 || fail "${SCOREBOARD_SERVICE} is not installed"
 
 log "Reloading systemd service definitions"
 systemctl daemon-reload
+
+log "Installing kiosk Labwc restrictions"
+install -d -m 0755 -o root -g root "$(dirname -- "${KIOSK_RC_DEST}")"
+install -m 0644 -o root -g root "${KIOSK_RC_SOURCE}" "${KIOSK_RC_DEST}"
 
 log "Restarting ${PIPER_SERVICE}"
 systemctl restart "${PIPER_SERVICE}"
