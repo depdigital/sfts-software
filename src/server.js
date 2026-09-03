@@ -11,6 +11,7 @@ import { WebSocketServer } from "ws";
 import * as XLSX from "xlsx";
 import { createTts } from "./tts.js";
 import { createPersistence } from "./persistence.js";
+import { loadRules, rulesMetadata } from "./rules.js";
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const REMOTE_CONFIG_PATH = path.join(PROJECT_ROOT, 'config', 'remote-config.json');
@@ -30,20 +31,23 @@ function loadRemoteConfig() {
 }
 
 const remoteConfig = loadRemoteConfig();
+const rules = await loadRules();
+const activeRulesMetadata = rulesMetadata(rules);
 const configuredRemoteTokens = remoteConfig.remoteTokens && typeof remoteConfig.remoteTokens === 'object'
   ? remoteConfig.remoteTokens
   : {};
 const PORT = Number(process.env.PORT || remoteConfig.port || 8080);
-const ROUND_MS_DEFAULT = 60_000;
+const ROUND_MS_DEFAULT = rules.match.roundDurationSeconds * 1000;
 const BREAK_MS_DEFAULT = Number.isFinite(Number(process.env.SFTS_BREAK_MS))
   ? Math.max(50, Number(process.env.SFTS_BREAK_MS))
-  : 35_000;
-const MAX_TIMER_MS = 60 * 60 * 1000;
+  : rules.match.breakDurationSeconds * 1000;
+const MIN_TIMER_MS = rules.match.minimumRoundDurationSeconds * 1000;
+const MAX_TIMER_MS = rules.match.maximumRoundDurationSeconds * 1000;
 const TIMER_TICK_MS = 50;
 const TIMER_DISPLAY_UPDATE_MS = 100;
 const KYESHI_LIMIT_MS = Number.isFinite(Number(process.env.SFTS_KYESHI_LIMIT_MS))
   ? Math.max(1_000, Number(process.env.SFTS_KYESHI_LIMIT_MS))
-  : 60_000;
+  : rules.medical.kyeShi.limitSeconds * 1000;
 const HEARTBEAT_MS = 10_000;
 const MAX_WS_PAYLOAD = 64 * 1024;
 const MAX_BUFFERED_BYTES = 1024 * 1024;
@@ -56,7 +60,9 @@ const REMOTE_ACK_CACHE_SIZE = 100;
 const WS_MESSAGE_LIMIT = 120;
 const WS_MESSAGE_WINDOW_MS = 1000;
 const VOTE_SETTLE_MS = 750;
-const TECHNICAL_COMBO_WINDOW_MS = 1000;
+const TECHNICAL_COMBO_WINDOW_MS = rules.scoring.technicalInput.windowMilliseconds;
+const MIN_ACTIVE_REMOTES = rules.voting.minimumActiveRemotes;
+const MAX_ACTIVE_REMOTES = rules.voting.maximumActiveRemotes;
 const SYSTEM_POWER_DELAY_MS = 15_000;
 const SYSTEMCTL_BIN = '/usr/bin/systemctl';
 const LSBLK_BIN = '/usr/bin/lsblk';
@@ -150,7 +156,8 @@ function makeMatch(
     configuredRoundMs: roundMs,
     timerMs: roundMs,
     breakMs: BREAK_MS_DEFAULT,
-    remoteCount: 4,
+    remoteCount: MAX_ACTIVE_REMOTES,
+    ruleset: deep(activeRulesMetadata),
     running: false,
     roundStarted: false,
     phase: "ROUND", // ROUND | BREAK | MATCH_END
@@ -531,6 +538,7 @@ function persistenceSnapshot() {
   return {
     version: 1,
     savedAt: new Date().toISOString(),
+    ruleset: deep(activeRulesMetadata),
     match: savedMatch,
     matchHistory: deep(matchHistory),
     tournament: deep(tournament)
@@ -545,9 +553,10 @@ function persistState() {
 
 function restorePersistedState(snapshot) {
   match = snapshot.match;
-  match.remoteCount = Number.isInteger(match.remoteCount) && match.remoteCount >= 1 && match.remoteCount <= 4
+  match.ruleset ||= deep(activeRulesMetadata);
+  match.remoteCount = Number.isInteger(match.remoteCount) && match.remoteCount >= MIN_ACTIVE_REMOTES && match.remoteCount <= MAX_ACTIVE_REMOTES
     ? match.remoteCount
-    : 4;
+    : MAX_ACTIVE_REMOTES;
   match.running = false;
   match.roundStarted = Boolean(match.roundStarted || match.timerMs < match.configuredRoundMs ||
     match.red.score > 0 || match.blue.score > 0 || match.red.gamjeom > 0 || match.blue.gamjeom > 0);
@@ -614,7 +623,8 @@ function fullState() {
     matchHistory: deep(matchHistory),
     tournament: deep(tournament),
     remotes: [...remoteStatuses.values()].map(status => deep(status)),
-    usbImportOnly: USB_IMPORT_ONLY
+    usbImportOnly: USB_IMPORT_ONLY,
+    ruleset: deep(activeRulesMetadata)
   };
 }
 function remoteState(ws) {
@@ -1061,7 +1071,7 @@ function loadTournamentBout(bout) {
     { ...red, playerName: red.name },
     { ...blue, playerName: blue.name }
   );
-  match.remoteCount = Math.min(4, Math.max(1, Number(remoteCount) || 4));
+  match.remoteCount = Math.min(MAX_ACTIVE_REMOTES, Math.max(MIN_ACTIVE_REMOTES, Number(remoteCount) || MAX_ACTIVE_REMOTES));
   clearAllRemoteCombinations();
   clearVoteSettleGuard();
   timerLastAt = null;
@@ -1325,7 +1335,14 @@ function validPlayer(player) {
 }
 
 function validPoints(points) {
-  return Number.isInteger(points) && [1, 2, 3].includes(points);
+  return Number.isInteger(points) && rules.scoring.basePointValues.includes(points);
+}
+
+function technicalPointsFor(basePoints) {
+  if (!rules.scoring.technicalInput.enabled ||
+      !rules.scoring.technicalInput.eligibleBasePoints.includes(basePoints)) return null;
+  const points = rules.scoring.technicalInput.pointsByBasePoints[String(basePoints)];
+  return Number.isInteger(points) ? points : null;
 }
 
 function validInteger(value) {
@@ -1420,12 +1437,15 @@ function handleRemoteStatus(ws, msg) {
 }
 
 function remoteButton(button) {
-  const matchButton = /^((?:RED|BLUE))_(TECHNICAL|[123])$/.exec(String(button || '').toUpperCase());
+  const matchButton = /^((?:RED|BLUE))_(TECHNICAL|\d+)$/.exec(String(button || '').toUpperCase());
   if (!matchButton) return null;
   if (matchButton[2] === 'TECHNICAL') {
+    if (!rules.scoring.technicalInput.enabled) return null;
     return { player: matchButton[1], points: null, technical: true, button: `${matchButton[1]}_TECHNICAL` };
   }
-  return { player: matchButton[1], points: Number(matchButton[2]), technical: false, button: `${matchButton[1]}_${matchButton[2]}` };
+  const points = Number(matchButton[2]);
+  if (!validPoints(points)) return null;
+  return { player: matchButton[1], points, technical: false, button: `${matchButton[1]}_${points}` };
 }
 
 function expectedRemoteToken(deviceId) {
@@ -1520,7 +1540,7 @@ function setRunning(running) {
 
 function startKyeShi() {
   syncTimer();
-  if (match.phase !== 'ROUND' || match.test.active || match.kyeShi.active || !match.roundStarted) {
+  if (!rules.medical.kyeShi.enabled || match.phase !== 'ROUND' || match.test.active || match.kyeShi.active || !match.roundStarted) {
     return { ok: false, code: 'KYESHI_NOT_AVAILABLE', message: 'Kye-shi can only start during an active round' };
   }
   const resumeMatch = match.running;
@@ -1698,15 +1718,17 @@ function addHitStat(player, points) {
 
 function checkPointGap() {
   if (match.phase !== "ROUND") return;
+  if (!rules.decisions.pointGap.enabled || !rules.decisions.pointGap.appliesToRounds.includes(match.round)) return;
   const diff = Math.abs(match.red.score - match.blue.score);
-  if (diff >= 15) {
+  if (diff >= rules.decisions.pointGap.difference) {
     const winner = match.red.score > match.blue.score ? "RED" : "BLUE";
-    endRound(winner, "15-POINT GAP");
+    endRound(winner, `${rules.decisions.pointGap.difference}-POINT GAP`);
   }
 }
 
 function addPoint(player, points, source = "manual", countAsHit = true) {
-  const technicalAward = source === 'referee-technical' && [4, 6].includes(points);
+  const technicalAward = source === 'referee-technical' && rules.scoring.technicalInput.enabled &&
+    Object.values(rules.scoring.technicalInput.pointsByBasePoints).includes(points);
   if (!validPlayer(player) || (!validPoints(points) && !technicalAward) || !scoringIsAllowed()) return false;
   side(player).score += points;
   if (countAsHit) addHitStat(player, points);
@@ -1720,10 +1742,12 @@ function addGamjeom(player) {
   const penalized = side(player);
   penalized.gamjeom += 1;
   const opponent = other(player);
-  side(opponent).score += 1;
-  emit({ type: 'scoreSound', player: opponent, points: 1, source: 'gamjeom' });
-  if (penalized.gamjeom >= 5) {
-    endRound(opponent, '5 GAM-JEOM');
+  if (rules.scoring.gamJeomPointValue > 0 && rules.penalties.gamJeom.awardsPointToOpponent) {
+    side(opponent).score += rules.scoring.gamJeomPointValue;
+    emit({ type: 'scoreSound', player: opponent, points: rules.scoring.gamJeomPointValue, source: 'gamjeom' });
+  }
+  if (penalized.gamjeom >= rules.penalties.gamJeom.roundLossAt) {
+    endRound(opponent, `${rules.penalties.gamJeom.roundLossAt} GAM-JEOM`);
     return true;
   }
   checkPointGap();
@@ -1801,6 +1825,7 @@ function finishMatch(winner, reason) {
     winnerName: winner ? playerDisplayName(side(winner)) : 'DRAW',
     reason,
     rounds: deep(match.roundHistory),
+    ruleset: deep(match.ruleset || activeRulesMetadata),
     endedAt: new Date().toISOString()
   });
   matchHistory = matchHistory.slice(0, 50);
@@ -1852,7 +1877,7 @@ function resetCurrentMatch() {
     match.red,
     match.blue
   );
-  match.remoteCount = Math.min(4, Math.max(1, Number(remoteCount) || 4));
+  match.remoteCount = Math.min(MAX_ACTIVE_REMOTES, Math.max(MIN_ACTIVE_REMOTES, Number(remoteCount) || MAX_ACTIVE_REMOTES));
   clearAllRemoteCombinations();
   clearVoteSettleGuard();
   timerLastAt = null;
@@ -1874,7 +1899,7 @@ function newMatch() {
     match.red,
     match.blue
   );
-  match.remoteCount = Math.min(4, Math.max(1, Number(remoteCount) || 4));
+  match.remoteCount = Math.min(MAX_ACTIVE_REMOTES, Math.max(MIN_ACTIVE_REMOTES, Number(remoteCount) || MAX_ACTIVE_REMOTES));
   clearAllRemoteCombinations();
   clearVoteSettleGuard();
   timerLastAt = null;
@@ -1927,7 +1952,7 @@ function playerDisplayName(player) {
 function evaluateVotes() {
   const requiredVotes = Math.floor(match.remoteCount / 2) + 1;
   for (const player of ['RED', 'BLUE']) {
-    for (const points of [1, 2, 3, 4, 6]) {
+    for (const points of rules.scoring.acceptedPointValues) {
       const total = Object.values(match.votes).filter(v => v.player === player && v.points === points).length;
       if (total >= requiredVotes) {
         const winningVote = Object.values(match.votes).find(v => v.player === player && v.points === points);
@@ -1992,8 +2017,8 @@ function clearVoteSettleGuard() {
 
 function setRemoteCount(value) {
   const remoteCount = Number(value);
-  if (!Number.isInteger(remoteCount) || remoteCount < 1 || remoteCount > 4) {
-    return { ok: false, code: 'INVALID_REMOTE_MODE', message: 'Remote mode must be between 1 and 4 remotes' };
+  if (!Number.isInteger(remoteCount) || remoteCount < MIN_ACTIVE_REMOTES || remoteCount > MAX_ACTIVE_REMOTES) {
+    return { ok: false, code: 'INVALID_REMOTE_MODE', message: `Remote mode must be between ${MIN_ACTIVE_REMOTES} and ${MAX_ACTIVE_REMOTES} remotes` };
   }
   const matchHasProgress = match.running || match.roundHistory.length > 0 ||
     match.red.score > 0 || match.blue.score > 0 || match.red.gamjeom > 0 || match.blue.gamjeom > 0 ||
@@ -2193,7 +2218,7 @@ function handleRemoteEvent(ws, msg) {
       clearRemoteCombination(ws.corner);
       completeRemoteVote(ws, sequence, {
         player: vote.player,
-        points: base.points * 2,
+        points: technicalPointsFor(base.points),
         basePoints: base.points,
         technical: true,
         button: vote.button
@@ -2208,11 +2233,12 @@ function handleRemoteEvent(ws, msg) {
 
   const technical = remoteTechnicalPending.get(ws.corner);
   if (technical && technical.player === vote.player) {
-    if (vote.points === 2 || vote.points === 3) {
+    const technicalPoints = technicalPointsFor(vote.points);
+    if (technicalPoints !== null) {
       clearRemoteCombination(ws.corner);
       completeRemoteVote(ws, sequence, {
         player: vote.player,
-        points: vote.points * 2,
+        points: technicalPoints,
         basePoints: vote.points,
         technical: true,
         button: `${vote.player}_TECHNICAL_${vote.points}`
@@ -2222,7 +2248,7 @@ function handleRemoteEvent(ws, msg) {
     clearRemoteCombination(ws.corner);
     const ack = remoteAck(ws, sequence, {
       accepted: false,
-      reason: 'TECHNICAL_REQUIRES_PLUS_2_OR_PLUS_3',
+      reason: 'TECHNICAL_REQUIRES_ELIGIBLE_BASE_POINT',
       awarded: false
     });
     rememberRemoteAck(session, sequence, ack);
@@ -2235,7 +2261,7 @@ function handleRemoteEvent(ws, msg) {
     basePoints: vote.points,
     technical: false
   });
-  if ((vote.points === 2 || vote.points === 3) && !outcome.awarded) rememberBasePress(ws.corner, vote);
+  if (technicalPointsFor(vote.points) !== null && !outcome.awarded) rememberBasePress(ws.corner, vote);
 }
 
 wss.on('connection', ws => {
@@ -2352,7 +2378,7 @@ wss.on('connection', ws => {
       }
       if (msg.action === 'setTime') {
         const rawMs = Number(msg.ms);
-        const ms = validInteger(rawMs) ? Math.min(MAX_TIMER_MS, Math.max(1000, rawMs)) : ROUND_MS_DEFAULT;
+        const ms = validInteger(rawMs) ? Math.min(MAX_TIMER_MS, Math.max(MIN_TIMER_MS, rawMs)) : ROUND_MS_DEFAULT;
         if (match.phase === 'ROUND') setRunning(false);
         match.configuredRoundMs = ms;
         if (match.phase === 'ROUND') {
@@ -2405,10 +2431,12 @@ wss.on('connection', ws => {
           return;
         }
         const parsed = Number(msg.value);
-        const value = validInteger(parsed) ? Math.max(0, Math.min(5, parsed)) : 0;
+        const value = validInteger(parsed) ? Math.max(0, Math.min(rules.penalties.gamJeom.roundLossAt, parsed)) : 0;
         if (msg.player === 'RED') match.red.gamjeom = value;
         if (msg.player === 'BLUE') match.blue.gamjeom = value;
-        if (value >= 5) endRound(other(msg.player), '5 GAM-JEOM');
+        if (value >= rules.penalties.gamJeom.roundLossAt) {
+          endRound(other(msg.player), `${rules.penalties.gamJeom.roundLossAt} GAM-JEOM`);
+        }
       }
       if (msg.action === 'point' && !addPoint(msg.player, Number(msg.points), 'manual', true)) {
         sendError(ws, 'ROUND_NOT_ACTIVE', 'Points can only be awarded during a round');

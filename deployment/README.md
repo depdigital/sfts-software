@@ -99,6 +99,7 @@ The service:
 - Enables local kiosk authorization with `SFTS_KIOSK_MODE=true`.
 - Restarts after an unexpected server failure.
 - Stores match state in the project `data` directory.
+- Loads an optional validated `data/active-rules.json` ruleset at startup and falls back to `config/rules.default.json` if it is missing or invalid. The dashboard rules-import workflow is reserved for a later update stage.
 - Runs with systemd filesystem, kernel, privilege, and network-family restrictions appropriate for a LAN-only scoreboard service.
 - Does not print remote token values during installation.
 

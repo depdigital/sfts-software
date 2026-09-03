@@ -24,6 +24,10 @@ The event does not need internet. The dashboard, JavaScript, CSS, logo, tourname
 - Optional local Piper text-to-speech; browser speech is only a fallback.
 - Remote acknowledgements, replay protection, fixed corner IDs, access tokens, heartbeats, and message limits.
 
+### Rules configuration foundation
+
+The current match behavior is described by [`config/rules.default.json`](config/rules.default.json). At startup, the server first checks for an optional `data/active-rules.json` file (or the path in `SFTS_RULES_FILE`), validates it, and safely falls back to the built-in rules if it is missing or invalid. Rule updates are not exposed in the dashboard yet; the future Rules screen and USB import workflow will be added in a later stage.
+
 ## Install and run
 
 Install Node.js 18 or newer, then open a terminal in this folder:
