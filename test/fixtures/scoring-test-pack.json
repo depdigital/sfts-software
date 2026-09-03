@@ -1,0 +1,97 @@
+{
+  "schemaVersion": 1,
+  "ruleset": {
+    "id": "sfts-scoring-test",
+    "name": "SFTS Scoring Test Pack",
+    "federation": "SFTS",
+    "ruleVersion": "stage-3-item-1-test",
+    "effectiveFrom": null,
+    "source": "Local scoring test pack"
+  },
+  "compatibility": {
+    "minimumSoftwareVersion": "3.0.0",
+    "requiredCapabilities": [
+      "BEST_OF_THREE",
+      "FINAL_SCORE",
+      "POINT_GAP",
+      "ROUND_GAMJEOM_LIMIT",
+      "MAJORITY_VOTE",
+      "TECHNICAL_COMBINATION",
+      "KYESHI_MANUAL_DECISION",
+      "SINGLE_ELIMINATION"
+    ]
+  },
+  "match": {
+    "format": "BEST_OF_THREE",
+    "rounds": 3,
+    "roundsRequiredToWin": 2,
+    "roundDurationSeconds": 60,
+    "breakDurationSeconds": 35,
+    "minimumRoundDurationSeconds": 1,
+    "maximumRoundDurationSeconds": 3600
+  },
+  "scoring": {
+    "basePointValues": [1, 2, 3],
+    "basePointLabels": {
+      "1": "HAND",
+      "2": "BODY",
+      "3": "HEAD AREA"
+    },
+    "acceptedPointValues": [1, 2, 3, 4, 5],
+    "technicalInput": {
+      "enabled": true,
+      "windowMilliseconds": 1000,
+      "eligibleBasePoints": [2, 3],
+      "pointsByBasePoints": {
+        "2": 4,
+        "3": 5
+      }
+    },
+    "gamJeomPointValue": 1
+  },
+  "penalties": {
+    "gamJeom": {
+      "awardsPointToOpponent": true,
+      "roundLossAt": 5,
+      "matchLossAt": null,
+      "accumulateAcrossRounds": false
+    }
+  },
+  "decisions": {
+    "pointGap": {
+      "enabled": true,
+      "difference": 15,
+      "appliesToRounds": [1, 2, 3]
+    },
+    "roundTie": {
+      "type": "DRAW"
+    },
+    "unresolvedMatchTie": {
+      "type": "MANUAL_TOURNAMENT_RESOLUTION"
+    },
+    "winnerMethods": [
+      "FINAL_SCORE",
+      "POINT_GAP",
+      "ROUND_GAMJEOM_LIMIT",
+      "KYESHI_MANUAL_DECISION"
+    ]
+  },
+  "voting": {
+    "mode": "STRICT_MAJORITY",
+    "minimumActiveRemotes": 1,
+    "maximumActiveRemotes": 4
+  },
+  "medical": {
+    "kyeShi": {
+      "enabled": true,
+      "limitSeconds": 60,
+      "onLimit": "MANUAL_WINNER"
+    }
+  },
+  "tournament": {
+    "format": "SINGLE_ELIMINATION",
+    "groupBy": ["GENDER", "WEIGHT_CATEGORY"],
+    "byes": "AUTOMATIC",
+    "seeding": "SEEDED_RANDOM"
+  }
+}

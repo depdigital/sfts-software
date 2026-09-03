@@ -134,6 +134,14 @@ sudo journalctl -u sfts-scoreboard.service -n 50 --no-pager
 sudo journalctl -u sfts-scoreboard.service -f
 ```
 
+To refresh the complete SFTS application stack after deploying code changes without rebooting the Pi:
+
+```bash
+sudo bash deployment/scripts/restart-stack.sh
+```
+
+The script reloads systemd, restarts Piper, restarts the scoreboard, waits for both local services to respond, and restarts LightDM so the kiosk browser loads the latest dashboard. The current graphical session will close and relaunch; saved match state is preserved and the match remains paused after the server restart.
+
 Check the local HTTP endpoint:
 
 ```bash
