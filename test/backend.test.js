@@ -717,6 +717,9 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(html, /id="redCornerReferee4"[^>]+src="\/assets\/corner_referee\.png"/);
   assert.match(html, /id="blueCornerReferee1"[^>]+src="\/assets\/corner_referee\.png"/);
   assert.match(html, /id="blueCornerReferee4"[^>]+src="\/assets\/corner_referee\.png"/);
+  assert.match(html, /class="cornerRefereeLabel">C1<\/span>/);
+  assert.match(html, /id="redCornerScore1" class="cornerRefereeScore"/);
+  assert.match(html, /id="blueCornerScore4" class="cornerRefereeScore"/);
   assert.doesNotMatch(html, /onclick="openTestRemotes\(\)"/);
   assert.match(html, /onclick="openTestMode\(\)">REMOTE SETTINGS<\/button>/);
   assert.match(html, /onclick="openRules\(\)">RULES<\/button>/);
@@ -756,8 +759,10 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(jsText, /let lastTournament = null/);
   assert.match(jsText, /lastRemoteButtons\[c - 1\] \|\| v\?\.button/);
   assert.match(jsText, /renderCornerRefereeIndicators\(match\.remoteCount\)/);
+  assert.match(jsText, /remoteScoreValues\[player\]/);
   const serverSource = await readFile(path.join(projectRoot, 'src/server.js'), 'utf8');
   assert.match(serverSource, /REMOTE_BUTTON_DISPLAY_MS = 250/);
+  assert.match(serverSource, /REMOTE_SCORE_DISPLAY_MS = 500/);
   assert.match(jsText, /lastTournament = msg\.tournament \|\| null/);
   assert.match(jsText, /renderSchedule\(lastTournament\)/);
   assert.match(jsText, /\["Space", "KeyR", "KeyB", "KeyS"\]/);

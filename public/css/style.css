@@ -282,6 +282,14 @@ button {
   justify-content: space-between;
   align-items: flex-end;
 }
+.cornerRefereeItem {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  min-width: clamp(34px, 3.8vw, 76px);
+}
 .cornerRefereeIcon {
   position: static;
   width: clamp(28px, 3.2vw, 68px);
@@ -293,6 +301,26 @@ button {
 }
 .cornerRefereeBottomRow .cornerRefereeIcon {
   position: static;
+}
+.cornerRefereeLabel {
+  margin-top: 2px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: clamp(10px, 0.75vw, 16px);
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0.04em;
+}
+.cornerRefereeScore {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  color: #fff;
+  font-size: clamp(14px, 1.2vw, 24px);
+  font-weight: 900;
+  line-height: 1;
+  text-shadow: 0 0 8px rgba(0, 0, 0, 0.85), 0 0 10px rgba(80, 255, 125, 0.8);
+  transform: translate(-50%, -105%);
+  white-space: nowrap;
 }
 .cornerRefereeIcon.active {
   opacity: 1;

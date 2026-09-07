@@ -537,6 +537,9 @@ const lastRemoteButtons = new Map();
 const lastRemoteButtonTimers = new Map();
 const REMOTE_BUTTON_DISPLAY_MS = 250;
 const remoteScoreHighlights = { RED: [], BLUE: [] };
+const remoteScoreHighlightTimers = new Map();
+const remoteScoreValues = { RED: null, BLUE: null };
+const REMOTE_SCORE_DISPLAY_MS = 500;
 let timerLastAt = null;
 let kyeShiLastAt = null;
 let lastStateAt = 0;
@@ -683,6 +686,7 @@ function fullState() {
     arenaNumber,
     remoteButtons: [1, 2, 3, 4].map(corner => lastRemoteButtons.get(corner) || null),
     remoteScoreHighlights: deep(remoteScoreHighlights),
+    remoteScoreValues: deep(remoteScoreValues),
     match: deep(match),
     matchHistory: deep(matchHistory),
     tournament: deep(tournament),
@@ -1583,8 +1587,28 @@ function clearLastRemoteButtons() {
 }
 
 function clearRemoteScoreHighlights() {
+  for (const timer of remoteScoreHighlightTimers.values()) clearTimeout(timer);
+  remoteScoreHighlightTimers.clear();
   remoteScoreHighlights.RED = [];
   remoteScoreHighlights.BLUE = [];
+  remoteScoreValues.RED = null;
+  remoteScoreValues.BLUE = null;
+}
+
+function showRemoteScoreHighlight(player, corners, points) {
+  const previousTimer = remoteScoreHighlightTimers.get(player);
+  if (previousTimer) clearTimeout(previousTimer);
+  remoteScoreHighlights[player] = corners;
+  remoteScoreValues[player] = points;
+  const timer = setTimeout(() => {
+    if (remoteScoreHighlightTimers.get(player) !== timer) return;
+    remoteScoreHighlightTimers.delete(player);
+    remoteScoreHighlights[player] = [];
+    remoteScoreValues[player] = null;
+    state();
+  }, REMOTE_SCORE_DISPLAY_MS);
+  timer.unref?.();
+  remoteScoreHighlightTimers.set(player, timer);
 }
 
 function showLastRemoteButton(corner, button) {
@@ -2208,7 +2232,7 @@ function evaluateVotes() {
         addPoint(player, points, technical ? 'referee-technical' : 'referee', !technical);
         if (technical) addTechnicalStat(player, winningVote.basePoints);
         match.votes = {};
-        remoteScoreHighlights[player] = winningCorners;
+        showRemoteScoreHighlight(player, winningCorners, points);
         const result = {
           awarded: true,
           player,
