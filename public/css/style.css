@@ -21,6 +21,27 @@ button {
 .hidden {
   display: none !important;
 }
+.screensaver {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 700ms ease;
+}
+.screensaver.visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+.screensaver img {
+  width: min(72vw, 980px);
+  max-height: 72vh;
+  object-fit: contain;
+}
 .screen {
   min-height: 100vh;
 }

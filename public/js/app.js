@@ -130,8 +130,20 @@ function connectSocket() {
 }
 connectSocket();
 
+function toggleScreensaver() {
+  const screenSaver = $("screensaver");
+  if (!screenSaver) return;
+  const visible = !screenSaver.classList.contains("visible");
+  screenSaver.classList.toggle("visible", visible);
+  screenSaver.setAttribute("aria-hidden", String(!visible));
+}
+
 document.addEventListener("keydown", (event) => {
-  if (event.code !== "Space" || event.repeat || role !== "host") return;
+  if (
+    !["Space", "KeyR", "KeyB", "KeyS"].includes(event.code) ||
+    event.repeat ||
+    role !== "host"
+  ) return;
   const target = event.target;
   if (
     target instanceof HTMLInputElement ||
@@ -139,7 +151,10 @@ document.addEventListener("keydown", (event) => {
     target.isContentEditable
   ) return;
   event.preventDefault();
-  playPause();
+  if (event.code === "Space") playPause();
+  if (event.code === "KeyR") manualGam("RED");
+  if (event.code === "KeyB") manualGam("BLUE");
+  if (event.code === "KeyS") toggleScreensaver();
 });
 
 function send(data) {

@@ -726,6 +726,8 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(html, /id="summaryRedTechnicalHead"/);
   assert.match(html, /id="summaryBlueTechnicalChest"/);
   assert.match(html, /id="summaryBlueTechnicalHead"/);
+  assert.match(html, /id="screensaver"/);
+  assert.match(html, /src="\/assets\/sfts-logo\.png"/);
 
   const css = await fetch(`http://127.0.0.1:${port}/css/style.css`);
   const js = await fetch(`http://127.0.0.1:${port}/js/app.js`);
@@ -733,14 +735,18 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   const cssText = await css.text();
   assert.match(cssText, /\.bottomArea[\s\S]*z-index: 10/);
   assert.match(cssText, /\.hostScreen\.matchClockRunning[\s\S]*\.bottomArea/);
+  assert.match(cssText, /\.screensaver[\s\S]*transition: opacity 700ms ease/);
   assert.match(cssText, /\.controlGrid button[\s\S]*cursor: pointer/);
   assert.equal(js.status, 200);
   const jsText = await js.text();
   assert.match(jsText, /let lastTournament = null/);
   assert.match(jsText, /lastTournament = msg\.tournament \|\| null/);
   assert.match(jsText, /renderSchedule\(lastTournament\)/);
-  assert.match(jsText, /event\.code !== "Space"/);
-  assert.match(jsText, /event\.preventDefault\(\);\s*playPause\(\)/);
+  assert.match(jsText, /\["Space", "KeyR", "KeyB", "KeyS"\]/);
+  assert.match(jsText, /event\.code === "Space"\) playPause\(\)/);
+  assert.match(jsText, /event\.code === "KeyR"\) manualGam\("RED"\)/);
+  assert.match(jsText, /event\.code === "KeyB"\) manualGam\("BLUE"\)/);
+  assert.match(jsText, /event\.code === "KeyS"\) toggleScreensaver\(\)/);
   assert.match(jsText, /ws\.onclose/);
   assert.match(jsText, /reconnectDelay/);
   assert.match(jsText, /renderRemoteStatuses/);
