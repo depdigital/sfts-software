@@ -709,6 +709,7 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.equal(css.status, 200);
   const cssText = await css.text();
   assert.match(cssText, /\.bottomArea[\s\S]*z-index: 10/);
+  assert.match(cssText, /\.hostScreen\.matchClockRunning[\s\S]*\.bottomArea/);
   assert.match(cssText, /\.controlGrid button[\s\S]*cursor: pointer/);
   assert.equal(js.status, 200);
   const jsText = await js.text();
@@ -720,6 +721,8 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(jsText, /ws\.onclose/);
   assert.match(jsText, /reconnectDelay/);
   assert.match(jsText, /renderRemoteStatuses/);
+  assert.match(jsText, /match\.phase === "ROUND" && match\.running === true/);
+  assert.match(jsText, /matchClockRunning/);
   assert.match(jsText, /action: "setArenaNumber"/);
   assert.match(html, /id="hostAccessToken"/);
   assert.match(html, /id="kyeShiPanel"/);

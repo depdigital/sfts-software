@@ -163,6 +163,10 @@ function showScreen(id) {
 
 function renderState(match) {
   if (!match) return;
+  $("host")?.classList.toggle(
+    "matchClockRunning",
+    match.phase === "ROUND" && match.running === true,
+  );
   renderRemoteMode(match.remoteCount);
   $("redName").textContent = "HONG";
   $("blueName").textContent = "CHUNG";
