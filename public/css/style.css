@@ -262,7 +262,7 @@ button {
 .arenaText {
   margin-top: 0;
   color: #cbd5e5;
-  font-size: clamp(12px, min(1vw, 1.6vh), 21px);
+  font-size: clamp(27px, min(2.4vw, 4.6vh), 52px);
   font-weight: 900;
   letter-spacing: 0.08em;
   text-align: center;
