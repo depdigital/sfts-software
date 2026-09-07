@@ -1,7 +1,7 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { rm } from 'node:fs/promises';
+import { readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import WebSocket from 'ws';
@@ -747,6 +747,8 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   const jsText = await js.text();
   assert.match(jsText, /let lastTournament = null/);
   assert.match(jsText, /lastRemoteButtons\[c - 1\] \|\| v\?\.button/);
+  const serverSource = await readFile(path.join(projectRoot, 'src/server.js'), 'utf8');
+  assert.match(serverSource, /REMOTE_BUTTON_DISPLAY_MS = 250/);
   assert.match(jsText, /lastTournament = msg\.tournament \|\| null/);
   assert.match(jsText, /renderSchedule\(lastTournament\)/);
   assert.match(jsText, /\["Space", "KeyR", "KeyB", "KeyS"\]/);

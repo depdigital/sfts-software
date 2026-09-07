@@ -534,6 +534,8 @@ const remoteStatuses = new Map([...REMOTE_IDS].map(deviceId => [deviceId, {
 const remoteTechnicalPending = new Map();
 const remoteLastBasePress = new Map();
 const lastRemoteButtons = new Map();
+const lastRemoteButtonTimers = new Map();
+const REMOTE_BUTTON_DISPLAY_MS = 250;
 let timerLastAt = null;
 let kyeShiLastAt = null;
 let lastStateAt = 0;
@@ -1572,7 +1574,23 @@ function clearAllRemoteCombinations() {
 }
 
 function clearLastRemoteButtons() {
+  for (const timer of lastRemoteButtonTimers.values()) clearTimeout(timer);
+  lastRemoteButtonTimers.clear();
   lastRemoteButtons.clear();
+}
+
+function showLastRemoteButton(corner, button) {
+  const previousTimer = lastRemoteButtonTimers.get(corner);
+  if (previousTimer) clearTimeout(previousTimer);
+  lastRemoteButtons.set(corner, button);
+  const timer = setTimeout(() => {
+    if (lastRemoteButtonTimers.get(corner) !== timer) return;
+    lastRemoteButtonTimers.delete(corner);
+    lastRemoteButtons.delete(corner);
+    state(true);
+  }, REMOTE_BUTTON_DISPLAY_MS);
+  timer.unref?.();
+  lastRemoteButtonTimers.set(corner, timer);
 }
 
 function rememberTechnicalPress(corner, player) {
@@ -2202,7 +2220,7 @@ function recordRefereeVote(corner, vote) {
       return { awarded: false, ignored: true, count: 3 };
     }
   }
-  if (vote.button) lastRemoteButtons.set(corner, vote.button);
+  if (vote.button) showLastRemoteButton(corner, vote.button);
   match.votes[corner] = vote;
   const count = Object.values(match.votes)
     .filter(item => item.player === vote.player && item.points === vote.points).length;
@@ -2395,7 +2413,7 @@ function handleRemoteEvent(ws, msg) {
       rememberRemoteAck(session, sequence, ack);
       return;
     }
-    lastRemoteButtons.set(ws.corner, button);
+    showLastRemoteButton(ws.corner, button);
     clearRemoteCombination(ws.corner);
     delete match.votes[ws.corner];
     state(true);
@@ -2410,8 +2428,8 @@ function handleRemoteEvent(ws, msg) {
     rememberRemoteAck(session, sequence, ack);
     return;
   }
-  lastRemoteButtons.set(ws.corner, vote.button);
   if (match.test.active) {
+    showLastRemoteButton(ws.corner, vote.button);
     match.test.presses[`${ws.corner}-${vote.button}`] = true;
     emit({ type: 'testPress', corner: ws.corner, player: vote.player, points: vote.points, button: vote.button });
     state();
@@ -2431,6 +2449,8 @@ function handleRemoteEvent(ws, msg) {
     rememberRemoteAck(session, sequence, ack);
     return;
   }
+
+  showLastRemoteButton(ws.corner, vote.button);
 
   if (vote.technical) {
     const base = remoteLastBasePress.get(ws.corner);
