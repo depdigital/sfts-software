@@ -2751,7 +2751,7 @@ wss.on('connection', ws => {
           return;
         }
         if (!scoringIsAllowed()) return;
-        recordRefereeVote(ws.corner, { player, points });
+        recordRefereeVote(ws.corner, { player, points, button: `${player}_${points}` });
         return;
       }
 

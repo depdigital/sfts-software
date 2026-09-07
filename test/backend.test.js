@@ -298,7 +298,8 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   }
 
   referees[3].send(JSON.stringify({ type: 'ref', action: 'vote', player: 'BLUE', points: 1 }));
-  await waitForMessage(host, message => message.type === 'state' && message.match.votes['4']);
+  const initialCornerVote = await waitForMessage(host, message => message.type === 'state' && message.match.votes['4']);
+  assert.equal(initialCornerVote.match.votes['4'].button, 'BLUE_1');
   host.send(JSON.stringify({ type: 'host', action: 'testStart' }));
   const testState = await waitForMessage(host, message => message.type === 'state' && message.match.test.active);
   assert.deepEqual(testState.match.votes, {});
@@ -754,6 +755,7 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(jsText, /ws\.onclose/);
   assert.match(jsText, /reconnectDelay/);
   assert.match(jsText, /renderRemoteStatuses/);
+  assert.match(jsText, /v\?\.button \|\| "—"/);
   assert.match(jsText, /match\.phase === "ROUND" && match\.running === true/);
   assert.match(jsText, /matchClockRunning/);
   assert.match(jsText, /action: "setArenaNumber"/);

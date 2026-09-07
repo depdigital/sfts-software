@@ -213,7 +213,7 @@ function renderState(match) {
     .slice(0, activeRemoteCount)
     .map((c) => {
       const v = match.votes[c];
-      return `C${c} ${v ? v.player[0] + "+" + v.points : "—"}`;
+      return `C${c} ${v?.button || "—"}`;
     })
     .join("   ");
 
