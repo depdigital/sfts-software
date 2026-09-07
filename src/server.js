@@ -1648,7 +1648,11 @@ function remoteAck(ws, sequence, details) {
 }
 
 function scoringIsAllowed() {
-  return match.phase === 'ROUND' && match.running && !match.test.active && !match.kyeShi.active;
+  return operatorScoringIsAllowed() && match.running;
+}
+
+function operatorScoringIsAllowed() {
+  return match.phase === 'ROUND' && match.roundStarted && !match.test.active && !match.kyeShi.active;
 }
 
 function syncKyeShi(now = performance.now()) {
@@ -1896,10 +1900,11 @@ function checkPointGap() {
   }
 }
 
-function addPoint(player, points, source = "manual", countAsHit = true) {
+function addPoint(player, points, source = "manual", countAsHit = true, allowPaused = false) {
   const technicalAward = source === 'referee-technical' && rules.scoring.technicalInput.enabled &&
     Object.values(rules.scoring.technicalInput.pointsByBasePoints).includes(points);
-  if (!validPlayer(player) || (!validPoints(points) && !technicalAward) || !scoringIsAllowed()) return false;
+  const canScore = allowPaused ? operatorScoringIsAllowed() : scoringIsAllowed();
+  if (!validPlayer(player) || (!validPoints(points) && !technicalAward) || !canScore) return false;
   side(player).score += points;
   if (countAsHit) addHitStat(player, points);
   emit({ type: 'scoreSound', player, points, source });
@@ -1907,8 +1912,9 @@ function addPoint(player, points, source = "manual", countAsHit = true) {
   return true;
 }
 
-function addGamjeom(player) {
-  if (!validPlayer(player) || !scoringIsAllowed()) return false;
+function addGamjeom(player, allowPaused = false) {
+  const canScore = allowPaused ? operatorScoringIsAllowed() : scoringIsAllowed();
+  if (!validPlayer(player) || !canScore) return false;
   const penalized = side(player);
   penalized.gamjeom += 1;
   const opponent = other(player);
@@ -2591,7 +2597,7 @@ wss.on('connection', ws => {
         if (msg.player === 'BLUE') match.blue.playerName = name;
       }
       if (msg.action === 'editScore') {
-        if (!validPlayer(msg.player) || !scoringIsAllowed()) {
+        if (!validPlayer(msg.player) || !operatorScoringIsAllowed()) {
           sendError(ws, 'ROUND_NOT_ACTIVE', 'Scores can only be edited during a round');
           return;
         }
@@ -2602,7 +2608,7 @@ wss.on('connection', ws => {
         checkPointGap();
       }
       if (msg.action === 'editGamjeom') {
-        if (!validPlayer(msg.player) || !scoringIsAllowed()) {
+        if (!validPlayer(msg.player) || !operatorScoringIsAllowed()) {
           sendError(ws, 'ROUND_NOT_ACTIVE', 'Gam-jeom can only be edited during a round');
           return;
         }
@@ -2614,13 +2620,13 @@ wss.on('connection', ws => {
           endRound(other(msg.player), `${rules.penalties.gamJeom.roundLossAt} GAM-JEOM`);
         }
       }
-      if (msg.action === 'point' && !addPoint(msg.player, Number(msg.points), 'manual', true)) {
+      if (msg.action === 'point' && !addPoint(msg.player, Number(msg.points), 'manual', true, true)) {
         sendError(ws, 'ROUND_NOT_ACTIVE', 'Points can only be awarded during a round');
       }
-      if (msg.action === 'headPoint' && !addPoint(msg.player, 3, 'manual-head', true)) {
+      if (msg.action === 'headPoint' && !addPoint(msg.player, 3, 'manual-head', true, true)) {
         sendError(ws, 'ROUND_NOT_ACTIVE', 'Head points can only be awarded during a round');
       }
-      if (msg.action === 'gamjeom' && !addGamjeom(msg.player)) {
+      if (msg.action === 'gamjeom' && !addGamjeom(msg.player, true)) {
         sendError(ws, 'ROUND_NOT_ACTIVE', 'Gam-jeom can only be awarded during a round');
       }
       if (msg.action === 'nextRound') startNextRound();

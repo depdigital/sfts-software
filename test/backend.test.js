@@ -302,6 +302,52 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   host.send(JSON.stringify({ type: 'host', action: 'playPause' }));
   await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'ROUND' && message.match.running);
 
+  host.send(JSON.stringify({ type: 'host', action: 'playPause' }));
+  await waitForMessage(host, message => (
+    message.type === 'state' && message.match.phase === 'ROUND' &&
+    message.match.roundStarted && !message.match.running
+  ));
+  host.send(JSON.stringify({ type: 'host', action: 'point', player: 'RED', points: 1 }));
+  await waitForMessage(host, message => message.type === 'scoreSound' && message.player === 'RED' && message.points === 1);
+  await waitForMessage(host, message => message.type === 'state' && message.match.red.score === 1);
+  host.send(JSON.stringify({ type: 'host', action: 'editScore', player: 'BLUE', value: 5 }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.blue.score === 5);
+  host.send(JSON.stringify({ type: 'host', action: 'editGamjeom', player: 'BLUE', value: 2 }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.blue.gamjeom === 2);
+  host.send(JSON.stringify({ type: 'host', action: 'gamjeom', player: 'RED' }));
+  const pausedOperatorState = await waitForMessage(host, message => (
+    message.type === 'state' && message.match.red.gamjeom === 1 && message.match.red.score === 1
+  ));
+
+  referees[0].send(JSON.stringify({ type: 'ref', action: 'vote', player: 'BLUE', points: 3 }));
+  await new Promise(resolve => setTimeout(resolve, 100));
+  host.send(JSON.stringify({ type: 'host', action: 'name', player: 'RED', name: pausedOperatorState.match.red.playerName }));
+  const afterPausedRefereeVote = await waitForMessage(host, message => message.type === 'state' && (
+    message.match.red.score === pausedOperatorState.match.red.score &&
+    message.match.blue.score === pausedOperatorState.match.blue.score &&
+    message.match.red.gamjeom === pausedOperatorState.match.red.gamjeom &&
+    message.match.blue.gamjeom === pausedOperatorState.match.blue.gamjeom
+  ));
+  assert.equal(afterPausedRefereeVote.match.votes['1'], undefined);
+
+  const pausedRemote = await connect();
+  pausedRemote.send(JSON.stringify({
+    type: 'remote_hello', protocolVersion: 1, deviceId: 'C2', sessionId: 'paused-remote-test'
+  }));
+  await waitForMessage(pausedRemote, message => message.type === 'remote_ready');
+  await waitForMessage(pausedRemote, message => message.type === 'remote_state');
+  pausedRemote.send(JSON.stringify({
+    type: 'remote_event', deviceId: 'C2', sessionId: 'paused-remote-test', sequence: 1, button: 'BLUE_3'
+  }));
+  const pausedRemoteAck = await waitForMessage(pausedRemote, message => (
+    message.type === 'remote_event_ack' && message.sequence === 1
+  ));
+  assert.equal(pausedRemoteAck.reason, 'MATCH_NOT_RUNNING');
+  pausedRemote.close();
+
+  host.send(JSON.stringify({ type: 'host', action: 'playPause' }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'ROUND' && message.match.running);
+
   const duplicateCorner = await connect();
   const duplicateResult = await assign(duplicateCorner, 'referee', 1);
   assert.equal(duplicateResult.code, 'CORNER_BUSY');
@@ -320,7 +366,7 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
     referee.send(JSON.stringify({ type: 'ref', action: 'vote', player: 'RED', points: 2 }));
   });
   await waitForMessage(host, message => message.type === 'award' && message.player === 'RED' && message.points === 2);
-  const scored = await waitForMessage(host, message => message.type === 'state' && message.match.red.score === 2);
+  const scored = await waitForMessage(host, message => message.type === 'state' && message.match.red.score === 3);
   assert.equal(scored.match.votes && Object.keys(scored.match.votes).length, 0);
 
   host.send(JSON.stringify({ type: 'host', action: 'setTime', ms: 1000 }));
