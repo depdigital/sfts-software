@@ -707,6 +707,8 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(jsText, /let lastTournament = null/);
   assert.match(jsText, /lastTournament = msg\.tournament \|\| null/);
   assert.match(jsText, /renderSchedule\(lastTournament\)/);
+  assert.match(jsText, /event\.code !== "Space"/);
+  assert.match(jsText, /event\.preventDefault\(\);\s*playPause\(\)/);
   assert.match(jsText, /ws\.onclose/);
   assert.match(jsText, /reconnectDelay/);
   assert.match(jsText, /renderRemoteStatuses/);

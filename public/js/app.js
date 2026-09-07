@@ -128,6 +128,18 @@ function connectSocket() {
 }
 connectSocket();
 
+document.addEventListener("keydown", (event) => {
+  if (event.code !== "Space" || event.repeat || role !== "host") return;
+  const target = event.target;
+  if (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target.isContentEditable
+  ) return;
+  event.preventDefault();
+  playPause();
+});
+
 function send(data) {
   if (ws && ws.readyState === 1) ws.send(JSON.stringify(data));
   else toast("NOT CONNECTED");
