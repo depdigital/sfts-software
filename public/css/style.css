@@ -262,10 +262,11 @@ button {
 .arenaText {
   margin-top: 0;
   color: #cbd5e5;
-  font-size: clamp(27px, min(2.4vw, 4.6vh), 52px);
+  font-size: clamp(20px, min(1.8vw, 3.2vh), 36px);
   font-weight: 900;
   letter-spacing: 0.08em;
   text-align: center;
+  white-space: nowrap;
 }
 .arenaText b {
   color: #fff;
