@@ -46,7 +46,8 @@ button {
   text-align: center;
 }
 .screensaver.visible .screensaverContent {
-  animation: screensaverCycle 6s ease-in-out infinite;
+  animation: screensaverCycle 10s ease-in-out infinite;
+  transform-origin: center;
 }
 .screensaverContent img {
   width: min(58vw, 760px);
@@ -79,11 +80,11 @@ button {
   }
   50% {
     opacity: 1;
-    transform: scale(1.1);
+    transform: scale(1.38);
   }
   62% {
     opacity: 0;
-    transform: scale(1.1);
+    transform: scale(1.38);
   }
   74% {
     opacity: 0;
