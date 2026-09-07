@@ -37,10 +37,63 @@ button {
   opacity: 1;
   pointer-events: auto;
 }
-.screensaver img {
-  width: min(72vw, 980px);
-  max-height: 72vh;
+.screensaverContent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: min(92vw, 1200px);
+  text-align: center;
+}
+.screensaver.visible .screensaverContent {
+  animation: screensaverCycle 6s ease-in-out infinite;
+}
+.screensaverContent img {
+  width: min(58vw, 760px);
+  max-height: 48vh;
   object-fit: contain;
+}
+.screensaverSubtitle {
+  margin-top: 12px;
+  color: #d9e0ee;
+  font-size: clamp(16px, 2vw, 30px);
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+.screensaverPoweredBy {
+  margin-top: 10px;
+  color: rgba(217, 224, 238, 0.78);
+  font-size: clamp(13px, 1.2vw, 20px);
+  letter-spacing: 0.06em;
+}
+.screensaverFooter {
+  margin-top: 28px;
+  color: rgba(217, 224, 238, 0.62);
+  font-size: clamp(11px, 1vw, 16px);
+  letter-spacing: 0.06em;
+}
+@keyframes screensaverCycle {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+  62% {
+    opacity: 0;
+    transform: scale(1.1);
+  }
+  74% {
+    opacity: 0;
+    transform: scale(1);
+  }
+  86%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 .screen {
   min-height: 100vh;

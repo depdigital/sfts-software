@@ -154,7 +154,13 @@ document.addEventListener("keydown", (event) => {
   if (event.code === "Space") playPause();
   if (event.code === "KeyR") manualGam("RED");
   if (event.code === "KeyB") manualGam("BLUE");
-  if (event.code === "KeyS") toggleScreensaver();
+  if (event.code === "KeyS") {
+    if (lastState?.phase === "ROUND" && lastState.running === true) {
+      toast("SCREENSAVER UNAVAILABLE DURING THE ACTIVE ROUND");
+      return;
+    }
+    toggleScreensaver();
+  }
 });
 
 function send(data) {

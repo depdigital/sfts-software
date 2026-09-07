@@ -728,6 +728,9 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(html, /id="summaryBlueTechnicalHead"/);
   assert.match(html, /id="screensaver"/);
   assert.match(html, /src="\/assets\/sfts-logo\.png"/);
+  assert.match(html, /STRIKE FORCE TAEKWONDO SCORING/);
+  assert.match(html, /Powered by Strike Force Combat Academy/);
+  assert.match(html, /Official technology partner Craftronixlab Technologies/);
 
   const css = await fetch(`http://127.0.0.1:${port}/css/style.css`);
   const js = await fetch(`http://127.0.0.1:${port}/js/app.js`);
@@ -746,7 +749,8 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(jsText, /event\.code === "Space"\) playPause\(\)/);
   assert.match(jsText, /event\.code === "KeyR"\) manualGam\("RED"\)/);
   assert.match(jsText, /event\.code === "KeyB"\) manualGam\("BLUE"\)/);
-  assert.match(jsText, /event\.code === "KeyS"\) toggleScreensaver\(\)/);
+  assert.match(jsText, /lastState\?\.phase === "ROUND" && lastState\.running === true/);
+  assert.match(jsText, /toggleScreensaver\(\)/);
   assert.match(jsText, /ws\.onclose/);
   assert.match(jsText, /reconnectDelay/);
   assert.match(jsText, /renderRemoteStatuses/);
