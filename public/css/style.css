@@ -257,6 +257,42 @@ button {
   padding-top: 16px;
   overflow: hidden;
 }
+.cornerRefereeIndicators {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+.cornerRefereeIcon {
+  position: absolute;
+  width: clamp(28px, 3.2vw, 68px);
+  height: clamp(28px, 3.2vw, 68px);
+  object-fit: contain;
+  opacity: 0.38;
+  filter: brightness(0) invert(1);
+  transition: opacity 160ms ease, filter 160ms ease, transform 160ms ease;
+}
+.cornerReferee1 {
+  top: 14px;
+  left: 14px;
+}
+.cornerReferee2 {
+  top: 14px;
+  right: 14px;
+}
+.cornerReferee3 {
+  bottom: 14px;
+  left: 14px;
+}
+.cornerReferee4 {
+  right: 14px;
+  bottom: 14px;
+}
+.cornerRefereeIcon.active {
+  opacity: 1;
+  filter: brightness(0) saturate(100%) invert(75%) sepia(84%) saturate(700%) hue-rotate(78deg) brightness(103%) contrast(104%) drop-shadow(0 0 12px rgba(80, 255, 125, 0.95));
+  transform: scale(1.08);
+}
 .redSide {
   background: linear-gradient(140deg, #f01d1b 0%, #ff521f 100%);
 }

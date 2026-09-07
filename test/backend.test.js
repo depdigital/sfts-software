@@ -371,7 +371,8 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   referees.slice(0, 3).forEach(referee => {
     referee.send(JSON.stringify({ type: 'ref', action: 'vote', player: 'RED', points: 2 }));
   });
-  await waitForMessage(host, message => message.type === 'award' && message.player === 'RED' && message.points === 2);
+  const multiRemoteAward = await waitForMessage(host, message => message.type === 'award' && message.player === 'RED' && message.points === 2);
+  assert.deepEqual(multiRemoteAward.corners, [1, 2, 3]);
   const scored = await waitForMessage(host, message => message.type === 'state' && message.match.red.score === 3);
   assert.equal(scored.match.votes && Object.keys(scored.match.votes).length, 0);
 
@@ -500,6 +501,7 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   ));
   assert.equal(technicalChestState.match.red.stats.plus2, 0);
   assert.equal(technicalChestState.remoteButtons[0], 'RED_TECHNICAL_2');
+  assert.deepEqual(technicalChestState.remoteScoreHighlights.RED, [1]);
   const technicalAwarded = await waitForMessage(technicalRemote, message => message.type === 'remote_state' && message.red.score === 4);
   assert.equal(technicalAwarded.red.score, 4);
   technicalRemote.send(JSON.stringify({
@@ -517,6 +519,7 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   ));
   assert.equal(technicalHeadState.match.red.stats.plus3, 0);
   assert.equal(technicalHeadState.remoteButtons[0], 'RED_TECHNICAL_3');
+  assert.deepEqual(technicalHeadState.remoteScoreHighlights.RED, [1]);
   technicalRemote.close();
   await waitForMessage(host, message => message.type === 'state' && message.remotes?.find(remoteStatus => (
     remoteStatus.deviceId === 'C1' && remoteStatus.connected === false
@@ -710,6 +713,10 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(html, /id="scheduleModal"/);
   assert.match(html, /id="redHeadButton"/);
   assert.match(html, /id="blueHeadButton"/);
+  assert.match(html, /id="redCornerReferee1"[^>]+src="\/assets\/corner_referee\.png"/);
+  assert.match(html, /id="redCornerReferee4"[^>]+src="\/assets\/corner_referee\.png"/);
+  assert.match(html, /id="blueCornerReferee1"[^>]+src="\/assets\/corner_referee\.png"/);
+  assert.match(html, /id="blueCornerReferee4"[^>]+src="\/assets\/corner_referee\.png"/);
   assert.doesNotMatch(html, /onclick="openTestRemotes\(\)"/);
   assert.match(html, /onclick="openTestMode\(\)">REMOTE SETTINGS<\/button>/);
   assert.match(html, /onclick="openRules\(\)">RULES<\/button>/);
@@ -743,10 +750,12 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(cssText, /\.hostScreen\.matchClockRunning[\s\S]*\.bottomArea/);
   assert.match(cssText, /\.screensaver[\s\S]*transition: opacity 700ms ease/);
   assert.match(cssText, /\.controlGrid button[\s\S]*cursor: pointer/);
+  assert.match(cssText, /\.cornerRefereeIcon\.active[\s\S]*drop-shadow/);
   assert.equal(js.status, 200);
   const jsText = await js.text();
   assert.match(jsText, /let lastTournament = null/);
   assert.match(jsText, /lastRemoteButtons\[c - 1\] \|\| v\?\.button/);
+  assert.match(jsText, /renderCornerRefereeIndicators\(match\.remoteCount\)/);
   const serverSource = await readFile(path.join(projectRoot, 'src/server.js'), 'utf8');
   assert.match(serverSource, /REMOTE_BUTTON_DISPLAY_MS = 250/);
   assert.match(jsText, /lastTournament = msg\.tournament \|\| null/);
