@@ -493,8 +493,27 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   const technicalVote = await waitForMessage(technicalRemote, message => message.type === 'remote_event_ack' && message.sequence === 2);
   assert.equal(technicalVote.technical, true);
   await waitForMessage(host, message => message.type === 'award' && message.player === 'RED' && message.points === 4);
+  const technicalChestState = await waitForMessage(host, message => (
+    message.type === 'state' && message.match.red.stats.technicalChest === 1 &&
+    message.match.red.stats.technicalHead === 0
+  ));
+  assert.equal(technicalChestState.match.red.stats.plus2, 0);
   const technicalAwarded = await waitForMessage(technicalRemote, message => message.type === 'remote_state' && message.red.score === 4);
   assert.equal(technicalAwarded.red.score, 4);
+  technicalRemote.send(JSON.stringify({
+    type: 'remote_event', deviceId: 'C1', sessionId: 'test-session-c1', sequence: 3, button: 'RED_TECHNICAL'
+  }));
+  await waitForMessage(technicalRemote, message => message.type === 'remote_event_ack' && message.sequence === 3);
+  technicalRemote.send(JSON.stringify({
+    type: 'remote_event', deviceId: 'C1', sessionId: 'test-session-c1', sequence: 4, button: 'RED_3'
+  }));
+  const technicalHeadVote = await waitForMessage(technicalRemote, message => message.type === 'remote_event_ack' && message.sequence === 4);
+  assert.equal(technicalHeadVote.technical, true);
+  const technicalHeadState = await waitForMessage(host, message => (
+    message.type === 'state' && message.match.red.stats.technicalChest === 1 &&
+    message.match.red.stats.technicalHead === 1
+  ));
+  assert.equal(technicalHeadState.match.red.stats.plus3, 0);
   technicalRemote.close();
   await waitForMessage(host, message => message.type === 'state' && message.remotes?.find(remoteStatus => (
     remoteStatus.deviceId === 'C1' && remoteStatus.connected === false
@@ -703,6 +722,10 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(html, /id="arenaNo"/);
   assert.match(html, /onclick="openArenaNumber\(\)">ARENA NUMBER<\/button>/);
   assert.match(html, /id="arenaNumberInput"/);
+  assert.match(html, /id="summaryRedTechnicalChest"/);
+  assert.match(html, /id="summaryRedTechnicalHead"/);
+  assert.match(html, /id="summaryBlueTechnicalChest"/);
+  assert.match(html, /id="summaryBlueTechnicalHead"/);
 
   const css = await fetch(`http://127.0.0.1:${port}/css/style.css`);
   const js = await fetch(`http://127.0.0.1:${port}/js/app.js`);
@@ -724,6 +747,8 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(jsText, /match\.phase === "ROUND" && match\.running === true/);
   assert.match(jsText, /matchClockRunning/);
   assert.match(jsText, /action: "setArenaNumber"/);
+  assert.match(jsText, /technicalChest/);
+  assert.match(jsText, /technicalHead/);
   assert.match(html, /id="hostAccessToken"/);
   assert.match(html, /id="kyeShiPanel"/);
   assert.match(html, /id="redDeclareWinnerButton"/);

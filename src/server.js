@@ -127,7 +127,13 @@ function getLocalIPv4() {
   return "localhost";
 }
 
-const baseStats = () => ({ plus1: 0, plus2: 0, plus3: 0 });
+const baseStats = () => ({
+  plus1: 0,
+  plus2: 0,
+  plus3: 0,
+  technicalChest: 0,
+  technicalHead: 0
+});
 function makeKyeShi() {
   return {
     active: false,
@@ -601,6 +607,9 @@ function persistState() {
 function restorePersistedState(snapshot) {
   arenaNumber = normalizeArenaNumber(snapshot.arenaNumber);
   match = snapshot.match;
+  for (const player of [match.red, match.blue]) {
+    player.stats = { ...baseStats(), ...(player.stats || {}) };
+  }
   match.ruleset ||= deep(activeRulesMetadata);
   match.remoteCount = Number.isInteger(match.remoteCount) && match.remoteCount >= MIN_ACTIVE_REMOTES && match.remoteCount <= MAX_ACTIVE_REMOTES
     ? match.remoteCount
@@ -1902,6 +1911,12 @@ function addHitStat(player, points) {
   if (points === 3) stats.plus3 += 1;
 }
 
+function addTechnicalStat(player, basePoints) {
+  const stats = side(player).stats;
+  if (basePoints === 2) stats.technicalChest += 1;
+  if (basePoints === 3) stats.technicalHead += 1;
+}
+
 function checkPointGap() {
   if (match.phase !== "ROUND") return;
   if (!rules.decisions.pointGap.enabled || !rules.decisions.pointGap.appliesToRounds.includes(match.round)) return;
@@ -2147,7 +2162,7 @@ function evaluateVotes() {
         const technical = Boolean(winningVote?.technical);
         voteSettleGuard = { player, points, technical, expiresAt: Date.now() + VOTE_SETTLE_MS };
         addPoint(player, points, technical ? 'referee-technical' : 'referee', !technical);
-        if (technical) addHitStat(player, winningVote.basePoints);
+        if (technical) addTechnicalStat(player, winningVote.basePoints);
         match.votes = {};
         const result = {
           awarded: true,

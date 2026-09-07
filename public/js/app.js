@@ -1094,12 +1094,23 @@ function showRoundSummary(record) {
     $(`summaryRedP${point}Label`).textContent = `+${point} ${label}`;
     $(`summaryBlueP${point}Label`).textContent = `+${point} ${label}`;
   }
+  const technicalPoints = scoringRules?.technicalInput?.pointsByBasePoints || {};
+  const technicalChestPoints = technicalPoints["2"] || 4;
+  const technicalHeadPoints = technicalPoints["3"] || 6;
+  $("summaryRedTechnicalChestLabel").textContent = `+${technicalChestPoints} TECHNICAL CHEST`;
+  $("summaryBlueTechnicalChestLabel").textContent = `+${technicalChestPoints} TECHNICAL CHEST`;
+  $("summaryRedTechnicalHeadLabel").textContent = `+${technicalHeadPoints} TECHNICAL HEAD`;
+  $("summaryBlueTechnicalHeadLabel").textContent = `+${technicalHeadPoints} TECHNICAL HEAD`;
   $("summaryRedP1").textContent = record.red.stats.plus1;
   $("summaryRedP2").textContent = record.red.stats.plus2;
   $("summaryRedP3").textContent = record.red.stats.plus3;
+  $("summaryRedTechnicalChest").textContent = record.red.stats.technicalChest || 0;
+  $("summaryRedTechnicalHead").textContent = record.red.stats.technicalHead || 0;
   $("summaryBlueP1").textContent = record.blue.stats.plus1;
   $("summaryBlueP2").textContent = record.blue.stats.plus2;
   $("summaryBlueP3").textContent = record.blue.stats.plus3;
+  $("summaryBlueTechnicalChest").textContent = record.blue.stats.technicalChest || 0;
+  $("summaryBlueTechnicalHead").textContent = record.blue.stats.technicalHead || 0;
   $("roundOverlay").classList.remove("hidden");
 }
 function closeRoundOverlay() {

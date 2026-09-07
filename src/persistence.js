@@ -20,7 +20,9 @@ function isSide(value) {
     typeof value.district === 'string' && isNonNegativeInteger(value.score) &&
     isNonNegativeInteger(value.gamjeom) && isObject(value.stats) &&
     isNonNegativeInteger(value.stats.plus1) && isNonNegativeInteger(value.stats.plus2) &&
-    isNonNegativeInteger(value.stats.plus3)
+    isNonNegativeInteger(value.stats.plus3) &&
+    (!Object.prototype.hasOwnProperty.call(value.stats, 'technicalChest') || isNonNegativeInteger(value.stats.technicalChest)) &&
+    (!Object.prototype.hasOwnProperty.call(value.stats, 'technicalHead') || isNonNegativeInteger(value.stats.technicalHead))
   );
 }
 
