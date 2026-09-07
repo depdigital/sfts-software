@@ -21,6 +21,7 @@ let activeRuleset = null;
 let scoringRules = null;
 let remoteStatusSnapshot = null;
 let remoteDisconnectPopupTimer = null;
+let currentArenaNumber = "";
 
 const $ = (id) => document.getElementById(id);
 
@@ -47,6 +48,7 @@ function connectSocket() {
     }
     if (msg.type === "state") {
       lastState = msg.match;
+      currentArenaNumber = String(msg.arenaNumber || "");
       lastTournament = msg.tournament || null;
       historyCache = msg.matchHistory || [];
       usbImportOnly = msg.usbImportOnly === true;
@@ -171,6 +173,7 @@ function renderState(match) {
   $("redGam").textContent = match.red.gamjeom;
   $("blueGam").textContent = match.blue.gamjeom;
   $("matchNo").textContent = String(match.matchNo).padStart(3, "0");
+  $("arenaNo").textContent = currentArenaNumber || "—";
   $("timer").textContent = formatTime(match.timerMs, match.phase === "ROUND");
   $("roundText").textContent =
     match.phase === "MATCH_END" ? "MATCH END" : `ROUND ${match.round}`;
@@ -383,6 +386,19 @@ function openSettings() {
 }
 function closeSettings() {
   $("settingsModal").classList.add("hidden");
+}
+function openArenaNumber() {
+  closeSettings();
+  $("arenaNumberInput").value = currentArenaNumber;
+  $("arenaNumberModal").classList.remove("hidden");
+  $("arenaNumberInput").focus();
+}
+function closeArenaNumber() {
+  $("arenaNumberModal").classList.add("hidden");
+}
+function saveArenaNumber() {
+  send({ type: "host", action: "setArenaNumber", value: $("arenaNumberInput").value });
+  closeArenaNumber();
 }
 function openRules() {
   closeSettings();
@@ -1250,6 +1266,9 @@ window.editScore = editScore;
 window.editGam = editGam;
 window.openSettings = openSettings;
 window.closeSettings = closeSettings;
+window.openArenaNumber = openArenaNumber;
+window.closeArenaNumber = closeArenaNumber;
+window.saveArenaNumber = saveArenaNumber;
 window.openRules = openRules;
 window.closeRules = closeRules;
 window.openPowerAction = openPowerAction;

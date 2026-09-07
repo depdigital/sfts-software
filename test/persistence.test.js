@@ -171,6 +171,8 @@ test('server restores match history and tournament progress after restart', asyn
     host.send(JSON.stringify({ type: 'role', role: 'host' }));
     const role = await waitForMessage(host, message => message.type === 'roleAccepted');
     await waitForMessage(host, message => message.type === 'state');
+    host.send(JSON.stringify({ type: 'host', action: 'setArenaNumber', value: '7' }));
+    await waitForMessage(host, message => message.type === 'state' && message.arenaNumber === '7');
 
     const workbook = XLSX.utils.book_new();
     const sheet = XLSX.utils.json_to_sheet([
@@ -217,6 +219,7 @@ test('server restores match history and tournament progress after restart', asyn
     assert.equal(restored.tournament.schedule[0].status, 'COMPLETED');
     assert.equal(restored.match.phase, 'MATCH_END');
     assert.equal(restored.match.running, false);
+    assert.equal(restored.arenaNumber, '7');
     restoredHost.close();
   } finally {
     if (host && host.readyState !== WebSocket.CLOSED) host.close();

@@ -510,6 +510,7 @@ function importTournamentPlayers(buffer) {
 }
 
 let match = makeMatch();
+let arenaNumber = '';
 let matchHistory = [];
 let tournament = makeTournament();
 let hostSocket = null;
@@ -583,6 +584,7 @@ function persistenceSnapshot() {
   return {
     version: 1,
     savedAt: new Date().toISOString(),
+    arenaNumber,
     ruleset: deep(activeRulesMetadata),
     match: savedMatch,
     matchHistory: deep(matchHistory),
@@ -597,6 +599,7 @@ function persistState() {
 }
 
 function restorePersistedState(snapshot) {
+  arenaNumber = normalizeArenaNumber(snapshot.arenaNumber);
   match = snapshot.match;
   match.ruleset ||= deep(activeRulesMetadata);
   match.remoteCount = Number.isInteger(match.remoteCount) && match.remoteCount >= MIN_ACTIVE_REMOTES && match.remoteCount <= MAX_ACTIVE_REMOTES
@@ -664,6 +667,7 @@ function send(ws, message) {
 function fullState() {
   return {
     type: "state",
+    arenaNumber,
     match: deep(match),
     matchHistory: deep(matchHistory),
     tournament: deep(tournament),
@@ -1516,6 +1520,14 @@ function technicalPointsFor(basePoints) {
 
 function validInteger(value) {
   return Number.isInteger(value) && Number.isFinite(value);
+}
+
+function normalizeArenaNumber(value) {
+  if (value === null || value === undefined || value === '') return '';
+  const number = Number(value);
+  return Number.isSafeInteger(number) && number >= 1 && number <= 999
+    ? String(number)
+    : '';
 }
 
 function validRemoteSessionId(value) {
@@ -2577,6 +2589,14 @@ wss.on('connection', ws => {
           sendError(ws, result.code, result.message);
           return;
         }
+      }
+      if (msg.action === 'setArenaNumber') {
+        const nextArenaNumber = normalizeArenaNumber(msg.value);
+        if (msg.value !== '' && nextArenaNumber === '') {
+          sendError(ws, 'INVALID_ARENA_NUMBER', 'Arena number must be an integer from 1 to 999');
+          return;
+        }
+        arenaNumber = nextArenaNumber;
       }
       if (msg.action === 'announcePlayers') {
         const result = manualPlayersAnnouncement(msg.details);

@@ -71,6 +71,7 @@ function isTournament(value) {
 function isSnapshot(value) {
   return Boolean(
     isObject(value) && value.version === SNAPSHOT_VERSION && typeof value.savedAt === 'string' &&
+    (!Object.prototype.hasOwnProperty.call(value, 'arenaNumber') || typeof value.arenaNumber === 'string') &&
     isMatch(value.match) && Array.isArray(value.matchHistory) && isTournament(value.tournament)
   );
 }

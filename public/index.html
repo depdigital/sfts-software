@@ -55,6 +55,7 @@
         </div>
 
         <div class="centerBoard">
+          <div class="arenaText">ARENA NO. <b id="arenaNo">—</b></div>
           <div class="matchText">MATCH <b id="matchNo">001</b></div>
           <div id="timer" class="timerText">1:00</div>
           <div id="roundText" class="roundText">ROUND 1</div>
@@ -166,12 +167,34 @@
         <h2>SETTINGS</h2>
         <button onclick="resetCurrentMatch()">RESET CURRENT MATCH</button>
         <button onclick="openTimerEditor()">EDIT TIMER</button>
+        <button onclick="openArenaNumber()">ARENA NUMBER</button>
         <button onclick="openHistory()">MATCH HISTORY</button>
         <button onclick="openTestMode()">REMOTE SETTINGS</button>
         <button onclick="openRules()">RULES</button>
         <button class="powerActionButton rebootButton" onclick="openPowerAction('reboot')">REBOOT</button>
         <button class="powerActionButton shutdownButton" onclick="openPowerAction('shutdown')">SHUTDOWN</button>
         <button onclick="closeSettings()">CLOSE</button>
+      </div>
+    </section>
+
+    <section id="arenaNumberModal" class="overlay hidden">
+      <div class="modalCard smallModal">
+        <h2>ARENA NUMBER</h2>
+        <label class="arenaNumberLabel">
+          ARENA NO.
+          <input
+            id="arenaNumberInput"
+            class="playerSettingsInput"
+            type="number"
+            min="1"
+            max="999"
+            step="1"
+            inputmode="numeric"
+            placeholder="Enter arena number"
+          />
+        </label>
+        <button onclick="saveArenaNumber()">SAVE ARENA NUMBER</button>
+        <button onclick="closeArenaNumber()">CANCEL</button>
       </div>
     </section>
 

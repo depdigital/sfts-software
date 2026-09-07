@@ -259,6 +259,26 @@ button {
   font-weight: 800;
   text-align: center;
 }
+.arenaText {
+  margin-top: 0;
+  color: #cbd5e5;
+  font-size: clamp(12px, min(1vw, 1.6vh), 21px);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-align: center;
+}
+.arenaText b {
+  color: #fff;
+  margin-left: 5px;
+}
+.arenaNumberLabel {
+  display: block;
+  margin: 8px 0 14px;
+  color: #cbd5e5;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: left;
+}
 .matchText b {
   display: block;
   font-size: clamp(30px, min(2.6vw, 4.8vh), 58px);

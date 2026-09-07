@@ -110,6 +110,7 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   assert.match(hostRole.hostToken, /^[a-f0-9]{48}$/);
   const initial = await waitForMessage(host, message => message.type === 'state');
   assert.equal(initial.match.phase, 'ROUND');
+  assert.equal(initial.arenaNumber, '');
   assert.equal(initial.ruleset.id, 'sfts-current');
   assert.deepEqual(initial.scoringRules.basePointValues, [1, 2, 3]);
   assert.equal(initial.scoringRules.basePointLabels['2'], 'CHEST');
@@ -126,6 +127,10 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   const defaultRulesBody = await defaultRulesResponse.json();
   assert.equal(defaultRulesBody.message, 'DEFAULT RULESET LOADED');
   assert.equal(defaultRulesBody.summary.basePointLabels['2'], 'CHEST');
+
+  host.send(JSON.stringify({ type: 'host', action: 'setArenaNumber', value: '12' }));
+  const arenaState = await waitForMessage(host, message => message.type === 'state' && message.arenaNumber === '12');
+  assert.equal(arenaState.arenaNumber, '12');
 
   host.send(JSON.stringify({
     type: 'host',
@@ -695,6 +700,9 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(html, /id="remoteMode"/);
   assert.match(html, />\s*BACK\s*<\/button>/);
   assert.match(html, /id="remoteInfo1"/);
+  assert.match(html, /id="arenaNo"/);
+  assert.match(html, /onclick="openArenaNumber\(\)">ARENA NUMBER<\/button>/);
+  assert.match(html, /id="arenaNumberInput"/);
 
   const css = await fetch(`http://127.0.0.1:${port}/css/style.css`);
   const js = await fetch(`http://127.0.0.1:${port}/js/app.js`);
@@ -712,6 +720,7 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(jsText, /ws\.onclose/);
   assert.match(jsText, /reconnectDelay/);
   assert.match(jsText, /renderRemoteStatuses/);
+  assert.match(jsText, /action: "setArenaNumber"/);
   assert.match(html, /id="hostAccessToken"/);
   assert.match(html, /id="kyeShiPanel"/);
   assert.match(html, /id="redDeclareWinnerButton"/);
