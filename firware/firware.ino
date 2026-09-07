@@ -27,6 +27,8 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WebSocketsClient.h>
+#include <esp_system.h>
+#include <stdio.h>
 #include <string.h>
 
 // --------------------------- Test configuration ---------------------------
@@ -51,6 +53,8 @@ const uint8_t DUMMY_BATTERY_PERCENT = 100;
 const uint32_t DEBOUNCE_MS = 45;
 const uint32_t STATUS_INTERVAL_MS = 10000;
 const uint32_t WIFI_RETRY_INTERVAL_MS = 5000;
+const uint32_t EVENT_RETRY_INTERVAL_MS = 1000;
+constexpr size_t EVENT_OUTBOX_SIZE = 16;
 
 // ----------------------------- Button pin map ------------------------------
 
@@ -94,6 +98,17 @@ bool webSocketConnected = false;
 bool remoteAccepted = false;
 bool wifiBeginCalled = false;
 String sessionId;
+
+struct RemoteEvent {
+  uint32_t sequence;
+  uint8_t buttonIndex;
+  uint32_t sentAt;
+  uint32_t attempts;
+};
+
+RemoteEvent eventOutbox[EVENT_OUTBOX_SIZE] = {};
+size_t eventOutboxCount = 0;
+uint16_t pendingButtonEvents[BUTTON_COUNT] = {};
 
 // ----------------------------- Interrupt handler --------------------------
 
@@ -151,8 +166,7 @@ String buildStatusMessage() {
 void sendStatus() {
   if (!webSocketConnected || !remoteAccepted || WiFi.status() != WL_CONNECTED) return;
   String message = buildStatusMessage();
-  webSocket.sendTXT(message);
-  lastStatusAt = millis();
+  if (webSocket.sendTXT(message)) lastStatusAt = millis();
 }
 
 void sendHello() {
@@ -163,28 +177,90 @@ void sendHello() {
   Serial.println(REMOTE_DEVICE_ID);
 }
 
-void sendButtonEvent(const ButtonDefinition& button) {
-  if (!webSocketConnected || !remoteAccepted) {
-    Serial.print("Ignored unavailable button: ");
-    Serial.println(button.protocolButton);
-    return;
+bool enqueueButtonEvent(const ButtonDefinition& button) {
+  if (eventOutboxCount >= EVENT_OUTBOX_SIZE) {
+    return false;
   }
 
-  const uint32_t sequence = ++nextSequence;
-  String message = "{\"type\":\"remote_event\"";
-  message += ",\"deviceId\":\"" + jsonEscape(REMOTE_DEVICE_ID) + "\"";
-  message += ",\"sessionId\":\"" + jsonEscape(sessionId) + "\"";
-  message += ",\"sequence\":" + String(sequence);
-  message += ",\"button\":\"" + jsonEscape(button.protocolButton) + "\"}";
+  RemoteEvent& event = eventOutbox[eventOutboxCount++];
+  event.sequence = ++nextSequence;
+  event.buttonIndex = button.index;
+  event.sentAt = 0;
+  event.attempts = 0;
+  Serial.print("Queued ");
+  Serial.print(button.protocolButton);
+  Serial.print(" sequence ");
+  Serial.println(event.sequence);
+  return true;
+}
 
+void drainPendingButtonEvents() {
+  for (size_t index = 0; index < BUTTON_COUNT && eventOutboxCount < EVENT_OUTBOX_SIZE; ++index) {
+    while (pendingButtonEvents[index] > 0 && eventOutboxCount < EVENT_OUTBOX_SIZE) {
+      if (!enqueueButtonEvent(buttons[index])) return;
+      --pendingButtonEvents[index];
+    }
+  }
+}
+
+bool extractSequence(const String& message, uint32_t& sequence) {
+  const int marker = message.indexOf("\"sequence\"");
+  if (marker < 0) return false;
+  int cursor = message.indexOf(':', marker);
+  if (cursor < 0) return false;
+  ++cursor;
+  while (cursor < static_cast<int>(message.length()) && message[cursor] == ' ') ++cursor;
+  if (cursor >= static_cast<int>(message.length()) || message[cursor] < '0' || message[cursor] > '9') return false;
+
+  uint64_t parsed = 0;
+  while (cursor < static_cast<int>(message.length()) && message[cursor] >= '0' && message[cursor] <= '9') {
+    parsed = parsed * 10 + static_cast<uint8_t>(message[cursor] - '0');
+    if (parsed > UINT32_MAX) return false;
+    ++cursor;
+  }
+  sequence = static_cast<uint32_t>(parsed);
+  return true;
+}
+
+void acknowledgeEvent(uint32_t sequence) {
+  for (size_t index = 0; index < eventOutboxCount; ++index) {
+    if (eventOutbox[index].sequence != sequence) continue;
+    for (size_t move = index + 1; move < eventOutboxCount; ++move) {
+      eventOutbox[move - 1] = eventOutbox[move];
+    }
+    --eventOutboxCount;
+    Serial.print("Acknowledged sequence ");
+    Serial.println(sequence);
+    return;
+  }
+}
+
+void flushEventOutbox() {
+  if (!webSocketConnected || !remoteAccepted || eventOutboxCount == 0) return;
+
+  RemoteEvent& event = eventOutbox[0];
+  const uint32_t now = millis();
+  if (event.sentAt != 0 && now - event.sentAt < EVENT_RETRY_INTERVAL_MS) return;
+
+  const ButtonDefinition& button = buttons[event.buttonIndex];
+  char message[192] = {};
+  const int written = snprintf(
+    message, sizeof(message),
+    "{\"type\":\"remote_event\",\"deviceId\":\"%s\",\"sessionId\":\"%s\",\"sequence\":%lu,\"button\":\"%s\"}",
+    REMOTE_DEVICE_ID, sessionId.c_str(), static_cast<unsigned long>(event.sequence), button.protocolButton
+  );
+  if (written <= 0 || static_cast<size_t>(written) >= sizeof(message)) return;
+
+  event.attempts++;
+  event.sentAt = now;
   if (webSocket.sendTXT(message)) {
     Serial.print("Sent ");
     Serial.print(button.protocolButton);
     Serial.print(" sequence ");
-    Serial.println(sequence);
+    Serial.println(event.sequence);
   } else {
-    Serial.print("Could not send ");
-    Serial.println(button.protocolButton);
+    Serial.print("Could not send sequence ");
+    Serial.println(event.sequence);
   }
 }
 
@@ -195,6 +271,7 @@ void webSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
     case WStype_CONNECTED:
       webSocketConnected = true;
       remoteAccepted = false;
+      for (size_t index = 0; index < eventOutboxCount; ++index) eventOutbox[index].sentAt = 0;
       digitalWrite(LED_BUILTIN, LOW);
       Serial.println("WebSocket connected");
       sendHello();
@@ -218,21 +295,21 @@ void webSocketEvent(WStype_t type, uint8_t* payload, size_t length) {
         Serial.println("Remote accepted by SFTS server");
         sendStatus();
       } else if (message.indexOf("remote_event_ack") >= 0) {
+        uint32_t sequence = 0;
+        if (extractSequence(message, sequence)) acknowledgeEvent(sequence);
         Serial.print("Server acknowledgement: ");
         Serial.println(message);
       } else if (message.indexOf("remote_status_ack") >= 0) {
         Serial.println("Status accepted");
       } else if (message.indexOf("\"type\":\"error\"") >= 0) {
-        const bool wasAccepted = remoteAccepted;
         remoteAccepted = false;
         digitalWrite(LED_BUILTIN, LOW);
         Serial.print("Server error: ");
         Serial.println(message);
 
-        // Authentication/protocol errors leave this server connection open
-        // but unusable. Force a reconnect so a corrected server configuration
-        // takes effect without pressing RESET on the remote.
-        if (!wasAccepted) webSocket.disconnect();
+        // An application error leaves this connection unusable. Force a
+        // reconnect even after authentication so the READY state is rebuilt.
+        webSocket.disconnect();
       }
       break;
     }
@@ -257,9 +334,12 @@ void maintainWiFi() {
 }
 
 String makeSessionId() {
-  String mac = WiFi.macAddress();
-  mac.replace(":", "-");
-  return "sfts-" + mac;
+  char generated[32] = {};
+  snprintf(
+    generated, sizeof(generated), "sfts-%08lx%08lx",
+    static_cast<unsigned long>(esp_random()), static_cast<unsigned long>(esp_random())
+  );
+  return String(generated);
 }
 
 // -------------------------------- Arduino ----------------------------------
@@ -321,7 +401,7 @@ void loop() {
       if (!buttonArmed[i]) continue;
 
       buttonArmed[i] = false;
-      sendButtonEvent(buttons[i]);
+      if (!enqueueButtonEvent(buttons[i])) pendingButtonEvents[i]++;
       continue;
     }
 
@@ -334,4 +414,7 @@ void loop() {
       buttonHighSince[i] = 0;
     }
   }
+
+  drainPendingButtonEvents();
+  flushEventOutbox();
 }

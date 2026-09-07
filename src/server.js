@@ -56,6 +56,8 @@ let KYESHI_LIMIT_MS = Number.isFinite(Number(process.env.SFTS_KYESHI_LIMIT_MS))
   ? Math.max(1_000, Number(process.env.SFTS_KYESHI_LIMIT_MS))
   : rules.medical.kyeShi.limitSeconds * 1000;
 const HEARTBEAT_MS = 10_000;
+const REMOTE_LIVENESS_TIMEOUT_MS = HEARTBEAT_MS * 3;
+const REMOTE_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_WS_PAYLOAD = 64 * 1024;
 const MAX_BUFFERED_BYTES = 1024 * 1024;
 const MAX_IMPORT_BYTES = 4 * 1024 * 1024;
@@ -1571,6 +1573,7 @@ function updateRemoteStatus(ws, fields = {}, broadcast = true) {
   if (!status) return;
   status.connected = true;
   status.lastSeenAt = Date.now();
+  if (ws.remoteSession) ws.remoteSession.lastSeenAt = status.lastSeenAt;
   if (Object.prototype.hasOwnProperty.call(fields, 'rssi')) status.rssi = normalizeRssi(fields.rssi);
   if (Object.prototype.hasOwnProperty.call(fields, 'battery')) status.battery = normalizeBattery(fields.battery);
   if (broadcast) state();
@@ -2269,9 +2272,10 @@ function handleRemoteHello(ws, msg) {
 
   const corner = Number(deviceId.slice(1));
   const previousSession = remoteSessions.get(deviceId);
-  const session = previousSession && previousSession.sessionId === sessionId
+  const session = previousSession && previousSession.sessionId === sessionId &&
+    Date.now() - (previousSession.lastSeenAt || 0) <= REMOTE_SESSION_TTL_MS
     ? previousSession
-    : { sessionId, lastSequence: 0, acks: new Map() };
+    : { sessionId, lastSequence: 0, acks: new Map(), lastSeenAt: Date.now() };
 
   ws.role = 'remote';
   ws.deviceId = deviceId;
@@ -2311,6 +2315,11 @@ function handleRemoteEvent(ws, msg) {
     sendError(ws, 'INVALID_SEQUENCE', 'Event sequence must be a positive safe integer');
     return;
   }
+
+  // Events are application-level liveness signals too. This keeps a remote
+  // that is actively delivering input from being marked stale between status
+  // messages.
+  updateRemoteStatus(ws, {}, false);
 
   const session = ws.remoteSession;
   const previousAck = session.acks.get(sequence);
@@ -2738,6 +2747,15 @@ setInterval(() => {
 }, TIMER_TICK_MS);
 
 setInterval(() => {
+  const now = Date.now();
+  let staleRemoteChanged = false;
+  for (const status of remoteStatuses.values()) {
+    if (!status.connected || !status.lastSeenAt || now - status.lastSeenAt <= REMOTE_LIVENESS_TIMEOUT_MS) continue;
+    status.connected = false;
+    staleRemoteChanged = true;
+  }
+  if (staleRemoteChanged) state();
+
   for (const ws of wss.clients) {
     if (ws.isAlive === false) {
       ws.terminate();

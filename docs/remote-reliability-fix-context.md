@@ -3,10 +3,18 @@
 ## Status
 
 - Investigation completed: 2026-09-04.
-- No source or firmware changes have been implemented.
+- Primary source and firmware fixes are implemented; hardware validation is still pending.
 - Physical remote hardware is currently unavailable.
 - Backend test suite currently passes all 11 tests.
 - Hardware behavior still needs to be reproduced and validated later.
+
+### Implemented in this fix
+
+- Firmware session IDs now use boot-unique ESP32 hardware randomness instead of the MAC address.
+- Firmware button events enter a fixed-size outbox and remain queued until the server acknowledges their sequence; failed sends are retried.
+- Application errors force a clean firmware reconnect so transport-connected is not treated as input-ready.
+- The server expires remotes after three heartbeat intervals without a valid application message and bounds same-session replay state to 24 hours.
+- Backend regression coverage now verifies that a new boot session can restart at sequence 1 while an existing session retains its acknowledgement/replay state.
 
 ## Reported arena symptom
 
@@ -176,4 +184,3 @@ The simulator currently generates a fresh random session ID for each process (`t
 ## Reliability boundary
 
 Software can provide reliable delivery, duplicate protection, reconnection, queueing, and clear fault reporting. It cannot guarantee a button press during a physical switch failure, total power loss, damaged wiring, failed ESP32, or permanently unavailable network. Those cases must be surfaced as an explicit disconnected/degraded state rather than silently presented as connected.
-

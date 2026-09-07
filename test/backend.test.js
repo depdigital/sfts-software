@@ -548,6 +548,66 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
     ))
   ));
   assert.equal(disconnectedState.remotes.find(remoteStatus => remoteStatus.deviceId === 'C4').battery, 82);
+
+  // A reboot must use a new session, while a reconnect within the same boot
+  // must retain replay protection.
+  host.send(JSON.stringify({ type: 'host', action: 'resetMatch' }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.red.score === 0);
+  host.send(JSON.stringify({ type: 'host', action: 'setRemoteMode', count: 4 }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.remoteCount === 4);
+  const sameBoot = await connect();
+  sameBoot.send(JSON.stringify({
+    type: 'remote_hello', protocolVersion: 1, deviceId: 'C3', sessionId: 'boot-session-a'
+  }));
+  await waitForMessage(sameBoot, message => message.type === 'remote_ready');
+  await waitForMessage(sameBoot, message => message.type === 'remote_state');
+  sameBoot.send(JSON.stringify({
+    type: 'remote_event', deviceId: 'C3', sessionId: 'boot-session-a', sequence: 1, button: 'RED_1'
+  }));
+  assert.equal(
+    (await waitForMessage(sameBoot, message => message.type === 'remote_event_ack' && message.sequence === 1)).reason,
+    'MATCH_NOT_RUNNING'
+  );
+  sameBoot.close();
+  await waitForMessage(host, message => message.type === 'state' && message.remotes?.find(remoteStatus => (
+    remoteStatus.deviceId === 'C3' && remoteStatus.connected === false
+  )));
+
+  const sameSession = await connect();
+  sameSession.send(JSON.stringify({
+    type: 'remote_hello', protocolVersion: 1, deviceId: 'C3', sessionId: 'boot-session-a'
+  }));
+  await waitForMessage(sameSession, message => message.type === 'remote_ready');
+  await waitForMessage(sameSession, message => message.type === 'remote_state');
+  sameSession.send(JSON.stringify({
+    type: 'remote_event', deviceId: 'C3', sessionId: 'boot-session-a', sequence: 1, button: 'RED_1'
+  }));
+  assert.equal(
+    (await waitForMessage(sameSession, message => message.type === 'remote_event_ack' && message.sequence === 1)).reason,
+    'MATCH_NOT_RUNNING'
+  );
+
+  host.send(JSON.stringify({ type: 'host', action: 'playPause' }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.running);
+  sameSession.close();
+  await waitForMessage(host, message => message.type === 'state' && message.remotes?.find(remoteStatus => (
+    remoteStatus.deviceId === 'C3' && remoteStatus.connected === false
+  )));
+
+  const newBoot = await connect();
+  newBoot.send(JSON.stringify({
+    type: 'remote_hello', protocolVersion: 1, deviceId: 'C3', sessionId: 'boot-session-b'
+  }));
+  await waitForMessage(newBoot, message => message.type === 'remote_ready');
+  await waitForMessage(newBoot, message => message.type === 'remote_state');
+  newBoot.send(JSON.stringify({
+    type: 'remote_event', deviceId: 'C3', sessionId: 'boot-session-b', sequence: 1, button: 'RED_1'
+  }));
+  assert.equal(
+    (await waitForMessage(newBoot, message => message.type === 'remote_event_ack' && message.sequence === 1)).reason,
+    'VOTE_RECORDED'
+  );
+  newBoot.close();
 });
 
 test('malformed WebSocket input does not terminate a connection', async () => {
