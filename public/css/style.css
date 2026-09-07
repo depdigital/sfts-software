@@ -258,13 +258,32 @@ button {
   overflow: hidden;
 }
 .cornerRefereeIndicators {
-  position: absolute;
-  inset: 0;
+  position: static;
   z-index: 2;
+  width: 100%;
+  min-height: clamp(40px, 4.2vw, 76px);
+  margin-top: 8px;
   pointer-events: none;
 }
-.cornerRefereeIcon {
+.cornerRefereeTopRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: clamp(40px, 4.2vw, 76px);
+  padding-inline: 14px;
+}
+.cornerRefereeBottomRow {
   position: absolute;
+  right: 14px;
+  bottom: 14px;
+  left: 14px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+.cornerRefereeIcon {
+  position: static;
   width: clamp(28px, 3.2vw, 68px);
   height: clamp(28px, 3.2vw, 68px);
   object-fit: contain;
@@ -272,21 +291,8 @@ button {
   filter: brightness(0) invert(1);
   transition: opacity 160ms ease, filter 160ms ease, transform 160ms ease;
 }
-.cornerReferee1 {
-  top: 14px;
-  left: 14px;
-}
-.cornerReferee2 {
-  top: 14px;
-  right: 14px;
-}
-.cornerReferee3 {
-  bottom: 14px;
-  left: 14px;
-}
-.cornerReferee4 {
-  right: 14px;
-  bottom: 14px;
+.cornerRefereeBottomRow .cornerRefereeIcon {
+  position: static;
 }
 .cornerRefereeIcon.active {
   opacity: 1;
