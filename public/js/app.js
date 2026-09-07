@@ -22,6 +22,7 @@ let scoringRules = null;
 let remoteStatusSnapshot = null;
 let remoteDisconnectPopupTimer = null;
 let currentArenaNumber = "";
+let lastRemoteButtons = [];
 
 const $ = (id) => document.getElementById(id);
 
@@ -48,6 +49,9 @@ function connectSocket() {
     }
     if (msg.type === "state") {
       lastState = msg.match;
+      lastRemoteButtons = Array.isArray(msg.remoteButtons)
+        ? msg.remoteButtons
+        : [];
       currentArenaNumber = String(msg.arenaNumber || "");
       lastTournament = msg.tournament || null;
       historyCache = msg.matchHistory || [];
@@ -213,7 +217,7 @@ function renderState(match) {
     .slice(0, activeRemoteCount)
     .map((c) => {
       const v = match.votes[c];
-      return `C${c} ${v?.button || "—"}`;
+      return `C${c} ${lastRemoteButtons[c - 1] || v?.button || "—"}`;
     })
     .join("   ");
 

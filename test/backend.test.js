@@ -499,6 +499,7 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
     message.match.red.stats.technicalHead === 0
   ));
   assert.equal(technicalChestState.match.red.stats.plus2, 0);
+  assert.equal(technicalChestState.remoteButtons[0], 'RED_TECHNICAL_2');
   const technicalAwarded = await waitForMessage(technicalRemote, message => message.type === 'remote_state' && message.red.score === 4);
   assert.equal(technicalAwarded.red.score, 4);
   technicalRemote.send(JSON.stringify({
@@ -515,6 +516,7 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
     message.match.red.stats.technicalHead === 1
   ));
   assert.equal(technicalHeadState.match.red.stats.plus3, 0);
+  assert.equal(technicalHeadState.remoteButtons[0], 'RED_TECHNICAL_3');
   technicalRemote.close();
   await waitForMessage(host, message => message.type === 'state' && message.remotes?.find(remoteStatus => (
     remoteStatus.deviceId === 'C1' && remoteStatus.connected === false
@@ -744,6 +746,7 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.equal(js.status, 200);
   const jsText = await js.text();
   assert.match(jsText, /let lastTournament = null/);
+  assert.match(jsText, /lastRemoteButtons\[c - 1\] \|\| v\?\.button/);
   assert.match(jsText, /lastTournament = msg\.tournament \|\| null/);
   assert.match(jsText, /renderSchedule\(lastTournament\)/);
   assert.match(jsText, /\["Space", "KeyR", "KeyB", "KeyS"\]/);

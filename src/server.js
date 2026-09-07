@@ -533,6 +533,7 @@ const remoteStatuses = new Map([...REMOTE_IDS].map(deviceId => [deviceId, {
 }]));
 const remoteTechnicalPending = new Map();
 const remoteLastBasePress = new Map();
+const lastRemoteButtons = new Map();
 let timerLastAt = null;
 let kyeShiLastAt = null;
 let lastStateAt = 0;
@@ -677,6 +678,7 @@ function fullState() {
   return {
     type: "state",
     arenaNumber,
+    remoteButtons: [1, 2, 3, 4].map(corner => lastRemoteButtons.get(corner) || null),
     match: deep(match),
     matchHistory: deep(matchHistory),
     tournament: deep(tournament),
@@ -1136,6 +1138,7 @@ function loadTournamentBout(bout) {
   );
   match.remoteCount = Math.min(MAX_ACTIVE_REMOTES, Math.max(MIN_ACTIVE_REMOTES, Number(remoteCount) || MAX_ACTIVE_REMOTES));
   clearAllRemoteCombinations();
+  clearLastRemoteButtons();
   clearVoteSettleGuard();
   timerLastAt = null;
   kyeShiLastAt = null;
@@ -1566,6 +1569,10 @@ function clearAllRemoteCombinations() {
   for (const corner of new Set([...remoteTechnicalPending.keys(), ...remoteLastBasePress.keys()])) {
     clearRemoteCombination(corner);
   }
+}
+
+function clearLastRemoteButtons() {
+  lastRemoteButtons.clear();
 }
 
 function rememberTechnicalPress(corner, player) {
@@ -2054,6 +2061,7 @@ function startNextRound() {
   match.blue.stats = baseStats();
   match.votes = {};
   clearAllRemoteCombinations();
+  clearLastRemoteButtons();
   clearVoteSettleGuard();
   state(true);
 }
@@ -2082,6 +2090,7 @@ function resetCurrentMatch() {
   );
   match.remoteCount = Math.min(MAX_ACTIVE_REMOTES, Math.max(MIN_ACTIVE_REMOTES, Number(remoteCount) || MAX_ACTIVE_REMOTES));
   clearAllRemoteCombinations();
+  clearLastRemoteButtons();
   clearVoteSettleGuard();
   timerLastAt = null;
   kyeShiLastAt = null;
@@ -2104,6 +2113,7 @@ function newMatch() {
   );
   match.remoteCount = Math.min(MAX_ACTIVE_REMOTES, Math.max(MIN_ACTIVE_REMOTES, Number(remoteCount) || MAX_ACTIVE_REMOTES));
   clearAllRemoteCombinations();
+  clearLastRemoteButtons();
   clearVoteSettleGuard();
   timerLastAt = null;
   kyeShiLastAt = null;
@@ -2192,6 +2202,7 @@ function recordRefereeVote(corner, vote) {
       return { awarded: false, ignored: true, count: 3 };
     }
   }
+  if (vote.button) lastRemoteButtons.set(corner, vote.button);
   match.votes[corner] = vote;
   const count = Object.values(match.votes)
     .filter(item => item.player === vote.player && item.points === vote.points).length;
@@ -2384,6 +2395,7 @@ function handleRemoteEvent(ws, msg) {
       rememberRemoteAck(session, sequence, ack);
       return;
     }
+    lastRemoteButtons.set(ws.corner, button);
     clearRemoteCombination(ws.corner);
     delete match.votes[ws.corner];
     state(true);
@@ -2398,6 +2410,7 @@ function handleRemoteEvent(ws, msg) {
     rememberRemoteAck(session, sequence, ack);
     return;
   }
+  lastRemoteButtons.set(ws.corner, vote.button);
   if (match.test.active) {
     match.test.presses[`${ws.corner}-${vote.button}`] = true;
     emit({ type: 'testPress', corner: ws.corner, player: vote.player, points: vote.points, button: vote.button });
