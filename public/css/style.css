@@ -55,20 +55,20 @@ button {
   object-fit: contain;
 }
 .screensaverSubtitle {
-  margin-top: 6px;
+  margin-top: 4.5px;
   color: #d9e0ee;
   font-size: clamp(16px, 2vw, 30px);
   font-weight: 800;
   letter-spacing: 0.12em;
 }
 .screensaverPoweredBy {
-  margin-top: 5px;
+  margin-top: 3.75px;
   color: rgba(217, 224, 238, 0.78);
   font-size: clamp(13px, 1.2vw, 20px);
   letter-spacing: 0.06em;
 }
 .screensaverFooter {
-  margin-top: 14px;
+  margin-top: 10.5px;
   color: rgba(217, 224, 238, 0.62);
   font-size: clamp(11px, 1vw, 16px);
   letter-spacing: 0.06em;
@@ -277,7 +277,7 @@ button {
 }
 .gamRibbon b {
   display: block;
-  font-size: 30px;
+  font-size: 36px;
 }
 .nameInput {
   width: 82%;
@@ -1159,7 +1159,7 @@ button {
     right: clamp(12px, 1.2vw, 24px);
   }
   .gamRibbon b {
-    font-size: clamp(30px, 2.8vw, 56px);
+    font-size: clamp(36px, 3.1vw, 64px);
   }
   .nameInput {
     font-size: clamp(72px, 5vw, 124px);
