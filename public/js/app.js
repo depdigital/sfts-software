@@ -1287,11 +1287,9 @@ function renderCornerRefereeIndicators(count) {
       : [];
     for (let corner = 1; corner <= 4; corner += 1) {
       const slot = $(`${player.toLowerCase()}CornerRefereeSlot${corner}`);
-      const icon = $(`${player.toLowerCase()}CornerReferee${corner}`);
       const score = $(`${player.toLowerCase()}CornerScore${corner}`);
-      if (!slot || !icon) continue;
+      if (!slot) continue;
       slot.classList.toggle("hidden", corner > activeCount);
-      icon.classList.toggle("active", activeCorners.includes(corner));
       if (score) {
         const awarded = activeCorners.includes(corner) && displayedRemoteScoreValues?.[player] !== null;
         score.classList.toggle("active", awarded);

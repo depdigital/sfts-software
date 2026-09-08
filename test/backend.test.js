@@ -713,11 +713,8 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(html, /id="scheduleModal"/);
   assert.match(html, /id="redHeadButton"/);
   assert.match(html, /id="blueHeadButton"/);
-  assert.match(html, /id="redCornerReferee1"[^>]+src="\/assets\/corner_referee\.png"/);
-  assert.match(html, /id="redCornerReferee4"[^>]+src="\/assets\/corner_referee\.png"/);
-  assert.match(html, /id="blueCornerReferee1"[^>]+src="\/assets\/corner_referee\.png"/);
-  assert.match(html, /id="blueCornerReferee4"[^>]+src="\/assets\/corner_referee\.png"/);
-  assert.match(html, /class="cornerRefereeLabel">C1<\/span>/);
+  assert.doesNotMatch(html, /corner_referee\.png/);
+  assert.doesNotMatch(html, /class="cornerRefereeLabel">C[1-4]<\/span>/);
   assert.match(html, /id="redCornerScore1" class="cornerRefereeScore"/);
   assert.match(html, /id="blueCornerScore4" class="cornerRefereeScore"/);
   assert.doesNotMatch(html, /onclick="openTestRemotes\(\)"/);
