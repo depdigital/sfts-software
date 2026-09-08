@@ -75,13 +75,15 @@ When a score is awarded by the corner-referee majority:
   glow green.
 - Their boxes display the awarded score, such as `+3`, `+4`, or `+6`.
 - The glow and score remain visible until the next score is awarded.
-- When the next score is awarded, first clear the previous score and release
-  the previous green glow.
-- Keep the indicators blank and unlit for a short 300 ms transition gap so
-  the release is visibly distinguishable.
+- When the next score is awarded for a side, first clear that side's previous
+  score and release that side's previous green glow.
+- Keep that side's indicators blank and unlit for a short 300 ms transition
+  gap so the release is visibly distinguishable.
 - After the transition gap, engage the new green glow and score only on the
-  corners that formed the new majority.
-- RED and BLUE awards update their respective side indicators.
+  corners that formed the new majority for that side.
+- RED and BLUE awards update their respective side indicators independently;
+  a RED award must not clear or replace the current BLUE indication, and a
+  BLUE award must not clear or replace the current RED indication.
 - A technical award uses the final technical result, not the intermediate
   modifier or base button.
 - A non-majority or rejected vote does not update the indicators.
@@ -131,8 +133,9 @@ Examples:
 - Regular FIST, CHEST, and HEAD votes use the normalized labels and scores.
 - All majority corner permutations for remote modes 1-4 produce the correct
   glowing boxes and score values.
-- Indicators persist until the next awarded score, visibly release for 300 ms,
-  and then engage the new majority state.
+- Each side's indicators persist until that side's next awarded score, visibly
+  release for 300 ms, and then engage the new majority state. Scoring on the
+  other side must leave the first side's indication visible.
 - History and indicators are cleared after match completion/winner decision.
 - Existing scoring, timing, and remote-mode behavior remains unchanged except
   for the requested history and indicator presentation.

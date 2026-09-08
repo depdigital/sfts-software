@@ -540,7 +540,7 @@ const REMOTE_BUTTON_DISPLAY_MS = 250;
 const remoteScoreHighlights = { RED: [], BLUE: [] };
 const remoteScoreValues = { RED: null, BLUE: null };
 const REMOTE_SCORE_DISPLAY_MS = 500;
-let remoteScoreRevision = 0;
+const remoteScoreRevisions = { RED: 0, BLUE: 0 };
 let timerLastAt = null;
 let kyeShiLastAt = null;
 let lastStateAt = 0;
@@ -691,7 +691,7 @@ function fullState() {
     remoteButtons: [1, 2, 3, 4].map(corner => lastRemoteButtons.get(corner) || null),
     remoteScoreHighlights: deep(remoteScoreHighlights),
     remoteScoreValues: deep(remoteScoreValues),
-    remoteScoreRevision,
+    remoteScoreRevisions: deep(remoteScoreRevisions),
     match: deep(match),
     matchHistory: deep(matchHistory),
     tournament: deep(tournament),
@@ -1596,7 +1596,8 @@ function clearRemoteScoreHighlights() {
   remoteScoreHighlights.BLUE = [];
   remoteScoreValues.RED = null;
   remoteScoreValues.BLUE = null;
-  remoteScoreRevision += 1;
+  remoteScoreRevisions.RED += 1;
+  remoteScoreRevisions.BLUE += 1;
 }
 
 function cornerRefereeButtonLabel(player, points, technical = false) {
@@ -1634,13 +1635,9 @@ function replaceCornerRefereeHistoryEntry(entry, button, score) {
 
 function showRemoteScoreHighlight(player, corners, points) {
   if (match.phase === 'MATCH_END') return;
-  remoteScoreHighlights.RED = [];
-  remoteScoreHighlights.BLUE = [];
-  remoteScoreValues.RED = null;
-  remoteScoreValues.BLUE = null;
   remoteScoreHighlights[player] = [...corners];
   remoteScoreValues[player] = points;
-  remoteScoreRevision += 1;
+  remoteScoreRevisions[player] += 1;
 }
 
 function showLastRemoteButton(corner, button) {
