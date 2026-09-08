@@ -314,21 +314,30 @@ button {
   transform: translateX(-3px);
 }
 .cornerRefereeScore {
-  position: absolute;
-  top: 50%;
-  left: calc(100% + 6px);
-  color: #fff;
-  font-size: clamp(16px, 1.4vw, 28px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: clamp(34px, 3.8vw, 76px);
+  min-height: clamp(18px, 1.8vw, 30px);
+  margin-top: 4px;
+  padding: 2px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.22);
+  color: transparent;
+  font-size: clamp(11px, 1vw, 18px);
   font-weight: 900;
   line-height: 1;
-  text-shadow: 0 0 8px rgba(0, 0, 0, 0.85), 0 0 10px rgba(80, 255, 125, 0.8);
-  transform: translateY(-50%);
+  text-align: center;
   white-space: nowrap;
+  transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, color 160ms ease;
 }
-.cornerRefereeTopRow .cornerRefereeItem:nth-child(2) .cornerRefereeScore,
-.cornerRefereeBottomRow .cornerRefereeItem:nth-child(2) .cornerRefereeScore {
-  right: calc(100% + 6px);
-  left: auto;
+.cornerRefereeScore.active {
+  border-color: rgba(150, 255, 175, 0.95);
+  background: #54f58a;
+  color: #061b0d;
+  box-shadow: 0 0 10px rgba(80, 255, 125, 0.95), 0 0 18px rgba(80, 255, 125, 0.65);
 }
 .cornerRefereeIcon.active {
   opacity: 1;
@@ -964,11 +973,12 @@ button {
   grid-template-columns: 90px 90px 100px minmax(220px, 1fr) 70px minmax(260px, 1.5fr);
   gap: 12px;
   align-items: center;
+  text-align: center;
 }
 .cornerRefereeHistoryHeader {
   padding: 0 12px 4px;
   color: #94a3b8;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 800;
 }
 .cornerRefereeHistoryItem {

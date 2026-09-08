@@ -538,9 +538,9 @@ const lastRemoteButtons = new Map();
 const lastRemoteButtonTimers = new Map();
 const REMOTE_BUTTON_DISPLAY_MS = 250;
 const remoteScoreHighlights = { RED: [], BLUE: [] };
-const remoteScoreHighlightTimers = new Map();
 const remoteScoreValues = { RED: null, BLUE: null };
 const REMOTE_SCORE_DISPLAY_MS = 500;
+let remoteScoreRevision = 0;
 let timerLastAt = null;
 let kyeShiLastAt = null;
 let lastStateAt = 0;
@@ -691,6 +691,7 @@ function fullState() {
     remoteButtons: [1, 2, 3, 4].map(corner => lastRemoteButtons.get(corner) || null),
     remoteScoreHighlights: deep(remoteScoreHighlights),
     remoteScoreValues: deep(remoteScoreValues),
+    remoteScoreRevision,
     match: deep(match),
     matchHistory: deep(matchHistory),
     tournament: deep(tournament),
@@ -1591,12 +1592,11 @@ function clearLastRemoteButtons() {
 }
 
 function clearRemoteScoreHighlights() {
-  for (const timer of remoteScoreHighlightTimers.values()) clearTimeout(timer);
-  remoteScoreHighlightTimers.clear();
   remoteScoreHighlights.RED = [];
   remoteScoreHighlights.BLUE = [];
   remoteScoreValues.RED = null;
   remoteScoreValues.BLUE = null;
+  remoteScoreRevision += 1;
 }
 
 function cornerRefereeButtonLabel(player, points, technical = false) {
@@ -1633,19 +1633,14 @@ function replaceCornerRefereeHistoryEntry(entry, button, score) {
 }
 
 function showRemoteScoreHighlight(player, corners, points) {
-  const previousTimer = remoteScoreHighlightTimers.get(player);
-  if (previousTimer) clearTimeout(previousTimer);
-  remoteScoreHighlights[player] = corners;
+  if (match.phase === 'MATCH_END') return;
+  remoteScoreHighlights.RED = [];
+  remoteScoreHighlights.BLUE = [];
+  remoteScoreValues.RED = null;
+  remoteScoreValues.BLUE = null;
+  remoteScoreHighlights[player] = [...corners];
   remoteScoreValues[player] = points;
-  const timer = setTimeout(() => {
-    if (remoteScoreHighlightTimers.get(player) !== timer) return;
-    remoteScoreHighlightTimers.delete(player);
-    remoteScoreHighlights[player] = [];
-    remoteScoreValues[player] = null;
-    state();
-  }, REMOTE_SCORE_DISPLAY_MS);
-  timer.unref?.();
-  remoteScoreHighlightTimers.set(player, timer);
+  remoteScoreRevision += 1;
 }
 
 function showLastRemoteButton(corner, button) {
@@ -2127,6 +2122,7 @@ function finishMatch(winner, reason) {
   });
   matchHistory = matchHistory.slice(0, 50);
   match.cornerRefereeHistory = [];
+  clearRemoteScoreHighlights();
   emit({ type: 'matchEnd', winner, reason, match: deep(match) });
   state(true);
 }
@@ -2150,7 +2146,6 @@ function startNextRound() {
   match.votes = {};
   clearAllRemoteCombinations();
   clearLastRemoteButtons();
-  clearRemoteScoreHighlights();
   clearVoteSettleGuard();
   state(true);
 }

@@ -25,6 +25,12 @@ let currentArenaNumber = "";
 let lastRemoteButtons = [];
 let remoteScoreHighlights = { RED: [], BLUE: [] };
 let remoteScoreValues = { RED: null, BLUE: null };
+let remoteScoreRevision = 0;
+let displayedRemoteScoreHighlights = { RED: [], BLUE: [] };
+let displayedRemoteScoreValues = { RED: null, BLUE: null };
+let remoteScoreTransitionTimer = null;
+let displayedRemoteScoreRevision = -1;
+const REMOTE_SCORE_TRANSITION_MS = 300;
 
 const $ = (id) => document.getElementById(id);
 
@@ -56,6 +62,10 @@ function connectSocket() {
         : [];
       remoteScoreHighlights = msg.remoteScoreHighlights || { RED: [], BLUE: [] };
       remoteScoreValues = msg.remoteScoreValues || { RED: null, BLUE: null };
+      // Preserve the raw awarded values as remoteScoreValues[player] for compatibility.
+      remoteScoreRevision = Number.isSafeInteger(msg.remoteScoreRevision)
+        ? msg.remoteScoreRevision
+        : 0;
       currentArenaNumber = String(msg.arenaNumber || "");
       lastTournament = msg.tournament || null;
       historyCache = msg.matchHistory || [];
@@ -1246,10 +1256,37 @@ function renderRemoteMode(count) {
   }
 }
 function renderCornerRefereeIndicators(count) {
+  if (displayedRemoteScoreRevision !== remoteScoreRevision) {
+    displayedRemoteScoreRevision = remoteScoreRevision;
+    if (remoteScoreTransitionTimer) clearTimeout(remoteScoreTransitionTimer);
+    remoteScoreTransitionTimer = null;
+    displayedRemoteScoreHighlights = { RED: [], BLUE: [] };
+    displayedRemoteScoreValues = { RED: null, BLUE: null };
+    const hasAward = ["RED", "BLUE"].some((player) =>
+      Array.isArray(remoteScoreHighlights?.[player]) && remoteScoreHighlights[player].length &&
+      remoteScoreValues?.[player] !== null && remoteScoreValues?.[player] !== undefined,
+    );
+    if (hasAward) {
+      const revision = remoteScoreRevision;
+      remoteScoreTransitionTimer = setTimeout(() => {
+        if (displayedRemoteScoreRevision !== revision) return;
+        displayedRemoteScoreHighlights = {
+          RED: Array.isArray(remoteScoreHighlights?.RED) ? [...remoteScoreHighlights.RED] : [],
+          BLUE: Array.isArray(remoteScoreHighlights?.BLUE) ? [...remoteScoreHighlights.BLUE] : [],
+        };
+        displayedRemoteScoreValues = {
+          RED: remoteScoreValues?.RED ?? null,
+          BLUE: remoteScoreValues?.BLUE ?? null,
+        };
+        remoteScoreTransitionTimer = null;
+        renderCornerRefereeIndicators(count);
+      }, REMOTE_SCORE_TRANSITION_MS);
+    }
+  }
   const activeCount = Math.min(4, Math.max(1, Number(count) || 4));
   for (const player of ["RED", "BLUE"]) {
-    const activeCorners = Array.isArray(remoteScoreHighlights?.[player])
-      ? remoteScoreHighlights[player]
+    const activeCorners = Array.isArray(displayedRemoteScoreHighlights?.[player])
+      ? displayedRemoteScoreHighlights[player]
       : [];
     for (let corner = 1; corner <= 4; corner += 1) {
       const slot = $(`${player.toLowerCase()}CornerRefereeSlot${corner}`);
@@ -1259,8 +1296,10 @@ function renderCornerRefereeIndicators(count) {
       slot.classList.toggle("hidden", corner > activeCount);
       icon.classList.toggle("active", activeCorners.includes(corner));
       if (score) {
-        score.textContent = activeCorners.includes(corner) && remoteScoreValues?.[player] !== null
-          ? `+${remoteScoreValues[player]}`
+        const awarded = activeCorners.includes(corner) && displayedRemoteScoreValues?.[player] !== null;
+        score.classList.toggle("active", awarded);
+        score.textContent = awarded
+          ? `+${displayedRemoteScoreValues[player]}`
           : "";
       }
     }
