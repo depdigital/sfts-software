@@ -272,6 +272,7 @@ button {
   width: 100%;
   min-height: clamp(40px, 4.2vw, 76px);
   padding-inline: 8px;
+  transform: translateX(clamp(4px, 0.6vw, 10px));
 }
 .cornerRefereeBottomRow {
   position: absolute;
@@ -281,6 +282,7 @@ button {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
+  transform: translateX(clamp(4px, 0.6vw, 10px));
 }
 .cornerRefereeItem {
   position: relative;
