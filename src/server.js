@@ -1605,11 +1605,18 @@ function cornerRefereeButtonLabel(player, points, technical = false) {
   return `${player}-${technical ? 'TECHNICAL-' : ''}${body}`;
 }
 
+function cornerRefereeDisplayName(corner, button) {
+  const side = /^(RED|BLUE)(?:-|_)/.exec(String(button || ''))?.[1];
+  return `C${corner}${side ? `-${side}` : ''}`;
+}
+
 function recordCornerRefereePress(corner, button, score = null) {
   if (match.phase !== 'ROUND' || !match.roundStarted || match.test.active) return false;
   const entry = {
+    matchNo: match.matchNo,
+    arenaNumber,
     corner,
-    cornerReferee: `C${corner}`,
+    cornerReferee: cornerRefereeDisplayName(corner, button),
     button,
     score,
     pressedAt: new Date().toISOString()

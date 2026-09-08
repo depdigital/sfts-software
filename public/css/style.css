@@ -958,11 +958,20 @@ button {
   overflow-y: auto;
   text-align: left;
 }
+.cornerRefereeHistoryHeader,
 .cornerRefereeHistoryItem {
   display: grid;
-  grid-template-columns: 100px minmax(220px, 1fr) 70px minmax(260px, 1.5fr);
+  grid-template-columns: 90px 90px 100px minmax(220px, 1fr) 70px minmax(260px, 1.5fr);
   gap: 12px;
   align-items: center;
+}
+.cornerRefereeHistoryHeader {
+  padding: 0 12px 4px;
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 800;
+}
+.cornerRefereeHistoryItem {
   background: #1b2331;
   padding: 12px;
   border-radius: 8px;
@@ -1394,6 +1403,9 @@ button {
   }
   .cornerRefereeHistoryItem {
     grid-template-columns: 1fr;
+  }
+  .cornerRefereeHistoryHeader {
+    display: none;
   }
   .joystickGrid {
     grid-template-columns: 1fr;

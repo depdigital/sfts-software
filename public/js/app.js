@@ -1122,10 +1122,21 @@ function renderCornerRefereeHistory() {
   box.innerHTML = history
     .map((item) => {
       const pressedAt = String(item.pressedAt || "");
+      const button = String(item.button || "");
+      const side = /^(RED|BLUE)(?:-|_)/.exec(button)?.[1];
+      const cornerReferee = side
+        ? `C${item.corner || "?"}-${side}`
+        : item.cornerReferee || `C${item.corner || "?"}`;
+      const matchNo = Number.isInteger(item.matchNo)
+        ? String(item.matchNo).padStart(3, "0")
+        : String(lastState?.matchNo || "—").padStart(3, "0");
+      const arenaNumber = String(item.arenaNumber || currentArenaNumber || "—");
       return `
         <div class="cornerRefereeHistoryItem">
-          <strong>${escapeHtml(item.cornerReferee || `C${item.corner || "?"}`)}</strong>
-          <span>${escapeHtml(item.button || "—")}</span>
+          <span>${escapeHtml(matchNo)}</span>
+          <span>${escapeHtml(arenaNumber)}</span>
+          <strong>${escapeHtml(cornerReferee)}</strong>
+          <span>${escapeHtml(button || "—")}</span>
           <span>${item.score === null || item.score === undefined ? "—" : `+${escapeHtml(item.score)}`}</span>
           <time datetime="${escapeHtml(pressedAt)}">${escapeHtml(formatCornerRefereeTimestamp(pressedAt))}</time>
         </div>`;
