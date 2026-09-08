@@ -70,11 +70,6 @@ let TECHNICAL_COMBO_WINDOW_MS = rules.scoring.technicalInput.windowMilliseconds;
 let MIN_ACTIVE_REMOTES = rules.voting.minimumActiveRemotes;
 let MAX_ACTIVE_REMOTES = rules.voting.maximumActiveRemotes;
 const SYSTEM_POWER_DELAY_MS = 15_000;
-const GOLDEN_ROUND_MS = 60_000;
-const GOLDEN_ROUND_POINTS_TO_WIN = 2;
-const GOLDEN_ROUND_GAMJEOMS_TO_LOSE = 2;
-const BREAK_MS_ONE_MINUTE = 35_000;
-const BREAK_MS_TWO_MINUTE = 60_000;
 const SYSTEMCTL_BIN = '/usr/bin/systemctl';
 const LSBLK_BIN = '/usr/bin/lsblk';
 const UDISKSCTL_BIN = '/usr/bin/udisksctl';
@@ -150,7 +145,7 @@ function makeKyeShi() {
 function makeGoldenRound() {
   return {
     active: false,
-    durationMs: GOLDEN_ROUND_MS,
+    durationMs: rules.tieBreak.goldenRound.durationSeconds * 1000,
     previousScoresVoided: false,
     superiority: null
   };
@@ -166,7 +161,13 @@ function makeTieDecision() {
 function breakDurationForRound(roundMs) {
   const override = Number(process.env.SFTS_BREAK_MS);
   if (Number.isFinite(override)) return Math.max(50, override);
-  return Number(roundMs) >= 120_000 ? BREAK_MS_TWO_MINUTE : BREAK_MS_ONE_MINUTE;
+  const roundSeconds = Math.max(1, Number(roundMs) / 1000);
+  let durationSeconds = rules.match.breakDurationPolicy.defaultDurationSeconds;
+  for (const tier of rules.match.breakDurationPolicy.tiers) {
+    if (roundSeconds >= tier.minimumRoundDurationSeconds) durationSeconds = tier.breakDurationSeconds;
+    else break;
+  }
+  return durationSeconds * 1000;
 }
 
 function makeSide(name, profile = {}) {
@@ -199,6 +200,7 @@ function makeMatch(
     breakTarget: 'REGULAR',
     remoteCount: MAX_ACTIVE_REMOTES,
     ruleset: deep(activeRulesMetadata),
+    rulesSnapshot: deep(rules),
     running: false,
     roundStarted: false,
     phase: "ROUND", // ROUND | BREAK | TIE_DECISION | MATCH_END
@@ -595,6 +597,7 @@ function configureRuntimeRules(nextRules) {
 
   if (typeof match === 'undefined') return;
   match.ruleset = deep(activeRulesMetadata);
+  match.rulesSnapshot = deep(rules);
   match.configuredRoundMs = ROUND_MS_DEFAULT;
   match.breakMs = breakDurationForRound(match.configuredRoundMs);
   if (match.phase === 'ROUND' && !match.roundStarted) match.timerMs = ROUND_MS_DEFAULT;
@@ -608,7 +611,13 @@ function scoringRulesState() {
     basePointLabels: { ...rules.scoring.basePointLabels },
     acceptedPointValues: [...rules.scoring.acceptedPointValues],
     technicalInput: deep(rules.scoring.technicalInput),
-    gamJeomPointValue: rules.scoring.gamJeomPointValue
+    gamJeomPointValue: rules.scoring.gamJeomPointValue,
+    manualMatchDecisions: [...rules.decisions.manualMatchDecisions],
+    tieBreak: deep(rules.tieBreak),
+    match: {
+      rounds: rules.match.rounds,
+      roundsRequiredToWin: rules.match.roundsRequiredToWin
+    }
   };
 }
 
@@ -658,6 +667,7 @@ function restorePersistedState(snapshot) {
     player.stats = { ...baseStats(), ...(player.stats || {}) };
   }
   match.ruleset ||= deep(activeRulesMetadata);
+  match.rulesSnapshot ||= deep(rules);
   match.remoteCount = Number.isInteger(match.remoteCount) && match.remoteCount >= MIN_ACTIVE_REMOTES && match.remoteCount <= MAX_ACTIVE_REMOTES
     ? match.remoteCount
     : MAX_ACTIVE_REMOTES;
@@ -672,8 +682,8 @@ function restorePersistedState(snapshot) {
     ...makeGoldenRound(),
     ...(match.goldenRound && typeof match.goldenRound === 'object' ? match.goldenRound : {})
   };
-  match.goldenRound.durationMs = Math.max(1_000, Number(match.goldenRound.durationMs) || GOLDEN_ROUND_MS);
-  match.goldenRound.active = Boolean(match.goldenRound.active && match.round === 4 && match.phase === 'ROUND');
+  match.goldenRound.durationMs = Math.max(1_000, Number(match.goldenRound.durationMs) || rules.tieBreak.goldenRound.durationSeconds * 1000);
+  match.goldenRound.active = Boolean(match.goldenRound.active && match.round === rules.match.rounds + 1 && match.phase === 'ROUND');
   match.tieDecision = {
     ...makeTieDecision(),
     ...(match.tieDecision && typeof match.tieDecision === 'object' ? match.tieDecision : {})
@@ -1388,15 +1398,16 @@ function rulesSummary(rulePack) {
     rounds: rulePack.match.rounds,
     roundsRequiredToWin: rulePack.match.roundsRequiredToWin,
     roundDurationSeconds: rulePack.match.roundDurationSeconds,
-    breakDurationSeconds: rulePack.match.breakDurationSeconds,
+    breakDurationPolicy: rulePack.match.breakDurationPolicy,
     basePointValues: rulePack.scoring.basePointValues,
     basePointLabels: rulePack.scoring.basePointLabels,
     acceptedPointValues: rulePack.scoring.acceptedPointValues,
     technicalInput: rulePack.scoring.technicalInput,
     gamJeomPointValue: rulePack.scoring.gamJeomPointValue,
     gamJeomRoundLossAt: rulePack.penalties.gamJeom.roundLossAt,
+    gamJeomMatchLossAt: rulePack.penalties.gamJeom.matchLossAt,
     pointGap: rulePack.decisions.pointGap,
-    unresolvedMatchTie: rulePack.decisions.unresolvedMatchTie,
+    tieBreak: rulePack.tieBreak,
     winnerMethods: rulePack.decisions.winnerMethods,
     maximumActiveRemotes: rulePack.voting.maximumActiveRemotes,
     kyeShiLimitSeconds: rulePack.medical.kyeShi.limitSeconds,
@@ -2097,7 +2108,7 @@ function addTechnicalStat(player, basePoints) {
 }
 
 function isGoldenRound() {
-  return match.phase === 'ROUND' && match.round === 4 && match.goldenRound?.active === true;
+  return match.phase === 'ROUND' && match.round === rules.match.rounds + 1 && match.goldenRound?.active === true;
 }
 
 function roundRecord(winner, reason) {
@@ -2114,10 +2125,11 @@ function roundRecord(winner, reason) {
 function checkPointGap() {
   if (match.phase !== "ROUND") return;
   if (isGoldenRound()) {
-    if (match.red.score >= GOLDEN_ROUND_POINTS_TO_WIN) {
-      endGoldenRound('RED', 'GDP - 2 POINTS');
-    } else if (match.blue.score >= GOLDEN_ROUND_POINTS_TO_WIN) {
-      endGoldenRound('BLUE', 'GDP - 2 POINTS');
+    const scoreToWin = rules.tieBreak.goldenRound.scoreToWin;
+    if (match.red.score >= scoreToWin) {
+      endGoldenRound('RED', `GDP - ${scoreToWin} POINTS`);
+    } else if (match.blue.score >= scoreToWin) {
+      endGoldenRound('BLUE', `GDP - ${scoreToWin} POINTS`);
     }
     return;
   }
@@ -2151,8 +2163,13 @@ function addGamjeom(player, allowPaused = false) {
     side(opponent).score += rules.scoring.gamJeomPointValue;
     emit({ type: 'scoreSound', player: opponent, points: rules.scoring.gamJeomPointValue, source: 'gamjeom' });
   }
-  if (isGoldenRound() && penalized.gamjeom >= GOLDEN_ROUND_GAMJEOMS_TO_LOSE) {
-    endGoldenRound(opponent, 'GDP - 2 GAM-JEOMS');
+  if (isGoldenRound() && penalized.gamjeom >= rules.tieBreak.goldenRound.opponentGamJeomsToWin) {
+    endGoldenRound(opponent, `GDP - ${rules.tieBreak.goldenRound.opponentGamJeomsToWin} GAM-JEOMS`);
+    return true;
+  }
+  if (rules.penalties.gamJeom.matchLossAt !== null &&
+      totalGamJeomsFor(player, { includeCurrentRound: true }) >= rules.penalties.gamJeom.matchLossAt) {
+    finishMatch(opponent, `PUN - ${rules.penalties.gamJeom.matchLossAt} TOTAL GAM-JEOMS`);
     return true;
   }
   if (penalized.gamjeom >= rules.penalties.gamJeom.roundLossAt) {
@@ -2172,7 +2189,7 @@ function winnerByScore() {
 function countRoundWins() {
   const wins = { RED: 0, BLUE: 0 };
   for (const r of match.roundHistory) {
-    if (r.round > 3) continue;
+    if (r.round > rules.match.rounds) continue;
     if (r.winner === 'RED') wins.RED += 1;
     if (r.winner === 'BLUE') wins.BLUE += 1;
   }
@@ -2192,6 +2209,14 @@ function totalGamJeoms() {
   }), { RED: 0, BLUE: 0 });
 }
 
+function totalGamJeomsFor(player, { includeCurrentRound = false } = {}) {
+  const historical = match.roundHistory.reduce(
+    (total, record) => total + Number(record[player.toLowerCase()]?.gamjeom || 0),
+    0
+  );
+  return historical + (includeCurrentRound ? Number(side(player).gamjeom || 0) : 0);
+}
+
 function beginTieDecision(mode) {
   match.running = false;
   match.phase = 'TIE_DECISION';
@@ -2206,8 +2231,11 @@ function beginTieDecision(mode) {
 }
 
 function startGoldenRoundBreak() {
+  if (!rules.tieBreak.goldenRound.enabled || !rules.tieBreak.afterRegulation.options.includes('GOLDEN_ROUND')) {
+    return { ok: false, code: 'GOLDEN_ROUND_DISABLED', message: 'Golden Round is disabled by the active rule pack' };
+  }
   if (match.phase !== 'TIE_DECISION' || match.tieDecision?.mode !== 'CHOOSE_METHOD') {
-    return { ok: false, code: 'GOLDEN_ROUND_UNAVAILABLE', message: 'Golden Round is available only for a tied match after Round 3' };
+    return { ok: false, code: 'GOLDEN_ROUND_UNAVAILABLE', message: `Golden Round is available only for a tied match after Round ${rules.match.rounds}` };
   }
   match.tieDecision = makeTieDecision();
   match.breakTarget = 'GOLDEN';
@@ -2219,26 +2247,25 @@ function startGoldenRoundBreak() {
 }
 
 function goldenRoundSuperiority(record) {
-  const redPunch = Number(record.red?.stats?.plus1 || 0) > 0;
-  const bluePunch = Number(record.blue?.stats?.plus1 || 0) > 0;
-  if (redPunch !== bluePunch) {
-    return { winner: redPunch ? 'RED' : 'BLUE', reason: 'SUP - GOLDEN ROUND PUNCH' };
-  }
-
-  const redHits = hitCount(record, 'RED');
-  const blueHits = hitCount(record, 'BLUE');
-  if (redHits !== blueHits) {
-    return { winner: redHits > blueHits ? 'RED' : 'BLUE', reason: 'SUP - GOLDEN ROUND PSS HITS' };
-  }
-
-  const wins = countRoundWins();
-  if (wins.RED !== wins.BLUE) {
-    return { winner: wins.RED > wins.BLUE ? 'RED' : 'BLUE', reason: 'SUP - ROUNDS WON' };
-  }
-
-  const gamJeoms = totalGamJeoms();
-  if (gamJeoms.RED !== gamJeoms.BLUE) {
-    return { winner: gamJeoms.RED < gamJeoms.BLUE ? 'RED' : 'BLUE', reason: 'SUP - FEWER GAM-JEOMS' };
+  for (const criterion of rules.tieBreak.goldenRound.superiorityCriteria) {
+    if (criterion === 'REFEREE_DECISION') return null;
+    if (criterion === 'GOLDEN_ROUND_PUNCH') {
+      const redPunch = Number(record.red?.stats?.plus1 || 0) > 0;
+      const bluePunch = Number(record.blue?.stats?.plus1 || 0) > 0;
+      if (redPunch !== bluePunch) return { winner: redPunch ? 'RED' : 'BLUE', reason: 'SUP - GOLDEN ROUND PUNCH' };
+    }
+    if (criterion === 'GOLDEN_ROUND_HIT_COUNT') {
+      const redHits = hitCount(record, 'RED'); const blueHits = hitCount(record, 'BLUE');
+      if (redHits !== blueHits) return { winner: redHits > blueHits ? 'RED' : 'BLUE', reason: 'SUP - GOLDEN ROUND HIT COUNT' };
+    }
+    if (criterion === 'REGULATION_ROUNDS_WON') {
+      const wins = countRoundWins();
+      if (wins.RED !== wins.BLUE) return { winner: wins.RED > wins.BLUE ? 'RED' : 'BLUE', reason: 'SUP - ROUNDS WON' };
+    }
+    if (criterion === 'FEWER_TOTAL_GAMJEOMS') {
+      const gamJeoms = totalGamJeoms();
+      if (gamJeoms.RED !== gamJeoms.BLUE) return { winner: gamJeoms.RED < gamJeoms.BLUE ? 'RED' : 'BLUE', reason: 'SUP - FEWER GAM-JEOMS' };
+    }
   }
   return null;
 }
@@ -2288,15 +2315,15 @@ function endRound(winner = null, reason = 'TIME 0:00') {
   emit({ type: 'roundEnd', record });
 
   const wins = countRoundWins();
-  if (wins.RED >= 2) {
-    finishMatch('RED', 'PTF - WON 2 ROUNDS');
+  if (wins.RED >= rules.match.roundsRequiredToWin) {
+    finishMatch('RED', `PTF - WON ${rules.match.roundsRequiredToWin} ROUNDS`);
     return;
   }
-  if (wins.BLUE >= 2) {
-    finishMatch('BLUE', 'PTF - WON 2 ROUNDS');
+  if (wins.BLUE >= rules.match.roundsRequiredToWin) {
+    finishMatch('BLUE', `PTF - WON ${rules.match.roundsRequiredToWin} ROUNDS`);
     return;
   }
-  if (match.round >= 3) {
+  if (match.round >= rules.match.rounds) {
     beginTieDecision('CHOOSE_METHOD');
     return;
   }
@@ -2329,6 +2356,7 @@ function finishMatch(winner, reason) {
     reason,
     rounds: deep(match.roundHistory),
     ruleset: deep(match.ruleset || activeRulesMetadata),
+    rulesSnapshot: deep(match.rulesSnapshot || rules),
     endedAt: new Date().toISOString()
   });
   matchHistory = matchHistory.slice(0, 50);
@@ -2342,10 +2370,13 @@ function decideWooSeGirok(winner) {
   if (!validPlayer(winner)) {
     return { ok: false, code: 'INVALID_WINNER', message: 'Winner must be RED or BLUE' };
   }
-  if (match.phase !== 'TIE_DECISION' || match.tieDecision?.mode !== 'CHOOSE_METHOD') {
-    return { ok: false, code: 'WOO_SE_GIROK_UNAVAILABLE', message: 'Woo-se-girok is available only for a tied match after Round 3' };
+  if (!rules.tieBreak.wooSeGirok.enabled || !rules.tieBreak.afterRegulation.options.includes('WOO_SE_GIROK')) {
+    return { ok: false, code: 'WOO_SE_GIROK_DISABLED', message: 'Woo-se-girok is disabled by the active rule pack' };
   }
-  finishMatch(winner, 'SUP - WOO-SE-GIROK');
+  if (match.phase !== 'TIE_DECISION' || match.tieDecision?.mode !== 'CHOOSE_METHOD') {
+    return { ok: false, code: 'WOO_SE_GIROK_UNAVAILABLE', message: `Woo-se-girok is available only for a tied match after Round ${rules.match.rounds}` };
+  }
+  finishMatch(winner, `${rules.tieBreak.wooSeGirok.reasonCode} - WOO-SE-GIROK`);
   return { ok: true };
 }
 
@@ -2361,10 +2392,8 @@ function decideGoldenRoundSuperiority(winner) {
   return { ok: true };
 }
 
-const MANUAL_MATCH_DECISIONS = new Set(['RSC', 'WDR', 'DSQ', 'PUN', 'DQB']);
-
 function declareManualMatchDecision(winner, decision) {
-  if (!validPlayer(winner) || !MANUAL_MATCH_DECISIONS.has(decision)) {
+  if (!validPlayer(winner) || !rules.decisions.manualMatchDecisions.includes(decision)) {
     return { ok: false, code: 'INVALID_MATCH_DECISION', message: 'Choose a valid winner and match decision' };
   }
   if (match.phase === 'MATCH_END') {
@@ -2390,14 +2419,14 @@ function declareManualMatchDecision(winner, decision) {
 function startNextRound() {
   if (match.phase !== 'BREAK') return;
   const goldenRound = match.breakTarget === 'GOLDEN';
-  match.round = goldenRound ? 4 : match.round + 1;
+  match.round = goldenRound ? rules.match.rounds + 1 : match.round + 1;
   match.phase = 'ROUND';
   match.goldenRound.active = goldenRound;
   if (goldenRound) {
     match.goldenRound.previousScoresVoided = true;
     match.goldenRound.superiority = null;
     for (const record of match.roundHistory) {
-      if (record.round <= 3) record.voidedForGoldenRound = true;
+      if (record.round <= rules.match.rounds) record.voidedForGoldenRound = true;
     }
   }
   match.breakTarget = 'REGULAR';
@@ -2407,12 +2436,14 @@ function startNextRound() {
   timerLastAt = null;
   match.kyeShi = makeKyeShi();
   kyeShiLastAt = null;
-  match.red.score = 0;
-  match.red.gamjeom = 0;
-  match.red.stats = baseStats();
-  match.blue.score = 0;
-  match.blue.gamjeom = 0;
-  match.blue.stats = baseStats();
+  if (!goldenRound || rules.tieBreak.goldenRound.resetRegularScores) {
+    match.red.score = 0;
+    match.red.gamjeom = 0;
+    match.red.stats = baseStats();
+    match.blue.score = 0;
+    match.blue.gamjeom = 0;
+    match.blue.stats = baseStats();
+  }
   match.votes = {};
   clearAllRemoteCombinations();
   clearLastRemoteButtons();
@@ -3012,6 +3043,10 @@ wss.on('connection', ws => {
         const ms = validInteger(rawMs) ? Math.min(MAX_TIMER_MS, Math.max(MIN_TIMER_MS, rawMs)) : ROUND_MS_DEFAULT;
         if (match.phase === 'ROUND') setRunning(false);
         if (match.phase === 'ROUND' && match.goldenRound.active) {
+          if (!rules.tieBreak.goldenRound.allowTimerEdit) {
+            sendError(ws, 'GOLDEN_TIMER_LOCKED', 'Golden Round duration is locked by the active rule pack');
+            return;
+          }
           match.goldenRound.durationMs = ms;
           match.timerMs = ms;
         } else {
@@ -3078,11 +3113,15 @@ wss.on('connection', ws => {
           return;
         }
         const parsed = Number(msg.value);
-        const value = validInteger(parsed) ? Math.max(0, Math.min(rules.penalties.gamJeom.roundLossAt, parsed)) : 0;
+        const maximumGamJeoms = rules.penalties.gamJeom.matchLossAt ?? rules.penalties.gamJeom.roundLossAt;
+        const value = validInteger(parsed) ? Math.max(0, Math.min(maximumGamJeoms, parsed)) : 0;
         if (msg.player === 'RED') match.red.gamjeom = value;
         if (msg.player === 'BLUE') match.blue.gamjeom = value;
-        if (isGoldenRound() && value >= GOLDEN_ROUND_GAMJEOMS_TO_LOSE) {
-          endGoldenRound(other(msg.player), 'GDP - 2 GAM-JEOMS');
+        if (isGoldenRound() && value >= rules.tieBreak.goldenRound.opponentGamJeomsToWin) {
+          endGoldenRound(other(msg.player), `GDP - ${rules.tieBreak.goldenRound.opponentGamJeomsToWin} GAM-JEOMS`);
+        } else if (rules.penalties.gamJeom.matchLossAt !== null &&
+                   totalGamJeomsFor(msg.player, { includeCurrentRound: true }) >= rules.penalties.gamJeom.matchLossAt) {
+          finishMatch(other(msg.player), `PUN - ${rules.penalties.gamJeom.matchLossAt} TOTAL GAM-JEOMS`);
         } else if (value >= rules.penalties.gamJeom.roundLossAt) {
           endRound(other(msg.player), `ROUND GAM-JEOM LIMIT - ${rules.penalties.gamJeom.roundLossAt} GAM-JEOM`);
         }

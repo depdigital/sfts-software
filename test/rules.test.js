@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import {
   loadRules,
+  parseRulesText,
   readRulesFile,
   rulesMetadata,
   validateRules,
@@ -12,27 +13,28 @@ import {
 } from '../src/rules.js';
 
 async function defaultRules() {
-  const contents = await readFile(path.join(process.cwd(), 'config', 'rules.default.json'), 'utf8');
-  return JSON.parse(contents);
+  return readRulesFile(path.join(process.cwd(), 'config', 'rules.default.json'));
 }
 
 test('the built-in ruleset is valid and describes the current behavior', async () => {
   const rules = validateRules(await defaultRules());
 
-  assert.equal(rules.match.format, 'BEST_OF_THREE');
+  assert.equal(rules.match.format, 'BEST_OF_N_ROUNDS');
   assert.deepEqual(rules.scoring.basePointValues, [1, 2, 3]);
   assert.equal(rules.scoring.basePointLabels['1'], 'PUNCH');
   assert.equal(rules.scoring.technicalInput.pointsByBasePoints['3'], 6);
   assert.equal(rules.decisions.pointGap.difference, 15);
   assert.equal(rules.penalties.gamJeom.roundLossAt, 5);
+  assert.equal(rules.tieBreak.goldenRound.scoreToWin, 2);
+  assert.equal(rules.match.breakDurationPolicy.tiers[0].breakDurationSeconds, 60);
   assert.deepEqual(rulesMetadata(rules), {
     id: 'sfts-current',
     name: 'SFTS Default Rules',
     federation: 'WTF',
-    ruleVersion: 'default',
+    ruleVersion: '2026.1',
     effectiveFrom: null,
     source: 'Built-in SFTS rules',
-    schemaVersion: 1
+    schemaVersion: 2
   });
 });
 
@@ -41,6 +43,17 @@ test('unsupported rule capabilities are rejected instead of being silently ignor
   rules.compatibility.requiredCapabilities.push('WT_SUPERIORITY');
 
   assert.throws(() => validateRules(rules), /unsupported capability/);
+});
+
+test('commented v2 packs and legacy v1 packs are accepted safely', async () => {
+  const commented = parseRulesText(`// allowed comment\n{ "schemaVersion": 2, "url": "https://rules.example/pack" }`);
+  assert.equal(commented.url, 'https://rules.example/pack');
+
+  const legacy = JSON.parse(await (await import('node:fs/promises')).readFile(path.join(process.cwd(), 'test', 'fixtures', 'scoring-test-pack.json'), 'utf8'));
+  const migrated = validateRules(legacy);
+  assert.equal(migrated.schemaVersion, 2);
+  assert.equal(migrated.tieBreak.goldenRound.scoreToWin, 2);
+  assert.equal(migrated.match.breakDurationPolicy.defaultDurationSeconds, 35);
 });
 
 test('a valid active rules file is loaded and an invalid one falls back to defaults', async () => {
@@ -76,11 +89,11 @@ test('rules are written atomically and the previous active pack is backed up', a
     const secondRules = await defaultRules();
     secondRules.ruleset.ruleVersion = 'second';
     await writeRulesAtomically(firstRules, { activePath, backupPath, backupRules: firstRules });
-    assert.equal((await readRulesFile(backupPath)).ruleset.ruleVersion, 'default');
+    assert.equal((await readRulesFile(backupPath)).ruleset.ruleVersion, '2026.1');
     await writeRulesAtomically(secondRules, { activePath, backupPath });
 
     assert.equal((await readRulesFile(activePath)).ruleset.ruleVersion, 'second');
-    assert.equal((await readRulesFile(backupPath)).ruleset.ruleVersion, 'default');
+    assert.equal((await readRulesFile(backupPath)).ruleset.ruleVersion, '2026.1');
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

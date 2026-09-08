@@ -455,6 +455,11 @@ function renderTieDecision(match) {
   }
   const redName = displayPlayerName(match, "RED");
   const blueName = displayPlayerName(match, "BLUE");
+  const tieOptions = scoringRules?.tieBreak?.afterRegulation?.options || [];
+  const goldenAvailable = tieOptions.includes("GOLDEN_ROUND") && scoringRules?.tieBreak?.goldenRound?.enabled;
+  const wooAvailable = tieOptions.includes("WOO_SE_GIROK") && scoringRules?.tieBreak?.wooSeGirok?.enabled;
+  $("goldenRoundChoice")?.classList.toggle("hidden", !goldenAvailable);
+  $("wooSeGirokChoice")?.classList.toggle("hidden", !wooAvailable);
   $("tieDecisionRedButton").textContent = `${redName} WIN`;
   $("tieDecisionBlueButton").textContent = `${blueName} WIN`;
 
@@ -463,16 +468,23 @@ function renderTieDecision(match) {
   $("tieDecisionMethodActions").classList.toggle("hidden", showingWinners);
   $("tieDecisionWinnerActions").classList.toggle("hidden", !showingWinners);
   $("tieDecisionBackButton").classList.toggle("hidden", choosingGoldenSuperiority);
+  const finalRound = scoringRules?.match?.rounds || 3;
   $("tieDecisionTitle").textContent = choosingGoldenSuperiority
     ? "GOLDEN ROUND SUPERIORITY"
     : tieDecisionView === "WOO"
       ? "WOO-SE-GIROK"
-      : "ROUND 3 TIED";
+      : `ROUND ${finalRound} TIED`;
   $("tieDecisionMessage").textContent = choosingGoldenSuperiority
     ? "REFEREE DECISION REQUIRED"
     : tieDecisionView === "WOO"
       ? "SELECT THE MATCH WINNER"
-      : "SELECT GOLDEN ROUND OR WOO-SE-GIROK";
+      : goldenAvailable && wooAvailable
+        ? "SELECT GOLDEN ROUND OR WOO-SE-GIROK"
+        : goldenAvailable
+          ? "GOLDEN ROUND REQUIRED"
+          : wooAvailable
+            ? "WOO-SE-GIROK REQUIRED"
+            : "MANUAL TOURNAMENT RESOLUTION REQUIRED";
   modal.classList.remove("hidden");
 }
 function manualConfiguredPoint(player, buttonId) {
@@ -520,6 +532,14 @@ function openMatchDecision() {
   }
   closeSettings();
   manualDecisionCode = "";
+  const availableDecisions = scoringRules?.manualMatchDecisions || [];
+  document.querySelectorAll("[data-manual-decision]").forEach((button) => {
+    button.classList.toggle("hidden", !availableDecisions.includes(button.dataset.manualDecision));
+  });
+  if (!availableDecisions.length) {
+    toast("MATCH DECISIONS ARE DISABLED BY ACTIVE RULES");
+    return;
+  }
   $("manualDecisionMessage").textContent = "SELECT THE REFEREE DECISION";
   $("manualDecisionOptions").classList.remove("hidden");
   $("manualDecisionWinnerActions").classList.add("hidden");
@@ -531,7 +551,7 @@ function closeMatchDecision() {
   $("matchDecisionModal").classList.add("hidden");
 }
 function selectManualDecision(code) {
-  if (!lastState) return;
+  if (!lastState || !(scoringRules?.manualMatchDecisions || []).includes(code)) return;
   manualDecisionCode = code;
   $("manualDecisionMessage").textContent = `${code} - SELECT THE WINNER`;
   $("manualDecisionRedButton").textContent = `${displayPlayerName(lastState, "RED")} WIN`;

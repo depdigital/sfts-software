@@ -1,20 +1,31 @@
+// SFTS Rule Pack v2 (JSONC)
+//
+// This is the competition-rule source of truth. Change values only between
+// matches, retain valid JSON syntax, and load the finished file through RULES.
+// Both // line comments and /* block comments */ are supported by SFTS.
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
+
+  // Identity recorded with every completed match for traceability.
   "ruleset": {
     "id": "sfts-current",
     "name": "SFTS Default Rules",
     "federation": "WTF",
-    "ruleVersion": "default",
+    "ruleVersion": "2026.1",
     "effectiveFrom": null,
     "source": "Built-in SFTS rules"
   },
+
+  // These are software features this pack expects. Do not add unknown names:
+  // unsupported capabilities make the pack fail safely instead of guessing.
   "compatibility": {
     "minimumSoftwareVersion": "3.0.0",
     "requiredCapabilities": [
-      "BEST_OF_THREE",
+      "BEST_OF_N_ROUNDS",
       "FINAL_SCORE",
       "POINT_GAP",
       "ROUND_GAMJEOM_LIMIT",
+      "MATCH_GAMJEOM_LIMIT",
       "MAJORITY_VOTE",
       "TECHNICAL_COMBINATION",
       "KYESHI_MANUAL_DECISION",
@@ -22,61 +33,83 @@
       "SUPERIORITY_DECISION",
       "MANUAL_MATCH_DECISIONS",
       "DYNAMIC_BREAK_DURATION",
-      "SINGLE_ELIMINATION"
+      "SINGLE_ELIMINATION",
+      "RULE_PACK_V2"
     ]
   },
+
   "match": {
-    "format": "BEST_OF_THREE",
+    // BEST_OF_N_ROUNDS is supported for 1-15 rounds. Rounds required to win
+    // must be more than half of the total number of regulation rounds.
+    "format": "BEST_OF_N_ROUNDS",
     "rounds": 3,
     "roundsRequiredToWin": 2,
     "roundDurationSeconds": 60,
-    "breakDurationSeconds": 35,
     "minimumRoundDurationSeconds": 1,
-    "maximumRoundDurationSeconds": 3600
+    "maximumRoundDurationSeconds": 3600,
+
+    // The default applies first. Each tier overrides it at and above its
+    // minimum round duration. Add tiers in ascending threshold order.
+    "breakDurationPolicy": {
+      "defaultDurationSeconds": 35,
+      "tiers": [
+        { "minimumRoundDurationSeconds": 120, "breakDurationSeconds": 60 }
+      ]
+    }
   },
+
   "scoring": {
+    // Base points are the normal point buttons and remote scoring choices.
     "basePointValues": [1, 2, 3],
     "basePointLabels": {
       "1": "PUNCH",
       "2": "CHEST",
       "3": "HEAD"
     },
+    // Include every normal and technical award value used below.
     "acceptedPointValues": [1, 2, 3, 4, 6],
     "technicalInput": {
       "enabled": true,
       "windowMilliseconds": 1000,
+      // Technical is registered only when it is combined with one of these
+      // base-point buttons inside the time window.
       "eligibleBasePoints": [2, 3],
       "pointsByBasePoints": {
         "2": 4,
         "3": 6
       }
     },
+    // Set to 0 only when a Gam-jeom must not award an opponent point.
     "gamJeomPointValue": 1
   },
+
   "penalties": {
     "gamJeom": {
       "awardsPointToOpponent": true,
+      // Reaching this count in one regulation round ends that round.
       "roundLossAt": 5,
+      // Use null when there is no match-level limit. To use a cumulative PUN
+      // limit, set a number here and set accumulateAcrossRounds to true.
       "matchLossAt": null,
       "accumulateAcrossRounds": false
     }
   },
+
   "decisions": {
     "pointGap": {
       "enabled": true,
       "difference": 15,
       "appliesToRounds": [1, 2, 3]
     },
-    "roundTie": {
-      "type": "DRAW"
-    },
-    "unresolvedMatchTie": {
-      "type": "GOLDEN_OR_WOO_SE_GIROK"
-    },
+    "roundTie": { "type": "DRAW" },
+    // The engine allows only these decision codes. Remove a code to hide it
+    // from future referees; do not add a new code without engine support.
+    "manualMatchDecisions": ["RSC", "WDR", "DSQ", "PUN", "DQB"],
     "winnerMethods": [
       "FINAL_SCORE",
       "POINT_GAP",
       "ROUND_GAMJEOM_LIMIT",
+      "MATCH_GAMJEOM_LIMIT",
       "KYESHI_MANUAL_DECISION",
       "GOLDEN_POINTS",
       "SUPERIORITY",
@@ -87,11 +120,43 @@
       "UNSPORTSMANLIKE_DISQUALIFICATION"
     ]
   },
+
+  "tieBreak": {
+    "afterRegulation": {
+      "type": "GOLDEN_OR_WOO_SE_GIROK",
+      // Keep one or both choices. An empty list is allowed only for
+      // MANUAL_TOURNAMENT_RESOLUTION.
+      "options": ["GOLDEN_ROUND", "WOO_SE_GIROK"]
+    },
+    "goldenRound": {
+      "enabled": true,
+      "durationSeconds": 60,
+      "allowTimerEdit": true,
+      "resetRegularScores": true,
+      "scoreToWin": 2,
+      "opponentGamJeomsToWin": 2,
+      "onTimeExpiry": "SUPERIORITY",
+      // Evaluated in this exact order. REFEREE_DECISION must remain last.
+      "superiorityCriteria": [
+        "GOLDEN_ROUND_PUNCH",
+        "GOLDEN_ROUND_HIT_COUNT",
+        "REGULATION_ROUNDS_WON",
+        "FEWER_TOTAL_GAMJEOMS",
+        "REFEREE_DECISION"
+      ]
+    },
+    "wooSeGirok": {
+      "enabled": true,
+      "reasonCode": "SUP"
+    }
+  },
+
   "voting": {
     "mode": "STRICT_MAJORITY",
     "minimumActiveRemotes": 1,
     "maximumActiveRemotes": 4
   },
+
   "medical": {
     "kyeShi": {
       "enabled": true,
@@ -99,6 +164,7 @@
       "onLimit": "MANUAL_WINNER"
     }
   },
+
   "tournament": {
     "format": "SINGLE_ELIMINATION",
     "groupBy": ["GENDER", "WEIGHT_CATEGORY"],
