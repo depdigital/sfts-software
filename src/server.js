@@ -181,6 +181,7 @@ function makeMatch(
     red: makeSide(redName, redProfile),
     blue: makeSide(blueName, blueProfile),
     votes: {},
+    cornerRefereeHistory: [],
     roundHistory: [],
     matchWinner: null,
     matchReason: "",
@@ -634,6 +635,9 @@ function restorePersistedState(snapshot) {
   match.kyeShi.elapsedMs = Math.max(0, Math.min(match.kyeShi.limitMs, Number(match.kyeShi.elapsedMs) || 0));
   kyeShiLastAt = null;
   match.votes = {};
+  match.cornerRefereeHistory = Array.isArray(match.cornerRefereeHistory)
+    ? match.cornerRefereeHistory
+    : [];
   match.test = { active: false, presses: {} };
   matchHistory = snapshot.matchHistory;
   tournament = snapshot.tournament;
@@ -1595,6 +1599,17 @@ function clearRemoteScoreHighlights() {
   remoteScoreValues.BLUE = null;
 }
 
+function recordCornerRefereePress(corner, button) {
+  if (match.phase !== 'ROUND' || !match.roundStarted || match.test.active) return false;
+  match.cornerRefereeHistory.push({
+    corner,
+    cornerReferee: `C${corner}`,
+    button,
+    pressedAt: new Date().toISOString()
+  });
+  return true;
+}
+
 function showRemoteScoreHighlight(player, corners, points) {
   const previousTimer = remoteScoreHighlightTimers.get(player);
   if (previousTimer) clearTimeout(previousTimer);
@@ -2089,6 +2104,7 @@ function finishMatch(winner, reason) {
     endedAt: new Date().toISOString()
   });
   matchHistory = matchHistory.slice(0, 50);
+  match.cornerRefereeHistory = [];
   emit({ type: 'matchEnd', winner, reason, match: deep(match) });
   state(true);
 }
@@ -2446,6 +2462,7 @@ function handleRemoteEvent(ws, msg) {
     return;
   }
   if (button === 'CANCEL') {
+    if (recordCornerRefereePress(ws.corner, button)) state(true);
     if (match.test.active) {
       const ack = remoteAck(ws, sequence, { accepted: false, reason: 'TEST_MODE_ACTIVE' });
       rememberRemoteAck(session, sequence, ack);
@@ -2471,6 +2488,7 @@ function handleRemoteEvent(ws, msg) {
     rememberRemoteAck(session, sequence, ack);
     return;
   }
+  if (recordCornerRefereePress(ws.corner, vote.button)) state(true);
   if (match.test.active) {
     showLastRemoteButton(ws.corner, vote.button);
     match.test.presses[`${ws.corner}-${vote.button}`] = true;
@@ -2819,6 +2837,7 @@ wss.on('connection', ws => {
       const points = Number(msg.points);
 
       if (msg.action === 'vote' && validPlayer(player) && validPoints(points)) {
+        if (recordCornerRefereePress(ws.corner, `${player}_${points}`)) state(true);
         if (match.test.active) {
           const button = `${player}_${points}`;
           match.test.presses[`${ws.corner}-${button}`] = true;
@@ -2832,6 +2851,7 @@ wss.on('connection', ws => {
       }
 
       if (msg.action === 'cancel' && !match.test.active) {
+        if (recordCornerRefereePress(ws.corner, 'CANCEL')) state(true);
         delete match.votes[ws.corner];
         state(true);
       }

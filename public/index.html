@@ -226,6 +226,7 @@
         <button onclick="openTimerEditor()">EDIT TIMER</button>
         <button onclick="openArenaNumber()">ARENA NUMBER</button>
         <button onclick="openHistory()">MATCH HISTORY</button>
+        <button onclick="openCornerRefereeHistory()">CORNER REFEREE HISTORY</button>
         <button onclick="openTestMode()">REMOTE SETTINGS</button>
         <button onclick="openRules()">RULES</button>
         <button class="powerActionButton rebootButton" onclick="openPowerAction('reboot')">REBOOT</button>
@@ -539,6 +540,14 @@
         <h2>MATCH HISTORY</h2>
         <div id="historyList" class="historyList"></div>
         <button onclick="closeHistory()">CLOSE</button>
+      </div>
+    </section>
+
+    <section id="cornerRefereeHistoryModal" class="overlay hidden">
+      <div class="modalCard wideModal">
+        <h2>CORNER REFEREE HISTORY</h2>
+        <div id="cornerRefereeHistoryList" class="cornerRefereeHistoryList"></div>
+        <button onclick="closeCornerRefereeHistory()">CLOSE</button>
       </div>
     </section>
 

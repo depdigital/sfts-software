@@ -951,6 +951,26 @@ button {
   padding: 12px;
   border-radius: 8px;
 }
+.cornerRefereeHistoryList {
+  display: grid;
+  gap: 8px;
+  max-height: 55vh;
+  overflow-y: auto;
+  text-align: left;
+}
+.cornerRefereeHistoryItem {
+  display: grid;
+  grid-template-columns: 100px 1fr minmax(260px, 1.5fr);
+  gap: 12px;
+  align-items: center;
+  background: #1b2331;
+  padding: 12px;
+  border-radius: 8px;
+}
+.cornerRefereeHistoryItem time {
+  color: #cbd5e5;
+  font-variant-numeric: tabular-nums;
+}
 
 .roundCard {
   width: min(1120px, 96vw);
@@ -1370,6 +1390,9 @@ button {
     grid-template-columns: 1fr;
   }
   .historyItem {
+    grid-template-columns: 1fr;
+  }
+  .cornerRefereeHistoryItem {
     grid-template-columns: 1fr;
   }
   .joystickGrid {

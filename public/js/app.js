@@ -64,6 +64,8 @@ function connectSocket() {
       scoringRules = msg.scoringRules || scoringRules;
       renderUsbImportMode();
       renderState(msg.match);
+      if (!$('cornerRefereeHistoryModal')?.classList.contains('hidden'))
+        renderCornerRefereeHistory();
       renderActiveRuleset(activeRuleset);
       renderScoringControls();
       renderRemoteStatuses(msg.remotes, msg.match?.remoteCount);
@@ -1105,6 +1107,39 @@ function closeHistory() {
   $("historyModal").classList.add("hidden");
 }
 
+function renderCornerRefereeHistory() {
+  const box = $("cornerRefereeHistoryList");
+  if (!box) return;
+  const history = Array.isArray(lastState?.cornerRefereeHistory)
+    ? [...lastState.cornerRefereeHistory].sort((a, b) =>
+        String(a.pressedAt || "").localeCompare(String(b.pressedAt || "")),
+      )
+    : [];
+  if (!history.length) {
+    box.innerHTML = "<p>No corner-referee button presses yet.</p>";
+    return;
+  }
+  box.innerHTML = history
+    .map((item) => {
+      const pressedAt = String(item.pressedAt || "");
+      return `
+        <div class="cornerRefereeHistoryItem">
+          <strong>${escapeHtml(item.cornerReferee || `C${item.corner || "?"}`)}</strong>
+          <span>${escapeHtml(item.button || "—")}</span>
+          <time datetime="${escapeHtml(pressedAt)}">${escapeHtml(pressedAt)}</time>
+        </div>`;
+    })
+    .join("");
+}
+function openCornerRefereeHistory() {
+  closeSettings();
+  renderCornerRefereeHistory();
+  $("cornerRefereeHistoryModal").classList.remove("hidden");
+}
+function closeCornerRefereeHistory() {
+  $("cornerRefereeHistoryModal").classList.add("hidden");
+}
+
 function showRoundSummary(record) {
   currentRoundRecord = record;
   const redName = record.red.playerName || record.red.name;
@@ -1367,6 +1402,8 @@ window.closeTimerEditor = closeTimerEditor;
 window.saveTimer = saveTimer;
 window.openHistory = openHistory;
 window.closeHistory = closeHistory;
+window.openCornerRefereeHistory = openCornerRefereeHistory;
+window.closeCornerRefereeHistory = closeCornerRefereeHistory;
 window.closeRoundOverlay = closeRoundOverlay;
 window.startNewMatch = startNewMatch;
 window.openTestMode = openTestMode;
