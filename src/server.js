@@ -1599,15 +1599,30 @@ function clearRemoteScoreHighlights() {
   remoteScoreValues.BLUE = null;
 }
 
-function recordCornerRefereePress(corner, button) {
+function cornerRefereeButtonLabel(player, points, technical = false) {
+  const body = { 1: 'FIST', 2: 'CHEST', 3: 'HEAD' }[Number(points)];
+  if (!body) return `${player}-UNKNOWN`;
+  return `${player}-${technical ? 'TECHNICAL-' : ''}${body}`;
+}
+
+function recordCornerRefereePress(corner, button, score = null) {
   if (match.phase !== 'ROUND' || !match.roundStarted || match.test.active) return false;
-  match.cornerRefereeHistory.push({
+  const entry = {
     corner,
     cornerReferee: `C${corner}`,
     button,
+    score,
     pressedAt: new Date().toISOString()
-  });
-  return true;
+  };
+  match.cornerRefereeHistory.push(entry);
+  return entry;
+}
+
+function replaceCornerRefereeHistoryEntry(entry, button, score) {
+  if (!entry) return;
+  entry.button = button;
+  entry.score = score;
+  entry.pressedAt = new Date().toISOString();
 }
 
 function showRemoteScoreHighlight(player, corners, points) {
@@ -1650,10 +1665,10 @@ function rememberTechnicalPress(corner, player) {
   remoteTechnicalPending.set(corner, pending);
 }
 
-function rememberBasePress(corner, vote) {
+function rememberBasePress(corner, vote, historyEntry) {
   const previous = remoteLastBasePress.get(corner);
   if (previous?.timer) clearTimeout(previous.timer);
-  const pending = { player: vote.player, points: vote.points, timestamp: Date.now() };
+  const pending = { player: vote.player, points: vote.points, timestamp: Date.now(), historyEntry };
   pending.timer = setTimeout(() => {
     if (remoteLastBasePress.get(corner) === pending) remoteLastBasePress.delete(corner);
   }, TECHNICAL_COMBO_WINDOW_MS);
@@ -2488,7 +2503,6 @@ function handleRemoteEvent(ws, msg) {
     rememberRemoteAck(session, sequence, ack);
     return;
   }
-  if (recordCornerRefereePress(ws.corner, vote.button)) state(true);
   if (match.test.active) {
     showLastRemoteButton(ws.corner, vote.button);
     match.test.presses[`${ws.corner}-${vote.button}`] = true;
@@ -2519,6 +2533,11 @@ function handleRemoteEvent(ws, msg) {
     if (base && existingVote && base.player === vote.player && existingVote.player === vote.player &&
         existingVote.points === base.points && !existingVote.technical && Date.now() - base.timestamp <= TECHNICAL_COMBO_WINDOW_MS) {
       clearRemoteCombination(ws.corner);
+      replaceCornerRefereeHistoryEntry(
+        base.historyEntry,
+        cornerRefereeButtonLabel(vote.player, base.points, true),
+        technicalPointsFor(base.points)
+      );
       completeRemoteVote(ws, sequence, {
         player: vote.player,
         points: technicalPointsFor(base.points),
@@ -2539,6 +2558,11 @@ function handleRemoteEvent(ws, msg) {
     const technicalPoints = technicalPointsFor(vote.points);
     if (technicalPoints !== null) {
       clearRemoteCombination(ws.corner);
+      recordCornerRefereePress(
+        ws.corner,
+        cornerRefereeButtonLabel(vote.player, vote.points, true),
+        technicalPoints
+      );
       completeRemoteVote(ws, sequence, {
         player: vote.player,
         points: technicalPoints,
@@ -2559,12 +2583,20 @@ function handleRemoteEvent(ws, msg) {
   }
 
   if (technical) clearRemoteCombination(ws.corner);
+  const historyEntry = recordCornerRefereePress(
+    ws.corner,
+    cornerRefereeButtonLabel(vote.player, vote.points),
+    vote.points
+  );
+  if (historyEntry) state(true);
   const outcome = completeRemoteVote(ws, sequence, {
     ...vote,
     basePoints: vote.points,
     technical: false
   });
-  if (technicalPointsFor(vote.points) !== null && !outcome.awarded) rememberBasePress(ws.corner, vote);
+  if (technicalPointsFor(vote.points) !== null && !outcome.awarded) {
+    rememberBasePress(ws.corner, vote, historyEntry);
+  }
 }
 
 wss.on('connection', ws => {
@@ -2837,7 +2869,7 @@ wss.on('connection', ws => {
       const points = Number(msg.points);
 
       if (msg.action === 'vote' && validPlayer(player) && validPoints(points)) {
-        if (recordCornerRefereePress(ws.corner, `${player}_${points}`)) state(true);
+        if (recordCornerRefereePress(ws.corner, cornerRefereeButtonLabel(player, points), points)) state(true);
         if (match.test.active) {
           const button = `${player}_${points}`;
           match.test.presses[`${ws.corner}-${button}`] = true;

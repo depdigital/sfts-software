@@ -1126,11 +1126,27 @@ function renderCornerRefereeHistory() {
         <div class="cornerRefereeHistoryItem">
           <strong>${escapeHtml(item.cornerReferee || `C${item.corner || "?"}`)}</strong>
           <span>${escapeHtml(item.button || "—")}</span>
-          <time datetime="${escapeHtml(pressedAt)}">${escapeHtml(pressedAt)}</time>
+          <span>${item.score === null || item.score === undefined ? "—" : `+${escapeHtml(item.score)}`}</span>
+          <time datetime="${escapeHtml(pressedAt)}">${escapeHtml(formatCornerRefereeTimestamp(pressedAt))}</time>
         </div>`;
     })
     .join("");
 }
+
+function formatCornerRefereeTimestamp(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const months = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+  ];
+  const hours = date.getHours();
+  const hour12 = hours % 12 || 12;
+  const pad = (number) => String(number).padStart(2, "0");
+  return `${pad(date.getDate())} ${months[date.getMonth()]} ${date.getFullYear()}, ` +
+    `${pad(hour12)}:${pad(date.getMinutes())}:${pad(date.getSeconds())} ${hours >= 12 ? "PM" : "AM"}`;
+}
+
 function openCornerRefereeHistory() {
   closeSettings();
   renderCornerRefereeHistory();

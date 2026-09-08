@@ -960,7 +960,7 @@ button {
 }
 .cornerRefereeHistoryItem {
   display: grid;
-  grid-template-columns: 100px 1fr minmax(260px, 1.5fr);
+  grid-template-columns: 100px minmax(220px, 1fr) 70px minmax(260px, 1.5fr);
   gap: 12px;
   align-items: center;
   background: #1b2331;
