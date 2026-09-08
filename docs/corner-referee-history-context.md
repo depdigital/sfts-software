@@ -60,9 +60,9 @@ Technical is a modifier and must not be recorded or awarded by itself.
 
 ## Majority indicators
 
-Place a small rounded rectangle score box at each corner-referee indicator
-position. The corner-referee images and C1-C4 labels are not displayed in the
-final scoreboard UI. There are separate indicators for the RED and BLUE
+Place a C1-C4 text label above a small rounded rectangle score box at each
+corner-referee indicator position. The corner-referee images are not displayed
+in the final scoreboard UI. There are separate indicators for the RED and BLUE
 sides.
 
 Initial state:
