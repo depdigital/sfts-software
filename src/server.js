@@ -45,9 +45,6 @@ const configuredRemoteTokens = remoteConfig.remoteTokens && typeof remoteConfig.
   : {};
 const PORT = Number(process.env.PORT || remoteConfig.port || 8080);
 let ROUND_MS_DEFAULT = rules.match.roundDurationSeconds * 1000;
-let BREAK_MS_DEFAULT = Number.isFinite(Number(process.env.SFTS_BREAK_MS))
-  ? Math.max(50, Number(process.env.SFTS_BREAK_MS))
-  : rules.match.breakDurationSeconds * 1000;
 let MIN_TIMER_MS = rules.match.minimumRoundDurationSeconds * 1000;
 let MAX_TIMER_MS = rules.match.maximumRoundDurationSeconds * 1000;
 const TIMER_TICK_MS = 50;
@@ -73,6 +70,11 @@ let TECHNICAL_COMBO_WINDOW_MS = rules.scoring.technicalInput.windowMilliseconds;
 let MIN_ACTIVE_REMOTES = rules.voting.minimumActiveRemotes;
 let MAX_ACTIVE_REMOTES = rules.voting.maximumActiveRemotes;
 const SYSTEM_POWER_DELAY_MS = 15_000;
+const GOLDEN_ROUND_MS = 60_000;
+const GOLDEN_ROUND_POINTS_TO_WIN = 2;
+const GOLDEN_ROUND_GAMJEOMS_TO_LOSE = 2;
+const BREAK_MS_ONE_MINUTE = 35_000;
+const BREAK_MS_TWO_MINUTE = 60_000;
 const SYSTEMCTL_BIN = '/usr/bin/systemctl';
 const LSBLK_BIN = '/usr/bin/lsblk';
 const UDISKSCTL_BIN = '/usr/bin/udisksctl';
@@ -145,6 +147,28 @@ function makeKyeShi() {
   };
 }
 
+function makeGoldenRound() {
+  return {
+    active: false,
+    durationMs: GOLDEN_ROUND_MS,
+    previousScoresVoided: false,
+    superiority: null
+  };
+}
+
+function makeTieDecision() {
+  return {
+    pending: false,
+    mode: null
+  };
+}
+
+function breakDurationForRound(roundMs) {
+  const override = Number(process.env.SFTS_BREAK_MS);
+  if (Number.isFinite(override)) return Math.max(50, override);
+  return Number(roundMs) >= 120_000 ? BREAK_MS_TWO_MINUTE : BREAK_MS_ONE_MINUTE;
+}
+
 function makeSide(name, profile = {}) {
   const stateCode = String(profile?.stateCode || '').trim().toUpperCase();
   return {
@@ -171,13 +195,16 @@ function makeMatch(
     round: 1,
     configuredRoundMs: roundMs,
     timerMs: roundMs,
-    breakMs: BREAK_MS_DEFAULT,
+    breakMs: breakDurationForRound(roundMs),
+    breakTarget: 'REGULAR',
     remoteCount: MAX_ACTIVE_REMOTES,
     ruleset: deep(activeRulesMetadata),
     running: false,
     roundStarted: false,
-    phase: "ROUND", // ROUND | BREAK | MATCH_END
+    phase: "ROUND", // ROUND | BREAK | TIE_DECISION | MATCH_END
     kyeShi: makeKyeShi(),
+    goldenRound: makeGoldenRound(),
+    tieDecision: makeTieDecision(),
     red: makeSide(redName, redProfile),
     blue: makeSide(blueName, blueProfile),
     votes: {},
@@ -557,9 +584,6 @@ function configureRuntimeRules(nextRules) {
   rules = nextRules;
   activeRulesMetadata = rulesMetadata(rules);
   ROUND_MS_DEFAULT = rules.match.roundDurationSeconds * 1000;
-  BREAK_MS_DEFAULT = Number.isFinite(Number(process.env.SFTS_BREAK_MS))
-    ? Math.max(50, Number(process.env.SFTS_BREAK_MS))
-    : rules.match.breakDurationSeconds * 1000;
   MIN_TIMER_MS = rules.match.minimumRoundDurationSeconds * 1000;
   MAX_TIMER_MS = rules.match.maximumRoundDurationSeconds * 1000;
   KYESHI_LIMIT_MS = Number.isFinite(Number(process.env.SFTS_KYESHI_LIMIT_MS))
@@ -571,8 +595,8 @@ function configureRuntimeRules(nextRules) {
 
   if (typeof match === 'undefined') return;
   match.ruleset = deep(activeRulesMetadata);
-  match.breakMs = BREAK_MS_DEFAULT;
   match.configuredRoundMs = ROUND_MS_DEFAULT;
+  match.breakMs = breakDurationForRound(match.configuredRoundMs);
   if (match.phase === 'ROUND' && !match.roundStarted) match.timerMs = ROUND_MS_DEFAULT;
   match.remoteCount = Math.min(MAX_ACTIVE_REMOTES, Math.max(MIN_ACTIVE_REMOTES, match.remoteCount));
   match.kyeShi.limitMs = KYESHI_LIMIT_MS;
@@ -644,6 +668,22 @@ function restorePersistedState(snapshot) {
     ...makeKyeShi(),
     ...(match.kyeShi && typeof match.kyeShi === 'object' ? match.kyeShi : {})
   };
+  match.goldenRound = {
+    ...makeGoldenRound(),
+    ...(match.goldenRound && typeof match.goldenRound === 'object' ? match.goldenRound : {})
+  };
+  match.goldenRound.durationMs = Math.max(1_000, Number(match.goldenRound.durationMs) || GOLDEN_ROUND_MS);
+  match.goldenRound.active = Boolean(match.goldenRound.active && match.round === 4 && match.phase === 'ROUND');
+  match.tieDecision = {
+    ...makeTieDecision(),
+    ...(match.tieDecision && typeof match.tieDecision === 'object' ? match.tieDecision : {})
+  };
+  if (!['CHOOSE_METHOD', 'GOLDEN_SUPERIORITY'].includes(match.tieDecision.mode)) {
+    match.tieDecision.mode = null;
+  }
+  match.tieDecision.pending = match.phase === 'TIE_DECISION';
+  match.breakTarget = match.breakTarget === 'GOLDEN' ? 'GOLDEN' : 'REGULAR';
+  match.breakMs = breakDurationForRound(match.configuredRoundMs);
   match.kyeShi.limitMs = KYESHI_LIMIT_MS;
   match.kyeShi.running = false;
   match.kyeShi.resumeMatch = false;
@@ -1356,6 +1396,8 @@ function rulesSummary(rulePack) {
     gamJeomPointValue: rulePack.scoring.gamJeomPointValue,
     gamJeomRoundLossAt: rulePack.penalties.gamJeom.roundLossAt,
     pointGap: rulePack.decisions.pointGap,
+    unresolvedMatchTie: rulePack.decisions.unresolvedMatchTie,
+    winnerMethods: rulePack.decisions.winnerMethods,
     maximumActiveRemotes: rulePack.voting.maximumActiveRemotes,
     kyeShiLimitSeconds: rulePack.medical.kyeShi.limitSeconds,
     tournamentFormat: rulePack.tournament.format
@@ -2054,13 +2096,36 @@ function addTechnicalStat(player, basePoints) {
   if (basePoints === 3) stats.technicalHead += 1;
 }
 
+function isGoldenRound() {
+  return match.phase === 'ROUND' && match.round === 4 && match.goldenRound?.active === true;
+}
+
+function roundRecord(winner, reason) {
+  return {
+    round: match.round,
+    winner,
+    reason,
+    goldenRound: isGoldenRound(),
+    red: deep(match.red),
+    blue: deep(match.blue)
+  };
+}
+
 function checkPointGap() {
   if (match.phase !== "ROUND") return;
+  if (isGoldenRound()) {
+    if (match.red.score >= GOLDEN_ROUND_POINTS_TO_WIN) {
+      endGoldenRound('RED', 'GDP - 2 POINTS');
+    } else if (match.blue.score >= GOLDEN_ROUND_POINTS_TO_WIN) {
+      endGoldenRound('BLUE', 'GDP - 2 POINTS');
+    }
+    return;
+  }
   if (!rules.decisions.pointGap.enabled || !rules.decisions.pointGap.appliesToRounds.includes(match.round)) return;
   const diff = Math.abs(match.red.score - match.blue.score);
   if (diff >= rules.decisions.pointGap.difference) {
     const winner = match.red.score > match.blue.score ? "RED" : "BLUE";
-    endRound(winner, `${rules.decisions.pointGap.difference}-POINT GAP`);
+    endRound(winner, `PTG - ${rules.decisions.pointGap.difference}-POINT GAP`);
   }
 }
 
@@ -2086,8 +2151,12 @@ function addGamjeom(player, allowPaused = false) {
     side(opponent).score += rules.scoring.gamJeomPointValue;
     emit({ type: 'scoreSound', player: opponent, points: rules.scoring.gamJeomPointValue, source: 'gamjeom' });
   }
+  if (isGoldenRound() && penalized.gamjeom >= GOLDEN_ROUND_GAMJEOMS_TO_LOSE) {
+    endGoldenRound(opponent, 'GDP - 2 GAM-JEOMS');
+    return true;
+  }
   if (penalized.gamjeom >= rules.penalties.gamJeom.roundLossAt) {
-    endRound(opponent, `${rules.penalties.gamJeom.roundLossAt} GAM-JEOM`);
+    endRound(opponent, `ROUND GAM-JEOM LIMIT - ${rules.penalties.gamJeom.roundLossAt} GAM-JEOM`);
     return true;
   }
   checkPointGap();
@@ -2103,25 +2172,114 @@ function winnerByScore() {
 function countRoundWins() {
   const wins = { RED: 0, BLUE: 0 };
   for (const r of match.roundHistory) {
+    if (r.round > 3) continue;
     if (r.winner === 'RED') wins.RED += 1;
     if (r.winner === 'BLUE') wins.BLUE += 1;
   }
   return wins;
 }
 
+function hitCount(record, player) {
+  const stats = record[player.toLowerCase()]?.stats || {};
+  return Number(stats.plus1 || 0) + Number(stats.plus2 || 0) + Number(stats.plus3 || 0) +
+    Number(stats.technicalChest || 0) + Number(stats.technicalHead || 0);
+}
+
+function totalGamJeoms() {
+  return match.roundHistory.reduce((total, record) => ({
+    RED: total.RED + Number(record.red?.gamjeom || 0),
+    BLUE: total.BLUE + Number(record.blue?.gamjeom || 0)
+  }), { RED: 0, BLUE: 0 });
+}
+
+function beginTieDecision(mode) {
+  match.running = false;
+  match.phase = 'TIE_DECISION';
+  match.timerMs = 0;
+  timerLastAt = null;
+  match.votes = {};
+  clearAllRemoteCombinations();
+  clearLastRemoteButtons();
+  clearVoteSettleGuard();
+  match.tieDecision = { pending: true, mode };
+  state(true);
+}
+
+function startGoldenRoundBreak() {
+  if (match.phase !== 'TIE_DECISION' || match.tieDecision?.mode !== 'CHOOSE_METHOD') {
+    return { ok: false, code: 'GOLDEN_ROUND_UNAVAILABLE', message: 'Golden Round is available only for a tied match after Round 3' };
+  }
+  match.tieDecision = makeTieDecision();
+  match.breakTarget = 'GOLDEN';
+  match.breakMs = breakDurationForRound(match.configuredRoundMs);
+  match.phase = 'BREAK';
+  match.timerMs = match.breakMs;
+  setRunning(true);
+  return { ok: true };
+}
+
+function goldenRoundSuperiority(record) {
+  const redPunch = Number(record.red?.stats?.plus1 || 0) > 0;
+  const bluePunch = Number(record.blue?.stats?.plus1 || 0) > 0;
+  if (redPunch !== bluePunch) {
+    return { winner: redPunch ? 'RED' : 'BLUE', reason: 'SUP - GOLDEN ROUND PUNCH' };
+  }
+
+  const redHits = hitCount(record, 'RED');
+  const blueHits = hitCount(record, 'BLUE');
+  if (redHits !== blueHits) {
+    return { winner: redHits > blueHits ? 'RED' : 'BLUE', reason: 'SUP - GOLDEN ROUND PSS HITS' };
+  }
+
+  const wins = countRoundWins();
+  if (wins.RED !== wins.BLUE) {
+    return { winner: wins.RED > wins.BLUE ? 'RED' : 'BLUE', reason: 'SUP - ROUNDS WON' };
+  }
+
+  const gamJeoms = totalGamJeoms();
+  if (gamJeoms.RED !== gamJeoms.BLUE) {
+    return { winner: gamJeoms.RED < gamJeoms.BLUE ? 'RED' : 'BLUE', reason: 'SUP - FEWER GAM-JEOMS' };
+  }
+  return null;
+}
+
+function endGoldenRound(winner = null, reason = 'TIME 0:00') {
+  if (!isGoldenRound()) return;
+  match.running = false;
+  timerLastAt = null;
+  match.timerMs = 0;
+  const record = roundRecord(winner, reason);
+  clearAllRemoteCombinations();
+  match.votes = {};
+  match.roundHistory.push(record);
+  emit({ type: 'roundEndSound' });
+  emit({ type: 'roundEnd', record });
+
+  if (winner) {
+    finishMatch(winner, reason);
+    return;
+  }
+
+  const superiority = goldenRoundSuperiority(record);
+  match.goldenRound.superiority = superiority ? { ...superiority, automatic: true } : { automatic: false };
+  if (superiority) {
+    finishMatch(superiority.winner, superiority.reason);
+    return;
+  }
+  beginTieDecision('GOLDEN_SUPERIORITY');
+}
+
 function endRound(winner = null, reason = 'TIME 0:00') {
   if (match.phase !== 'ROUND') return;
+  if (isGoldenRound()) {
+    endGoldenRound(winner, reason);
+    return;
+  }
   match.running = false;
   timerLastAt = null;
   match.timerMs = 0;
   const actualWinner = winner || winnerByScore();
-  const record = {
-    round: match.round,
-    winner: actualWinner,
-    reason,
-    red: deep(match.red),
-    blue: deep(match.blue)
-  };
+  const record = roundRecord(actualWinner, reason);
   clearAllRemoteCombinations();
   match.roundHistory.push(record);
   match.votes = {};
@@ -2131,19 +2289,21 @@ function endRound(winner = null, reason = 'TIME 0:00') {
 
   const wins = countRoundWins();
   if (wins.RED >= 2) {
-    finishMatch('RED', 'WON 2 ROUNDS');
+    finishMatch('RED', 'PTF - WON 2 ROUNDS');
     return;
   }
   if (wins.BLUE >= 2) {
-    finishMatch('BLUE', 'WON 2 ROUNDS');
+    finishMatch('BLUE', 'PTF - WON 2 ROUNDS');
     return;
   }
   if (match.round >= 3) {
-    finishMatch(actualWinner, 'ROUND 3 RESULT');
+    beginTieDecision('CHOOSE_METHOD');
     return;
   }
 
   match.phase = 'BREAK';
+  match.breakTarget = 'REGULAR';
+  match.breakMs = breakDurationForRound(match.configuredRoundMs);
   match.timerMs = match.breakMs;
   setRunning(true);
   state(true);
@@ -2154,6 +2314,9 @@ function finishMatch(winner, reason) {
   match.roundStarted = false;
   timerLastAt = null;
   match.phase = 'MATCH_END';
+  match.breakTarget = 'REGULAR';
+  match.tieDecision = makeTieDecision();
+  match.goldenRound.active = false;
   match.matchWinner = winner;
   match.matchReason = reason;
   completeTournamentBout(winner);
@@ -2175,11 +2338,70 @@ function finishMatch(winner, reason) {
   state(true);
 }
 
+function decideWooSeGirok(winner) {
+  if (!validPlayer(winner)) {
+    return { ok: false, code: 'INVALID_WINNER', message: 'Winner must be RED or BLUE' };
+  }
+  if (match.phase !== 'TIE_DECISION' || match.tieDecision?.mode !== 'CHOOSE_METHOD') {
+    return { ok: false, code: 'WOO_SE_GIROK_UNAVAILABLE', message: 'Woo-se-girok is available only for a tied match after Round 3' };
+  }
+  finishMatch(winner, 'SUP - WOO-SE-GIROK');
+  return { ok: true };
+}
+
+function decideGoldenRoundSuperiority(winner) {
+  if (!validPlayer(winner)) {
+    return { ok: false, code: 'INVALID_WINNER', message: 'Winner must be RED or BLUE' };
+  }
+  if (match.phase !== 'TIE_DECISION' || match.tieDecision?.mode !== 'GOLDEN_SUPERIORITY') {
+    return { ok: false, code: 'SUPERIORITY_UNAVAILABLE', message: 'A manual superiority decision is not currently required' };
+  }
+  match.goldenRound.superiority = { winner, reason: 'SUP - GOLDEN ROUND REFEREE DECISION', automatic: false };
+  finishMatch(winner, 'SUP - GOLDEN ROUND REFEREE DECISION');
+  return { ok: true };
+}
+
+const MANUAL_MATCH_DECISIONS = new Set(['RSC', 'WDR', 'DSQ', 'PUN', 'DQB']);
+
+function declareManualMatchDecision(winner, decision) {
+  if (!validPlayer(winner) || !MANUAL_MATCH_DECISIONS.has(decision)) {
+    return { ok: false, code: 'INVALID_MATCH_DECISION', message: 'Choose a valid winner and match decision' };
+  }
+  if (match.phase === 'MATCH_END') {
+    return { ok: false, code: 'MATCH_ALREADY_ENDED', message: 'The match has already ended' };
+  }
+  if (match.phase === 'ROUND') {
+    syncTimer();
+    if (match.phase !== 'ROUND') {
+      return { ok: false, code: 'MATCH_STATE_CHANGED', message: 'The match state changed while recording the decision' };
+    }
+    match.running = false;
+    timerLastAt = null;
+    match.roundHistory.push(roundRecord(winner, `${decision} - REFEREE DECLARATION`));
+  }
+  match.votes = {};
+  clearAllRemoteCombinations();
+  clearLastRemoteButtons();
+  clearVoteSettleGuard();
+  finishMatch(winner, `${decision} - REFEREE DECLARATION`);
+  return { ok: true };
+}
+
 function startNextRound() {
   if (match.phase !== 'BREAK') return;
-  match.round += 1;
+  const goldenRound = match.breakTarget === 'GOLDEN';
+  match.round = goldenRound ? 4 : match.round + 1;
   match.phase = 'ROUND';
-  match.timerMs = match.configuredRoundMs;
+  match.goldenRound.active = goldenRound;
+  if (goldenRound) {
+    match.goldenRound.previousScoresVoided = true;
+    match.goldenRound.superiority = null;
+    for (const record of match.roundHistory) {
+      if (record.round <= 3) record.voidedForGoldenRound = true;
+    }
+  }
+  match.breakTarget = 'REGULAR';
+  match.timerMs = goldenRound ? match.goldenRound.durationMs : match.configuredRoundMs;
   match.running = false;
   match.roundStarted = false;
   timerLastAt = null;
@@ -2757,6 +2979,30 @@ wss.on('connection', ws => {
         state(true);
         return;
       }
+      if (msg.action === 'startGoldenRound') {
+        const result = startGoldenRoundBreak();
+        if (!result.ok) sendError(ws, result.code, result.message);
+        state(true);
+        return;
+      }
+      if (msg.action === 'decideWooSeGirok') {
+        const result = decideWooSeGirok(String(msg.player || '').toUpperCase());
+        if (!result.ok) sendError(ws, result.code, result.message);
+        return;
+      }
+      if (msg.action === 'decideGoldenRoundSuperiority') {
+        const result = decideGoldenRoundSuperiority(String(msg.player || '').toUpperCase());
+        if (!result.ok) sendError(ws, result.code, result.message);
+        return;
+      }
+      if (msg.action === 'manualMatchDecision') {
+        const result = declareManualMatchDecision(
+          String(msg.player || '').toUpperCase(),
+          String(msg.decision || '').toUpperCase()
+        );
+        if (!result.ok) sendError(ws, result.code, result.message);
+        return;
+      }
 
       if (msg.action === 'playPause' && (match.phase === 'ROUND' || match.phase === 'BREAK')) {
         setRunning(!match.running);
@@ -2765,14 +3011,22 @@ wss.on('connection', ws => {
         const rawMs = Number(msg.ms);
         const ms = validInteger(rawMs) ? Math.min(MAX_TIMER_MS, Math.max(MIN_TIMER_MS, rawMs)) : ROUND_MS_DEFAULT;
         if (match.phase === 'ROUND') setRunning(false);
-        match.configuredRoundMs = ms;
-        if (match.phase === 'ROUND') {
+        if (match.phase === 'ROUND' && match.goldenRound.active) {
+          match.goldenRound.durationMs = ms;
           match.timerMs = ms;
+        } else {
+          match.configuredRoundMs = ms;
+          match.breakMs = breakDurationForRound(ms);
+          if (match.phase === 'ROUND') match.timerMs = ms;
         }
       }
       if (msg.action === 'resetRoundTimer' && match.phase === 'ROUND') {
         setRunning(false);
-        if (match.phase === 'ROUND') match.timerMs = match.configuredRoundMs;
+        if (match.phase === 'ROUND') {
+          match.timerMs = match.goldenRound.active
+            ? match.goldenRound.durationMs
+            : match.configuredRoundMs;
+        }
       }
       if (msg.action === 'playerSettings') {
         const result = updatePlayerSettings(msg.players);
@@ -2827,8 +3081,10 @@ wss.on('connection', ws => {
         const value = validInteger(parsed) ? Math.max(0, Math.min(rules.penalties.gamJeom.roundLossAt, parsed)) : 0;
         if (msg.player === 'RED') match.red.gamjeom = value;
         if (msg.player === 'BLUE') match.blue.gamjeom = value;
-        if (value >= rules.penalties.gamJeom.roundLossAt) {
-          endRound(other(msg.player), `${rules.penalties.gamJeom.roundLossAt} GAM-JEOM`);
+        if (isGoldenRound() && value >= GOLDEN_ROUND_GAMJEOMS_TO_LOSE) {
+          endGoldenRound(other(msg.player), 'GDP - 2 GAM-JEOMS');
+        } else if (value >= rules.penalties.gamJeom.roundLossAt) {
+          endRound(other(msg.player), `ROUND GAM-JEOM LIMIT - ${rules.penalties.gamJeom.roundLossAt} GAM-JEOM`);
         }
       }
       if (msg.action === 'point' && !addPoint(msg.player, Number(msg.points), 'manual', true, true)) {

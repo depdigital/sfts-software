@@ -19,13 +19,24 @@ const SUPPORTED_CAPABILITIES = new Set([
   'MAJORITY_VOTE',
   'TECHNICAL_COMBINATION',
   'KYESHI_MANUAL_DECISION',
+  'GOLDEN_ROUND',
+  'SUPERIORITY_DECISION',
+  'MANUAL_MATCH_DECISIONS',
+  'DYNAMIC_BREAK_DURATION',
   'SINGLE_ELIMINATION'
 ]);
 const SUPPORTED_WINNER_METHODS = new Set([
   'FINAL_SCORE',
   'POINT_GAP',
   'ROUND_GAMJEOM_LIMIT',
-  'KYESHI_MANUAL_DECISION'
+  'KYESHI_MANUAL_DECISION',
+  'GOLDEN_POINTS',
+  'SUPERIORITY',
+  'REFEREE_STOPS_CONTEST',
+  'WITHDRAWAL',
+  'DISQUALIFICATION',
+  'PUNITIVE_DECLARATION',
+  'UNSPORTSMANLIKE_DISQUALIFICATION'
 ]);
 
 function fail(message) {
@@ -167,8 +178,8 @@ export function validateRules(input) {
   requireInteger(pointGap.difference, 'decisions.pointGap.difference', { minimum: 1 });
   requireExactArray(pointGap.appliesToRounds, [1, 2, 3], 'decisions.pointGap.appliesToRounds');
   if (decisions.roundTie?.type !== 'DRAW') fail('decisions.roundTie.type must be DRAW');
-  if (decisions.unresolvedMatchTie?.type !== 'MANUAL_TOURNAMENT_RESOLUTION') {
-    fail('decisions.unresolvedMatchTie.type must be MANUAL_TOURNAMENT_RESOLUTION');
+  if (!['MANUAL_TOURNAMENT_RESOLUTION', 'GOLDEN_OR_WOO_SE_GIROK'].includes(decisions.unresolvedMatchTie?.type)) {
+    fail('decisions.unresolvedMatchTie.type must be MANUAL_TOURNAMENT_RESOLUTION or GOLDEN_OR_WOO_SE_GIROK');
   }
   const winnerMethods = requireStringArray(decisions.winnerMethods, 'decisions.winnerMethods');
   if (!winnerMethods.includes('FINAL_SCORE') || winnerMethods.some(method => !SUPPORTED_WINNER_METHODS.has(method))) {

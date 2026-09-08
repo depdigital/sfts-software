@@ -33,7 +33,7 @@ function isMatch(value) {
     Number.isFinite(value.configuredRoundMs) && value.configuredRoundMs >= 0 &&
     Number.isFinite(value.timerMs) && value.timerMs >= 0 &&
     Number.isFinite(value.breakMs) && value.breakMs >= 0 && typeof value.running === 'boolean' &&
-    ['ROUND', 'BREAK', 'MATCH_END'].includes(value.phase) && isSide(value.red) && isSide(value.blue) &&
+    ['ROUND', 'BREAK', 'TIE_DECISION', 'MATCH_END'].includes(value.phase) && isSide(value.red) && isSide(value.blue) &&
     isObject(value.votes) && Array.isArray(value.roundHistory) &&
     (value.matchWinner === null || value.matchWinner === 'RED' || value.matchWinner === 'BLUE') &&
     typeof value.matchReason === 'string' && isObject(value.test) &&

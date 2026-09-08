@@ -219,6 +219,7 @@
         <button onclick="openArenaNumber()">ARENA NUMBER</button>
         <button onclick="openHistory()">MATCH HISTORY</button>
         <button onclick="openCornerRefereeHistory()">CORNER REFEREE HISTORY</button>
+        <button onclick="openMatchDecision()">MATCH DECISION</button>
         <button onclick="openTestMode()">REMOTE SETTINGS</button>
         <button onclick="openRules()">RULES</button>
         <button class="powerActionButton rebootButton" onclick="openPowerAction('reboot')">REBOOT</button>
@@ -602,10 +603,47 @@
       </div>
     </section>
 
+    <section id="tieDecisionModal" class="overlay hidden" aria-live="assertive">
+      <div class="modalCard tieDecisionModal">
+        <h2 id="tieDecisionTitle">ROUND 3 TIED</h2>
+        <p id="tieDecisionMessage">SELECT THE MATCH DECISION</p>
+        <div id="tieDecisionMethodActions" class="tieDecisionActions">
+          <button class="goldenRoundButton" onclick="startGoldenRound()">GOLDEN ROUND</button>
+          <button onclick="showWooSeGirokChoices()">WOO-SE-GIROK</button>
+        </div>
+        <div id="tieDecisionWinnerActions" class="tieDecisionActions hidden">
+          <button id="tieDecisionRedButton" class="redDecisionButton" onclick="decideTieWinner('RED')">HONG WIN</button>
+          <button id="tieDecisionBlueButton" class="blueDecisionButton" onclick="decideTieWinner('BLUE')">CHUNG WIN</button>
+          <button id="tieDecisionBackButton" onclick="showTieMethods()">BACK</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="matchDecisionModal" class="overlay hidden">
+      <div class="modalCard tieDecisionModal">
+        <h2>MATCH DECISION</h2>
+        <p id="manualDecisionMessage">SELECT THE REFEREE DECISION</p>
+        <div id="manualDecisionOptions" class="decisionCodeActions">
+          <button onclick="selectManualDecision('RSC')">RSC</button>
+          <button onclick="selectManualDecision('WDR')">WDR</button>
+          <button onclick="selectManualDecision('DSQ')">DSQ</button>
+          <button onclick="selectManualDecision('PUN')">PUN</button>
+          <button onclick="selectManualDecision('DQB')">DQB</button>
+        </div>
+        <div id="manualDecisionWinnerActions" class="tieDecisionActions hidden">
+          <button id="manualDecisionRedButton" class="redDecisionButton" onclick="submitManualDecision('RED')">HONG WIN</button>
+          <button id="manualDecisionBlueButton" class="blueDecisionButton" onclick="submitManualDecision('BLUE')">CHUNG WIN</button>
+          <button onclick="closeMatchDecision()">CANCEL</button>
+        </div>
+        <button id="manualDecisionCloseButton" onclick="closeMatchDecision()">CLOSE</button>
+      </div>
+    </section>
+
     <section id="winnerSlide" class="winnerSlide hidden">
       <img src="/assets/sfts-logo.png" class="winnerLogo" alt="SFTS" />
       <div id="winnerNameText" class="winnerNameText">PLAYER NAME</div>
       <div class="winnerWord">WINNER</div>
+      <div id="winnerReasonText" class="winnerReasonText"></div>
       <button class="newMatchButton" onclick="startNewMatch()">
         NEW MATCH
       </button>

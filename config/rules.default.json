@@ -18,6 +18,10 @@
       "MAJORITY_VOTE",
       "TECHNICAL_COMBINATION",
       "KYESHI_MANUAL_DECISION",
+      "GOLDEN_ROUND",
+      "SUPERIORITY_DECISION",
+      "MANUAL_MATCH_DECISIONS",
+      "DYNAMIC_BREAK_DURATION",
       "SINGLE_ELIMINATION"
     ]
   },
@@ -67,13 +71,20 @@
       "type": "DRAW"
     },
     "unresolvedMatchTie": {
-      "type": "MANUAL_TOURNAMENT_RESOLUTION"
+      "type": "GOLDEN_OR_WOO_SE_GIROK"
     },
     "winnerMethods": [
       "FINAL_SCORE",
       "POINT_GAP",
       "ROUND_GAMJEOM_LIMIT",
-      "KYESHI_MANUAL_DECISION"
+      "KYESHI_MANUAL_DECISION",
+      "GOLDEN_POINTS",
+      "SUPERIORITY",
+      "REFEREE_STOPS_CONTEST",
+      "WITHDRAWAL",
+      "DISQUALIFICATION",
+      "PUNITIVE_DECLARATION",
+      "UNSPORTSMANLIKE_DISQUALIFICATION"
     ]
   },
   "voting": {

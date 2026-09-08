@@ -31,6 +31,9 @@ let displayedRemoteScoreValues = { RED: null, BLUE: null };
 let remoteScoreTransitionTimers = { RED: null, BLUE: null };
 let displayedRemoteScoreRevisions = { RED: -1, BLUE: -1 };
 let recoveryNoticeShown = false;
+let displayedTieDecisionMode = null;
+let tieDecisionView = "METHOD";
+let manualDecisionCode = "";
 const REMOTE_SCORE_TRANSITION_MS = 300;
 
 const $ = (id) => document.getElementById(id);
@@ -225,10 +228,20 @@ function renderState(match) {
   $("arenaNo").textContent = currentArenaNumber || "—";
   $("timer").textContent = formatTime(match.timerMs, match.phase === "ROUND");
   $("roundText").textContent =
-    match.phase === "MATCH_END" ? "MATCH END" : `ROUND ${match.round}`;
+    match.phase === "MATCH_END"
+      ? "MATCH END"
+      : match.phase === "TIE_DECISION"
+        ? "TIE DECISION"
+        : match.phase === "BREAK" && match.breakTarget === "GOLDEN"
+          ? "GOLDEN ROUND BREAK"
+          : match.goldenRound?.active
+            ? "GOLDEN ROUND"
+            : `ROUND ${match.round}`;
   $("playBtn").textContent = match.running ? "❚❚ PAUSE" : "▶ PLAY";
   renderKyeShi(match.kyeShi, match);
   renderKyeShiWinnerButtons(match);
+  renderTieDecision(match);
+  if (match.phase === "MATCH_END") closeMatchDecision();
   const activeRemoteCount = Math.min(
     4,
     Math.max(1, Number(match.remoteCount) || 4),
@@ -395,8 +408,72 @@ function declareWinner(player) {
     send({ type: "host", action: "declareKyeShiWinner", player });
   }
 }
+function startGoldenRound() {
+  send({ type: "host", action: "startGoldenRound" });
+}
+function showWooSeGirokChoices() {
+  tieDecisionView = "WOO";
+  renderTieDecision(lastState);
+}
+function showTieMethods() {
+  tieDecisionView = "METHOD";
+  renderTieDecision(lastState);
+}
+function decideTieWinner(player) {
+  if (!lastState) return;
+  const action = lastState.tieDecision?.mode === "GOLDEN_SUPERIORITY"
+    ? "decideGoldenRoundSuperiority"
+    : "decideWooSeGirok";
+  const name = displayPlayerName(lastState, player);
+  if (confirm(`Declare ${name} the match winner?`)) {
+    send({ type: "host", action, player });
+  }
+}
 function manualPoint(player, points) {
   send({ type: "host", action: "point", player, points });
+}
+
+function displayPlayerName(match, player) {
+  const side = player === "RED" ? match.red : match.blue;
+  return side?.playerName || side?.name || player;
+}
+
+function renderTieDecision(match) {
+  const modal = $("tieDecisionModal");
+  if (!modal) return;
+  if (match?.phase !== "TIE_DECISION") {
+    modal.classList.add("hidden");
+    displayedTieDecisionMode = null;
+    tieDecisionView = "METHOD";
+    return;
+  }
+
+  const mode = match.tieDecision?.mode || "CHOOSE_METHOD";
+  if (mode !== displayedTieDecisionMode) {
+    displayedTieDecisionMode = mode;
+    tieDecisionView = "METHOD";
+  }
+  const redName = displayPlayerName(match, "RED");
+  const blueName = displayPlayerName(match, "BLUE");
+  $("tieDecisionRedButton").textContent = `${redName} WIN`;
+  $("tieDecisionBlueButton").textContent = `${blueName} WIN`;
+
+  const choosingGoldenSuperiority = mode === "GOLDEN_SUPERIORITY";
+  const showingWinners = choosingGoldenSuperiority || tieDecisionView === "WOO";
+  $("tieDecisionMethodActions").classList.toggle("hidden", showingWinners);
+  $("tieDecisionWinnerActions").classList.toggle("hidden", !showingWinners);
+  $("tieDecisionBackButton").classList.toggle("hidden", choosingGoldenSuperiority);
+  $("tieDecisionTitle").textContent = choosingGoldenSuperiority
+    ? "GOLDEN ROUND SUPERIORITY"
+    : tieDecisionView === "WOO"
+      ? "WOO-SE-GIROK"
+      : "ROUND 3 TIED";
+  $("tieDecisionMessage").textContent = choosingGoldenSuperiority
+    ? "REFEREE DECISION REQUIRED"
+    : tieDecisionView === "WOO"
+      ? "SELECT THE MATCH WINNER"
+      : "SELECT GOLDEN ROUND OR WOO-SE-GIROK";
+  modal.classList.remove("hidden");
 }
 function manualConfiguredPoint(player, buttonId) {
   const button = $(buttonId);
@@ -435,6 +512,40 @@ function openSettings() {
 }
 function closeSettings() {
   $("settingsModal").classList.add("hidden");
+}
+function openMatchDecision() {
+  if (!lastState || lastState.phase === "MATCH_END") {
+    toast("MATCH DECISION IS NOT AVAILABLE");
+    return;
+  }
+  closeSettings();
+  manualDecisionCode = "";
+  $("manualDecisionMessage").textContent = "SELECT THE REFEREE DECISION";
+  $("manualDecisionOptions").classList.remove("hidden");
+  $("manualDecisionWinnerActions").classList.add("hidden");
+  $("manualDecisionCloseButton").classList.remove("hidden");
+  $("matchDecisionModal").classList.remove("hidden");
+}
+function closeMatchDecision() {
+  manualDecisionCode = "";
+  $("matchDecisionModal").classList.add("hidden");
+}
+function selectManualDecision(code) {
+  if (!lastState) return;
+  manualDecisionCode = code;
+  $("manualDecisionMessage").textContent = `${code} - SELECT THE WINNER`;
+  $("manualDecisionRedButton").textContent = `${displayPlayerName(lastState, "RED")} WIN`;
+  $("manualDecisionBlueButton").textContent = `${displayPlayerName(lastState, "BLUE")} WIN`;
+  $("manualDecisionOptions").classList.add("hidden");
+  $("manualDecisionWinnerActions").classList.remove("hidden");
+  $("manualDecisionCloseButton").classList.add("hidden");
+}
+function submitManualDecision(player) {
+  if (!manualDecisionCode || !lastState) return;
+  const name = displayPlayerName(lastState, player);
+  if (!confirm(`Declare ${name} the winner by ${manualDecisionCode}?`)) return;
+  send({ type: "host", action: "manualMatchDecision", player, decision: manualDecisionCode });
+  closeMatchDecision();
 }
 function openArenaNumber() {
   closeSettings();
@@ -1227,6 +1338,7 @@ function showWinnerSlide(winner, match) {
   const side = winner === "RED" ? match.red : match.blue;
   const name = side.playerName || side.name;
   $("winnerNameText").textContent = name;
+  $("winnerReasonText").textContent = match.matchReason || "";
   $("winnerSlide").classList.remove("redWinner", "blueWinner", "hidden");
   $("winnerSlide").classList.add(winner === "RED" ? "redWinner" : "blueWinner");
 }
@@ -1234,6 +1346,7 @@ function startNewMatch() {
   send({ type: "host", action: "newMatch" });
   $("winnerSlide").classList.add("hidden");
   $("roundOverlay").classList.add("hidden");
+  closeMatchDecision();
 }
 
 function openTestMode() {
@@ -1425,6 +1538,10 @@ window.startKyeShi = startKyeShi;
 window.toggleKyeShi = toggleKyeShi;
 window.endKyeShi = endKyeShi;
 window.declareWinner = declareWinner;
+window.startGoldenRound = startGoldenRound;
+window.showWooSeGirokChoices = showWooSeGirokChoices;
+window.showTieMethods = showTieMethods;
+window.decideTieWinner = decideTieWinner;
 window.manualPoint = manualPoint;
 window.manualConfiguredPoint = manualConfiguredPoint;
 window.manualHeadPoint = manualHeadPoint;
@@ -1433,6 +1550,10 @@ window.editScore = editScore;
 window.editGam = editGam;
 window.openSettings = openSettings;
 window.closeSettings = closeSettings;
+window.openMatchDecision = openMatchDecision;
+window.closeMatchDecision = closeMatchDecision;
+window.selectManualDecision = selectManualDecision;
+window.submitManualDecision = submitManualDecision;
 window.openArenaNumber = openArenaNumber;
 window.closeArenaNumber = closeArenaNumber;
 window.saveArenaNumber = saveArenaNumber;

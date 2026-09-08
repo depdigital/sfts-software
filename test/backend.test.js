@@ -605,18 +605,57 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
         message.match.phase === 'ROUND' && message.match.round === round + 1);
     }
   }
-  await waitForMessage(host, message => message.type === 'matchEnd' && message.winner === null);
   const tied = await waitForMessage(host, message => (
-    message.type === 'state' &&
-    message.tournament.schedule.find(bout => bout.boutNo === 2)?.status === 'TIE_PENDING'
+    message.type === 'state' && message.match.phase === 'TIE_DECISION' &&
+    message.match.tieDecision?.mode === 'CHOOSE_METHOD'
   ));
+  assert.equal(tied.tournament.schedule.find(bout => bout.boutNo === 2).status, 'IN_PROGRESS');
   assert.equal(tied.tournament.schedule.find(bout => bout.boutNo === 4).status, 'PENDING');
-  host.send(JSON.stringify({ type: 'host', action: 'resolveTie', boutNo: 2, winner: 'BLUE' }));
+  host.send(JSON.stringify({ type: 'host', action: 'decideWooSeGirok', player: 'BLUE' }));
+  await waitForMessage(host, message => message.type === 'matchEnd' && message.winner === 'BLUE' && message.reason === 'SUP - WOO-SE-GIROK');
   const tieResolved = await waitForMessage(host, message => (
     message.type === 'state' &&
     message.tournament.schedule.find(bout => bout.boutNo === 2)?.status === 'COMPLETED'
   ));
   assert.equal(tieResolved.tournament.schedule.find(bout => bout.boutNo === 2).winnerName, initialBoutTwo.bluePlayerName);
+
+  host.send(JSON.stringify({ type: 'host', action: 'resetMatch' }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'ROUND' && message.match.round === 1);
+  host.messages.length = 0;
+  for (let round = 1; round <= 3; round += 1) {
+    host.send(JSON.stringify({ type: 'host', action: 'playPause' }));
+    await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'ROUND' && message.match.running);
+    host.send(JSON.stringify({ type: 'host', action: 'editScore', player: 'RED', value: 1 }));
+    host.send(JSON.stringify({ type: 'host', action: 'editScore', player: 'BLUE', value: 1 }));
+    await waitForMessage(host, message => message.type === 'roundEnd' && message.record.round === round && message.record.winner === null);
+    if (round < 3) {
+      await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'ROUND' && message.match.round === round + 1);
+    }
+  }
+  await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'TIE_DECISION');
+  host.send(JSON.stringify({ type: 'host', action: 'startGoldenRound' }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'BREAK' && message.match.breakTarget === 'GOLDEN');
+  const goldenRound = await waitForMessage(host, message => (
+    message.type === 'state' && message.match.phase === 'ROUND' && message.match.round === 4 && message.match.goldenRound?.active
+  ));
+  assert.ok(goldenRound.match.roundHistory.slice(0, 3).every(record => record.voidedForGoldenRound));
+  host.send(JSON.stringify({ type: 'host', action: 'setTime', ms: 1000 }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.round === 4 && message.match.timerMs === 1000);
+  host.send(JSON.stringify({ type: 'host', action: 'playPause' }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.round === 4 && message.match.running);
+  host.send(JSON.stringify({ type: 'host', action: 'editScore', player: 'RED', value: 2 }));
+  const goldenWinner = await waitForMessage(host, message => (
+    message.type === 'matchEnd' && message.winner === 'RED' && message.reason === 'GDP - 2 POINTS'
+  ));
+  assert.equal(goldenWinner.match.roundHistory.at(-1).goldenRound, true);
+
+  host.send(JSON.stringify({ type: 'host', action: 'resetMatch' }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'ROUND' && message.match.round === 1);
+  host.send(JSON.stringify({ type: 'host', action: 'manualMatchDecision', player: 'BLUE', decision: 'RSC' }));
+  await waitForMessage(host, message => (
+    message.type === 'matchEnd' && message.winner === 'BLUE' && message.reason === 'RSC - REFEREE DECLARATION'
+  ));
+
   remote.close();
   const disconnectedState = await waitForMessage(host, message => (
     message.type === 'state' && message.remotes?.find(remoteStatus => (
@@ -736,6 +775,9 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(html, /id="summaryRedTechnicalHead"/);
   assert.match(html, /id="summaryBlueTechnicalChest"/);
   assert.match(html, /id="summaryBlueTechnicalHead"/);
+  assert.match(html, /id="tieDecisionModal"/);
+  assert.match(html, /onclick="startGoldenRound\(\)"/);
+  assert.match(html, /id="matchDecisionModal"/);
   assert.match(html, /id="screensaver"/);
   assert.match(html, /src="\/assets\/sfts-logo\.png"/);
   assert.match(html, /STRIKE FORCE TAEKWONDO SCORING/);
@@ -771,6 +813,8 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(jsText, /ws\.onclose/);
   assert.match(jsText, /reconnectDelay/);
   assert.match(jsText, /renderRemoteStatuses/);
+  assert.match(jsText, /renderTieDecision\(match\)/);
+  assert.match(jsText, /decideGoldenRoundSuperiority/);
   assert.match(jsText, /v\?\.button \|\| "—"/);
   assert.match(jsText, /match\.phase === "ROUND" && match\.running === true/);
   assert.match(jsText, /matchClockRunning/);

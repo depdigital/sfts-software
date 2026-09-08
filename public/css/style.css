@@ -673,6 +673,32 @@ button {
   color: #fff;
   font-weight: 900;
 }
+.tieDecisionModal {
+  width: min(620px, 92vw);
+}
+.tieDecisionModal p {
+  color: #c8d2e4;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+.tieDecisionActions,
+.decisionCodeActions {
+  display: grid;
+  gap: 10px;
+  margin: 18px 0;
+}
+.decisionCodeActions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.tieDecisionModal .goldenRoundButton {
+  background: #9b6c12;
+}
+.tieDecisionModal .redDecisionButton {
+  background: #b51d3b;
+}
+.tieDecisionModal .blueDecisionButton {
+  background: #1e4d91;
+}
 .smallModal {
   width: min(440px, 92vw);
 }
@@ -1095,6 +1121,13 @@ button {
   margin-top: 14px;
   font-size: clamp(44px, 6vw, 90px);
   font-weight: 300;
+}
+.winnerReasonText {
+  margin-top: 14px;
+  max-width: min(820px, 88vw);
+  font-size: clamp(18px, 2vw, 34px);
+  font-weight: 800;
+  letter-spacing: 0.06em;
 }
 .newMatchButton {
   margin-top: 40px;
