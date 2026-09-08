@@ -30,6 +30,7 @@ let displayedRemoteScoreHighlights = { RED: [], BLUE: [] };
 let displayedRemoteScoreValues = { RED: null, BLUE: null };
 let remoteScoreTransitionTimers = { RED: null, BLUE: null };
 let displayedRemoteScoreRevisions = { RED: -1, BLUE: -1 };
+let recoveryNoticeShown = false;
 const REMOTE_SCORE_TRANSITION_MS = 300;
 
 const $ = (id) => document.getElementById(id);
@@ -56,6 +57,10 @@ function connectSocket() {
       if (msg.role === "host") hostToken = msg.hostToken || "";
     }
     if (msg.type === "state") {
+      if (msg.recoveredFromUnexpectedShutdown === true && !recoveryNoticeShown) {
+        recoveryNoticeShown = true;
+        toast("RECOVERED AFTER UNEXPECTED SHUTDOWN - VERIFY MATCH STATE");
+      }
       lastState = msg.match;
       lastRemoteButtons = Array.isArray(msg.remoteButtons)
         ? msg.remoteButtons

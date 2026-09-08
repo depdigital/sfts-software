@@ -546,6 +546,8 @@ let kyeShiLastAt = null;
 let lastStateAt = 0;
 let persistenceReady = false;
 let lastTimerPersistAt = 0;
+let persistenceFlushChain = Promise.resolve();
+let recoveredFromUnexpectedShutdown = false;
 let voteSettleGuard = null;
 let pendingSystemPower = null;
 
@@ -586,7 +588,7 @@ function scoringRulesState() {
   };
 }
 
-function persistenceSnapshot() {
+function persistenceSnapshot({ cleanShutdown = false } = {}) {
   const savedMatch = deep(match);
   savedMatch.running = false;
   if (savedMatch.kyeShi) {
@@ -598,6 +600,7 @@ function persistenceSnapshot() {
   return {
     version: 1,
     savedAt: new Date().toISOString(),
+    cleanShutdown,
     arenaNumber,
     ruleset: deep(activeRulesMetadata),
     match: savedMatch,
@@ -606,9 +609,21 @@ function persistenceSnapshot() {
   };
 }
 
-function persistState() {
+function flushPersistedState(snapshot) {
+  persistenceFlushChain = persistenceFlushChain
+    .catch(() => {})
+    .then(() => persistence.flush(snapshot))
+    .catch(error => {
+      console.error(`Could not flush saved state: ${error.message}`);
+    });
+  return persistenceFlushChain;
+}
+
+function persistState(immediate = false) {
   if (!persistenceReady) return;
-  persistence.schedule(persistenceSnapshot());
+  const snapshot = persistenceSnapshot();
+  if (immediate) void flushPersistedState(snapshot);
+  else persistence.schedule(snapshot);
   lastTimerPersistAt = Date.now();
 }
 
@@ -660,10 +675,13 @@ try {
 
 const persistedState = await persistence.load();
 if (persistedState) {
+  recoveredFromUnexpectedShutdown = persistedState.snapshot.cleanShutdown !== true;
   restorePersistedState(persistedState.snapshot);
   console.log(`Restored saved state from ${persistedState.source} snapshot`);
 }
 persistenceReady = true;
+// Mark the running server as unclean until it reaches a deliberate shutdown.
+await flushPersistedState(persistenceSnapshot());
 function sendText(ws, text, label = 'send') {
   if (!ws || ws.readyState !== 1) return false;
   if (ws.bufferedAmount > MAX_BUFFERED_BYTES) {
@@ -687,6 +705,7 @@ function send(ws, message) {
 function fullState() {
   return {
     type: "state",
+    recoveredFromUnexpectedShutdown,
     arenaNumber,
     remoteButtons: [1, 2, 3, 4].map(corner => lastRemoteButtons.get(corner) || null),
     remoteScoreHighlights: deep(remoteScoreHighlights),
@@ -722,8 +741,8 @@ function remoteState(ws) {
     votes: deep(match.votes)
   };
 }
-function state(persist = false) {
-  if (persist) persistState();
+function state(persist = false, immediate = persist) {
+  if (persist) persistState(immediate);
   let text = null;
   for (const ws of wss.clients) {
     if (ws.role === 'remote') sendText(ws, JSON.stringify(remoteState(ws)), 'remote state broadcast');
@@ -780,7 +799,7 @@ async function executeSystemPower(request) {
     // Flush before asking the OS to power off so the fresh match counter and
     // empty history are the state restored on the next boot.
     try {
-      await persistence.flush(persistenceSnapshot());
+      await flushPersistedState(persistenceSnapshot({ cleanShutdown: true }));
     } catch (error) {
       console.error(`Could not flush reset state before shutdown: ${error.message}`);
     }
@@ -2990,7 +3009,7 @@ async function shutdown(signal) {
     pendingSystemPower = null;
   }
   try {
-    await persistence.flush(persistenceSnapshot());
+    await flushPersistedState(persistenceSnapshot({ cleanShutdown: true }));
   } catch (error) {
     console.error(`Could not flush saved state during shutdown: ${error.message}`);
   }
