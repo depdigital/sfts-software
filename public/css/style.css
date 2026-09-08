@@ -334,14 +334,14 @@ button {
   transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, color 160ms ease;
 }
 .cornerRefereeScore.active {
-  border-color: rgba(150, 255, 175, 0.95);
-  background: #54f58a;
-  color: #061b0d;
-  box-shadow: 0 0 10px rgba(80, 255, 125, 0.95), 0 0 18px rgba(80, 255, 125, 0.65);
+  border-color: rgba(255, 246, 214, 0.9);
+  background: #f1e6c8;
+  color: #252525;
+  box-shadow: 0 0 8px rgba(241, 230, 200, 0.55), 0 0 14px rgba(241, 230, 200, 0.35);
 }
 .cornerRefereeIcon.active {
   opacity: 1;
-  filter: brightness(0) saturate(100%) invert(75%) sepia(84%) saturate(700%) hue-rotate(78deg) brightness(103%) contrast(104%) drop-shadow(0 0 12px rgba(80, 255, 125, 0.95));
+  filter: brightness(0) saturate(100%) invert(88%) sepia(16%) saturate(438%) hue-rotate(358deg) brightness(104%) contrast(92%) drop-shadow(0 0 10px rgba(241, 230, 200, 0.55));
   transform: scale(1.08);
 }
 .redSide {
