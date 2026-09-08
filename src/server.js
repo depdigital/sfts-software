@@ -750,9 +750,41 @@ function powerActionName(action) {
   return normalized === 'reboot' || normalized === 'shutdown' ? normalized : '';
 }
 
-function executeSystemPower(request) {
+function resetMatchSessionForOrganicShutdown() {
+  const remoteCount = match.remoteCount;
+  const redProfile = deep(match.red);
+  const blueProfile = deep(match.blue);
+  match = makeMatch(
+    1,
+    match.red.name,
+    match.blue.name,
+    match.configuredRoundMs,
+    redProfile,
+    blueProfile
+  );
+  match.remoteCount = Math.min(MAX_ACTIVE_REMOTES, Math.max(MIN_ACTIVE_REMOTES, Number(remoteCount) || MAX_ACTIVE_REMOTES));
+  matchHistory = [];
+  clearAllRemoteCombinations();
+  clearLastRemoteButtons();
+  clearRemoteScoreHighlights();
+  clearVoteSettleGuard();
+  timerLastAt = null;
+  kyeShiLastAt = null;
+}
+
+async function executeSystemPower(request) {
   if (pendingSystemPower !== request) return;
   pendingSystemPower = null;
+  if (request.action === 'shutdown') {
+    resetMatchSessionForOrganicShutdown();
+    // Flush before asking the OS to power off so the fresh match counter and
+    // empty history are the state restored on the next boot.
+    try {
+      await persistence.flush(persistenceSnapshot());
+    } catch (error) {
+      console.error(`Could not flush reset state before shutdown: ${error.message}`);
+    }
+  }
   const systemctlAction = request.action === 'shutdown' ? 'poweroff' : 'reboot';
   console.log(`Executing system ${request.action}`);
   send(hostSocket, { type: 'systemPowerExecuting', action: request.action });
