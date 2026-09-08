@@ -269,20 +269,19 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  width: 100%;
+  box-sizing: border-box;
+  width: calc(100% - 32px);
   min-height: clamp(40px, 4.2vw, 76px);
-  padding-inline: 8px;
-  transform: translateX(clamp(4px, 0.6vw, 10px));
+  margin-inline: 16px;
 }
 .cornerRefereeBottomRow {
   position: absolute;
-  right: 8px;
+  right: 16px;
   bottom: 10px;
-  left: 8px;
+  left: 16px;
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
-  transform: translateX(clamp(4px, 0.6vw, 10px));
 }
 .cornerRefereeItem {
   position: relative;
