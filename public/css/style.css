@@ -124,12 +124,16 @@ button {
   align-items: center;
   justify-content: center;
   gap: 18px;
-  background: radial-gradient(
+  background-color: #05070d;
+  background-image: url("/assets/tkd-text.png"), radial-gradient(
     circle at center,
     #182031 0%,
     #090c14 65%,
     #05070d 100%
   );
+  background-position: right center, center;
+  background-repeat: no-repeat;
+  background-size: auto 100%, cover;
   padding: 24px;
 }
 .homeLogo {
