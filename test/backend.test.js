@@ -802,6 +802,10 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(html, /id="blueChestButton"[\s\S]*src="\/assets\/chestguard\.png"/);
   assert.match(html, /id="blueHeadButton"[\s\S]*src="\/assets\/headgear\.png"/);
   assert.match(html, /id="bluePunchButton"[\s\S]*src="\/assets\/fist\.png"/);
+  assert.ok(html.indexOf('id="redHeadButton"') < html.indexOf('id="redChestButton"'));
+  assert.ok(html.indexOf('id="redChestButton"') < html.indexOf('id="redPunchButton"'));
+  assert.ok(html.indexOf('id="blueHeadButton"') < html.indexOf('id="blueChestButton"'));
+  assert.ok(html.indexOf('id="blueChestButton"') < html.indexOf('id="bluePunchButton"'));
   assert.match(cssText, /\.scoreActionIcon[\s\S]*drop-shadow/);
   assert.match(cssText, /\.cornerRefereeIcon\.active[\s\S]*drop-shadow/);
   assert.equal(js.status, 200);
