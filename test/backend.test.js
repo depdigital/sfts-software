@@ -780,9 +780,9 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(html, /id="matchDecisionModal"/);
   assert.match(html, /id="screensaver"/);
   assert.match(html, /src="\/assets\/sfts-logo\.png"/);
-  assert.match(html, /STRIKE FORCE TAEKWONDO SCORING/);
-  assert.match(html, /Powered by Strike Force Combat Academy/);
-  assert.match(html, /Official technology partner Craftronixlab Technologies/);
+  assert.doesNotMatch(html, /class="screensaverSubtitle"/);
+  assert.doesNotMatch(html, /class="screensaverPoweredBy"/);
+  assert.doesNotMatch(html, /class="screensaverFooter"/);
 
   const css = await fetch(`http://127.0.0.1:${port}/css/style.css`);
   const js = await fetch(`http://127.0.0.1:${port}/js/app.js`);
@@ -793,7 +793,8 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(cssText, /\.screensaver[\s\S]*background-image: url\("\/assets\/tkd_cover\.png"\)/);
   assert.match(cssText, /\.screensaver[\s\S]*background-position: right center/);
   assert.doesNotMatch(cssText, /\.screensaver\s*\{[^}]*transition:/);
-  assert.doesNotMatch(cssText, /screensaverCycle/);
+  assert.match(cssText, /\.screensaverContent img[\s\S]*animation: screensaverLogoCycle 5s ease-in-out infinite/);
+  assert.match(cssText, /screensaverLogoCycle[\s\S]*transform: scale\(2\.5\)/);
   assert.match(cssText, /\.controlGrid button[\s\S]*cursor: pointer/);
   assert.match(cssText, /\.cornerRefereeIcon\.active[\s\S]*drop-shadow/);
   assert.equal(js.status, 200);
