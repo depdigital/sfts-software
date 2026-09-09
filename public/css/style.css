@@ -28,10 +28,13 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #000;
+  background-color: #000;
+  background-image: url("/assets/tkd_cover.png");
+  background-position: right center;
+  background-repeat: no-repeat;
+  background-size: auto 100%;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 700ms ease;
 }
 .screensaver.visible {
   opacity: 1;
@@ -44,10 +47,6 @@ button {
   justify-content: center;
   width: min(92vw, 1200px);
   text-align: center;
-}
-.screensaver.visible .screensaverContent {
-  animation: screensaverCycle 10s ease-in-out infinite;
-  transform-origin: center;
 }
 .screensaverContent img {
   width: min(58vw, 760px);
@@ -72,29 +71,6 @@ button {
   color: rgba(217, 224, 238, 0.62);
   font-size: clamp(11px, 1vw, 16px);
   letter-spacing: 0.06em;
-}
-@keyframes screensaverCycle {
-  0% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(2);
-  }
-  62% {
-    opacity: 0;
-    transform: scale(2);
-  }
-  74% {
-    opacity: 0;
-    transform: scale(1);
-  }
-  86%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
 }
 .screen {
   min-height: 100vh;
