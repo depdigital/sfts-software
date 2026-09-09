@@ -18,7 +18,7 @@ const SUPPORTED_CAPABILITIES = new Set([
   'ROUND_GAMJEOM_LIMIT', 'MATCH_GAMJEOM_LIMIT', 'MAJORITY_VOTE',
   'TECHNICAL_COMBINATION', 'KYESHI_MANUAL_DECISION', 'GOLDEN_ROUND',
   'SUPERIORITY_DECISION', 'MANUAL_MATCH_DECISIONS', 'DYNAMIC_BREAK_DURATION',
-  'SINGLE_ELIMINATION', 'RULE_PACK_V2'
+  'SINGLE_ELIMINATION', 'TOURNAMENT_PLACEMENTS', 'RULE_PACK_V2'
 ]);
 const SUPPORTED_WINNER_METHODS = new Set([
   'FINAL_SCORE', 'POINT_GAP', 'ROUND_GAMJEOM_LIMIT', 'MATCH_GAMJEOM_LIMIT',
@@ -32,6 +32,11 @@ const SUPPORTED_SUPERIORITY_CRITERIA = new Set([
   'GOLDEN_ROUND_PUNCH', 'GOLDEN_ROUND_HIT_COUNT', 'REGULATION_ROUNDS_WON',
   'FEWER_TOTAL_GAMJEOMS', 'REFEREE_DECISION'
 ]);
+const DEFAULT_TOURNAMENT_PLACEMENTS = Object.freeze({
+  enabled: true,
+  thirdPlacePolicy: 'BOTH_SEMIFINAL_LOSERS',
+  labels: Object.freeze({ first: '1ST', second: '2ND', third: '3RD' })
+});
 
 function fail(message) { throw new Error(`Invalid rules: ${message}`); }
 function isObject(value) { return value !== null && typeof value === 'object' && !Array.isArray(value); }
@@ -126,11 +131,16 @@ function migrateV1ToV2(v1) {
     },
     wooSeGirok: { enabled: oldWooEnabled, reasonCode: 'SUP' }
   };
+  rules.tournament ||= {};
+  rules.tournament.placements ??= structuredClone(DEFAULT_TOURNAMENT_PLACEMENTS);
   return rules;
 }
 function normalizeRules(input) {
   requireObject(input, 'root');
-  return input.schemaVersion === LEGACY_RULE_SCHEMA_VERSION ? migrateV1ToV2(input) : structuredClone(input);
+  const rules = input.schemaVersion === LEGACY_RULE_SCHEMA_VERSION ? migrateV1ToV2(input) : structuredClone(input);
+  rules.tournament ||= {};
+  rules.tournament.placements ??= structuredClone(DEFAULT_TOURNAMENT_PLACEMENTS);
+  return rules;
 }
 
 export function validateRules(input) {
@@ -224,6 +234,13 @@ export function validateRules(input) {
   const tournament = requireObject(rules.tournament, 'tournament'); if (tournament.format !== 'SINGLE_ELIMINATION') fail('tournament.format must be SINGLE_ELIMINATION');
   if (!Array.isArray(tournament.groupBy) || tournament.groupBy.join('|') !== 'GENDER|WEIGHT_CATEGORY') fail('tournament.groupBy must be [GENDER, WEIGHT_CATEGORY]');
   if (tournament.byes !== 'AUTOMATIC' || tournament.seeding !== 'SEEDED_RANDOM') fail('tournament bye/seeding policy is not supported');
+  const placements = requireObject(tournament.placements, 'tournament.placements');
+  requireBoolean(placements.enabled, 'tournament.placements.enabled');
+  if (placements.thirdPlacePolicy !== 'BOTH_SEMIFINAL_LOSERS') fail('tournament.placements.thirdPlacePolicy must be BOTH_SEMIFINAL_LOSERS');
+  const placementLabels = requireObject(placements.labels, 'tournament.placements.labels');
+  requireString(placementLabels.first, 'tournament.placements.labels.first');
+  requireString(placementLabels.second, 'tournament.placements.labels.second');
+  requireString(placementLabels.third, 'tournament.placements.labels.third');
   return rules;
 }
 

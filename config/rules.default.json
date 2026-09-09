@@ -34,6 +34,7 @@
       "MANUAL_MATCH_DECISIONS",
       "DYNAMIC_BREAK_DURATION",
       "SINGLE_ELIMINATION",
+      "TOURNAMENT_PLACEMENTS",
       "RULE_PACK_V2"
     ]
   },
@@ -166,9 +167,29 @@
   },
 
   "tournament": {
+    // Players are separated into one bracket for each gender and weight
+    // category. The bracket winner advances after every completed bout.
     "format": "SINGLE_ELIMINATION",
     "groupBy": ["GENDER", "WEIGHT_CATEGORY"],
     "byes": "AUTOMATIC",
-    "seeding": "SEEDED_RANDOM"
+    "seeding": "SEEDED_RANDOM",
+
+    "placements": {
+      // When enabled, results are finalized as soon as a category final ends.
+      // Set this to false only when placements will be managed outside SFTS.
+      "enabled": true,
+
+      // BOTH_SEMIFINAL_LOSERS awards two equal third places. No separate
+      // bronze-medal bout is generated. This is the only supported policy.
+      "thirdPlacePolicy": "BOTH_SEMIFINAL_LOSERS",
+
+      // These labels appear in the on-screen, printable, and exported result
+      // lists. The wording can be edited without changing tournament logic.
+      "labels": {
+        "first": "1ST",
+        "second": "2ND",
+        "third": "3RD"
+      }
+    }
   }
 }

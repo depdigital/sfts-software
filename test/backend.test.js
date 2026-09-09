@@ -190,6 +190,8 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   assert.equal(importedBody.tournament.players.length, 4);
   assert.equal(importedBody.tournament.groups.length, 2);
   assert.equal(importedBody.tournament.schedule.length, 2);
+  assert.equal(importedBody.tournament.placementPolicy.enabled, true);
+  assert.equal(importedBody.tournament.placementPolicy.thirdPlacePolicy, 'BOTH_SEMIFINAL_LOSERS');
   const firstBout = importedBody.tournament.schedule[0];
   const firstBoutPlayers = new Map(importedBody.tournament.players.map(player => [player.id, player]));
   assert.equal(firstBoutPlayers.get(firstBout.redPlayerId).gender, firstBoutPlayers.get(firstBout.bluePlayerId).gender);
@@ -199,6 +201,8 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   });
   assert.equal(downloaded.status, 200);
   assert.match(downloaded.headers.get('content-type'), /spreadsheetml/);
+  const downloadedWorkbook = XLSX.read(Buffer.from(await downloaded.arrayBuffer()), { type: 'buffer' });
+  assert.deepEqual(downloadedWorkbook.SheetNames, ['Schedule', 'Results']);
   host.send(JSON.stringify({ type: 'host', action: 'announceBout', boutNo: 1 }));
   const announcement = await waitForMessage(host, message => message.type === 'announcement' && message.boutNo === 1);
   assert.match(announcement.text, /Bout 1:/);
@@ -619,6 +623,38 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   ));
   assert.equal(tieResolved.tournament.schedule.find(bout => bout.boutNo === 2).winnerName, initialBoutTwo.bluePlayerName);
 
+  host.send(JSON.stringify({ type: 'host', action: 'loadBout', boutNo: 3 }));
+  await waitForMessage(host, message => message.type === 'state' && message.tournament.activeBoutNo === 3);
+  host.send(JSON.stringify({ type: 'host', action: 'manualMatchDecision', player: 'RED', decision: 'RSC' }));
+  await waitForMessage(host, message => message.type === 'matchEnd' && message.winner === 'RED');
+  const finalReady = await waitForMessage(host, message => (
+    message.type === 'state' &&
+    message.tournament.schedule.find(bout => bout.boutNo === 3)?.status === 'COMPLETED' &&
+    message.tournament.schedule.find(bout => bout.boutNo === 4)?.status === 'SCHEDULED'
+  ));
+  const finalBout = finalReady.tournament.schedule.find(bout => bout.boutNo === 4);
+  host.send(JSON.stringify({ type: 'host', action: 'loadBout', boutNo: 4 }));
+  await waitForMessage(host, message => message.type === 'state' && message.tournament.activeBoutNo === 4);
+  host.send(JSON.stringify({ type: 'host', action: 'manualMatchDecision', player: 'BLUE', decision: 'RSC' }));
+  await waitForMessage(host, message => message.type === 'matchEnd' && message.winner === 'BLUE');
+  const categoryComplete = await waitForMessage(host, message => (
+    message.type === 'state' && message.tournament.groups[0]?.resultStatus === 'COMPLETED'
+  ));
+  const completedGroup = categoryComplete.tournament.groups[0];
+  assert.deepEqual(completedGroup.placements.map(placement => placement.place), [1, 2, 3, 3]);
+  assert.equal(completedGroup.placements[0].playerId, finalBout.bluePlayerId);
+  assert.equal(completedGroup.placements[1].playerId, finalBout.redPlayerId);
+  assert.ok(completedGroup.placements.slice(2).every(placement => placement.basis === 'SEMIFINAL_LOSER'));
+  assert.equal(new Set(completedGroup.placements.map(placement => placement.playerId)).size, 4);
+
+  const completedDownload = await fetch(`http://127.0.0.1:${port}/api/tournament/schedule.xlsx`, {
+    headers: { 'X-SFTS-Host-Token': hostRole.hostToken }
+  });
+  const completedWorkbook = XLSX.read(Buffer.from(await completedDownload.arrayBuffer()), { type: 'buffer' });
+  const resultRows = XLSX.utils.sheet_to_json(completedWorkbook.Sheets.Results);
+  assert.equal(resultRows.length, 4);
+  assert.deepEqual(resultRows.map(row => row.Place), ['1ST', '2ND', '3RD', '3RD']);
+
   host.send(JSON.stringify({ type: 'host', action: 'resetMatch' }));
   await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'ROUND' && message.match.round === 1);
   host.messages.length = 0;
@@ -750,6 +786,7 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(html, /STRIKE FORCE TAEKWONDO SCORING SYSTEM/);
   assert.match(html, /id="playerSheetFile"/);
   assert.match(html, /id="scheduleModal"/);
+  assert.match(html, /id="tournamentResultsList"/);
   assert.match(html, /id="redHeadButton"/);
   assert.match(html, /id="blueHeadButton"/);
   assert.doesNotMatch(html, /corner_referee\.png/);
@@ -819,6 +856,7 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(serverSource, /REMOTE_SCORE_DISPLAY_MS = 500/);
   assert.match(jsText, /lastTournament = msg\.tournament \|\| null/);
   assert.match(jsText, /renderSchedule\(lastTournament\)/);
+  assert.match(jsText, /function renderTournamentResults\(tournament\)/);
   assert.match(jsText, /\["Space", "KeyR", "KeyB", "KeyS"\]/);
   assert.match(jsText, /event\.code === "Space"\) playPause\(\)/);
   assert.match(jsText, /event\.code === "KeyR"\) manualGam\("RED"\)/);

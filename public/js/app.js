@@ -1072,10 +1072,65 @@ function closeSchedule() {
   $("scheduleModal").classList.add("hidden");
 }
 
+function renderTournamentResults(tournament) {
+  const resultList = $("tournamentResultsList");
+  if (!resultList) return;
+  if (!tournament?.players?.length) {
+    resultList.innerHTML = "<p>Import a player sheet to generate category results.</p>";
+    return;
+  }
+
+  if (tournament.placementPolicy?.enabled === false) {
+    resultList.innerHTML = "<p>Category placements are disabled by the tournament rule pack.</p>";
+    return;
+  }
+
+  const labels = tournament.placementPolicy?.labels || {
+    first: "1ST",
+    second: "2ND",
+    third: "3RD",
+  };
+  const players = new Map((tournament.players || []).map((player) => [player.id, player]));
+  const results = (tournament.groups || []).flatMap((group) =>
+    group.resultStatus !== "COMPLETED"
+      ? []
+      : (group.placements || []).map((placement) => ({
+          ...placement,
+          groupId: group.id,
+          gender: group.gender,
+          weightCategory: group.weightCategory,
+          player: players.get(placement.playerId),
+        })),
+  );
+  if (!results.length) {
+    resultList.innerHTML = "<p>Results will appear when a weight-category final is completed.</p>";
+    return;
+  }
+
+  const placeLabel = (place) =>
+    place === 1 ? labels.first : place === 2 ? labels.second : labels.third;
+  resultList.innerHTML = `<table>
+    <thead><tr><th>GROUP</th><th>GENDER</th><th>WEIGHT</th><th>PLACE</th><th>PLAYER</th><th>PLAYER ID</th><th>STATE</th><th>CLUB</th></tr></thead>
+    <tbody>${results
+      .map((result) => `<tr class="place${result.place}">
+        <td>${escapeHtml(result.groupId)}</td>
+        <td>${escapeHtml(result.gender)}</td>
+        <td>${escapeHtml(result.weightCategory)}</td>
+        <td>${escapeHtml(placeLabel(result.place))}</td>
+        <td>${escapeHtml(result.playerName)}</td>
+        <td>${escapeHtml(result.playerId)}</td>
+        <td>${escapeHtml(result.player?.stateCode || "—")}</td>
+        <td>${escapeHtml(result.player?.club || "—")}</td>
+      </tr>`)
+      .join("")}</tbody>
+  </table>`;
+}
+
 function renderSchedule(tournament) {
   const summary = $("scheduleSummary");
   const table = $("scheduleTable");
   if (!summary || !table) return;
+  renderTournamentResults(tournament);
   if (!tournament || !tournament.players || !tournament.players.length) {
     summary.textContent = "NO TOURNAMENT SHEET IMPORTED";
     table.innerHTML =

@@ -922,6 +922,28 @@ button {
   padding: 7px 10px;
   font-size: 11px;
 }
+.tournamentResults {
+  margin-top: 20px;
+}
+.tournamentResults h3 {
+  margin: 0 0 10px;
+  text-align: center;
+}
+.tournamentResultsList table {
+  min-width: 680px;
+}
+.tournamentResultsList tr.place1 td {
+  color: #ffe08a;
+  font-weight: 900;
+}
+.tournamentResultsList tr.place2 td {
+  color: #dbe5f3;
+  font-weight: 800;
+}
+.tournamentResultsList tr.place3 td {
+  color: #d3a477;
+  font-weight: 800;
+}
 .playerSettingsPanel label {
   display: block;
   margin-top: 12px;

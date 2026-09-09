@@ -229,6 +229,7 @@ const GENDER_ALIASES = new Map([
 function makeTournament() {
   return {
     format: 'SINGLE_ELIMINATION',
+    placementPolicy: deep(rules.tournament.placements),
     seed: null,
     generatedAt: null,
     players: [],
@@ -378,7 +379,9 @@ function generateTournament(players, seed = crypto.randomBytes(8).toString('hex'
       bracketSize,
       matchCount: 0,
       championId: null,
-      championName: null
+      championName: null,
+      resultStatus: rules.tournament.placements.enabled ? 'PENDING' : 'DISABLED',
+      placements: []
     };
 
     if (ordered.length === 1) {
@@ -434,8 +437,9 @@ function generateTournament(players, seed = crypto.randomBytes(8).toString('hex'
     tournamentGroups.push(group);
   });
 
-  return {
+  const generatedTournament = {
     format: 'SINGLE_ELIMINATION',
+    placementPolicy: deep(rules.tournament.placements),
     seed,
     generatedAt: new Date().toISOString(),
     players: deep(players),
@@ -444,6 +448,8 @@ function generateTournament(players, seed = crypto.randomBytes(8).toString('hex'
     byes,
     activeBoutNo: null
   };
+  refreshTournamentBracket(generatedTournament);
+  return generatedTournament;
 }
 
 class TournamentImportError extends Error {
@@ -617,7 +623,8 @@ function scoringRulesState() {
     match: {
       rounds: rules.match.rounds,
       roundsRequiredToWin: rules.match.roundsRequiredToWin
-    }
+    },
+    tournament: deep(rules.tournament)
   };
 }
 
@@ -706,7 +713,8 @@ function restorePersistedState(snapshot) {
   match.test = { active: false, presses: {} };
   matchHistory = snapshot.matchHistory;
   tournament = snapshot.tournament;
-  refreshTournamentBracket();
+  tournament.placementPolicy ||= deep(rules.tournament.placements);
+  refreshTournamentBracket(tournament);
 
   if (tournament.activeBoutNo) {
     const active = findTournamentBout(tournament.activeBoutNo);
@@ -1145,10 +1153,43 @@ function tournamentScheduleRows() {
   return [...bouts, ...byes];
 }
 
+function tournamentResultRows() {
+  const labels = tournament.placementPolicy?.labels || rules.tournament.placements.labels;
+  return tournament.groups.flatMap(group => (
+    group.resultStatus !== 'COMPLETED' ? [] : (group.placements || []).map(placement => {
+      const player = tournament.players.find(item => item.id === placement.playerId);
+      const placeLabel = placement.place === 1
+        ? labels.first
+        : placement.place === 2
+          ? labels.second
+          : labels.third;
+      return {
+        Group: group.id,
+        Gender: group.gender,
+        'Weight Category': group.weightCategory,
+        Place: placeLabel,
+        'Player ID': placement.playerId,
+        Player: placement.playerName,
+        'State Code': player?.stateCode || '',
+        District: player?.district || '',
+        Club: player?.club || ''
+      };
+    })
+  ));
+}
+
 function scheduleWorkbook() {
   const workbook = XLSX.utils.book_new();
   const sheet = XLSX.utils.json_to_sheet(tournamentScheduleRows());
   XLSX.utils.book_append_sheet(workbook, sheet, 'Schedule');
+  const resultRows = tournamentResultRows();
+  const resultSheet = resultRows.length
+    ? XLSX.utils.json_to_sheet(resultRows)
+    : XLSX.utils.aoa_to_sheet([[
+      'Group', 'Gender', 'Weight Category', 'Place', 'Player ID', 'Player',
+      'State Code', 'District', 'Club'
+    ]]);
+  XLSX.utils.book_append_sheet(workbook, resultSheet, 'Results');
   return workbook;
 }
 
@@ -1165,22 +1206,103 @@ function tournamentMatchIsBusy() {
   );
 }
 
-function findTournamentBout(boutNo) {
+function findTournamentBout(boutNo, tournamentState = tournament) {
   const number = Number(boutNo);
   if (!Number.isSafeInteger(number) || number < 1) return null;
-  return tournament.schedule.find(bout => bout.boutNo === number) || null;
+  return tournamentState.schedule.find(bout => bout.boutNo === number) || null;
 }
 
-function refreshTournamentBracket() {
-  for (const bout of tournament.schedule) {
+function losingParticipant(bout) {
+  if (!bout || bout.status !== 'COMPLETED' || !bout.winner) return null;
+  if (bout.winner === bout.redPlayerId && bout.bluePlayerId) {
+    return { playerId: bout.bluePlayerId, playerName: bout.bluePlayerName };
+  }
+  if (bout.winner === bout.bluePlayerId && bout.redPlayerId) {
+    return { playerId: bout.redPlayerId, playerName: bout.redPlayerName };
+  }
+  return null;
+}
+
+function placementEntry(place, participant, basis, sourceBoutNo = null) {
+  if (!participant?.playerId) return null;
+  return {
+    place,
+    playerId: participant.playerId,
+    playerName: participant.playerName,
+    basis,
+    sourceBoutNo
+  };
+}
+
+function refreshTournamentGroupResults(tournamentState, group, groupBouts) {
+  const placementPolicy = tournamentState.placementPolicy || rules.tournament.placements;
+  group.placements = [];
+
+  if (!placementPolicy.enabled) {
+    group.resultStatus = 'DISABLED';
+    return;
+  }
+
+  if (group.playerIds.length === 1) {
+    const player = tournamentState.players.find(item => item.id === group.playerIds[0]);
+    if (player) {
+      group.championId = player.id;
+      group.championName = player.name;
+      group.placements = [placementEntry(1, { playerId: player.id, playerName: player.name }, 'ONLY_ENTRANT')];
+      group.resultStatus = 'COMPLETED';
+      return;
+    }
+  }
+
+  const final = groupBouts.reduce((current, bout) => (
+    !current || bout.round > current.round ? bout : current
+  ), null);
+  if (!final || final.status !== 'COMPLETED' || !final.winner) {
+    group.resultStatus = 'PENDING';
+    return;
+  }
+
+  const champion = {
+    playerId: final.winner,
+    playerName: final.winnerName || tournamentState.players.find(item => item.id === final.winner)?.name || ''
+  };
+  const runnerUp = losingParticipant(final);
+  const placements = [
+    placementEntry(1, champion, 'FINAL_WINNER', final.boutNo),
+    placementEntry(2, runnerUp, 'FINAL_LOSER', final.boutNo)
+  ].filter(Boolean);
+
+  if (placementPolicy.thirdPlacePolicy === 'BOTH_SEMIFINAL_LOSERS') {
+    const semifinalBoutNos = [final.redSourceBoutNo, final.blueSourceBoutNo]
+      .filter(Number.isSafeInteger)
+      .sort((left, right) => left - right);
+    const seenPlayers = new Set(placements.map(item => item.playerId));
+    for (const boutNo of semifinalBoutNos) {
+      const semifinalLoser = losingParticipant(findTournamentBout(boutNo, tournamentState));
+      if (!semifinalLoser || seenPlayers.has(semifinalLoser.playerId)) continue;
+      const bronze = placementEntry(3, semifinalLoser, 'SEMIFINAL_LOSER', boutNo);
+      if (bronze) {
+        placements.push(bronze);
+        seenPlayers.add(bronze.playerId);
+      }
+    }
+  }
+
+  group.placements = placements;
+  group.resultStatus = 'COMPLETED';
+}
+
+function refreshTournamentBracket(tournamentState = tournament) {
+  tournamentState.placementPolicy ||= deep(rules.tournament.placements);
+  for (const bout of tournamentState.schedule) {
     for (const playerSide of ['red', 'blue']) {
       const sourceBoutNo = bout[`${playerSide}SourceBoutNo`];
       if (!sourceBoutNo) continue;
-      const source = findTournamentBout(sourceBoutNo);
+      const source = findTournamentBout(sourceBoutNo, tournamentState);
       const playerIdKey = `${playerSide}PlayerId`;
       const playerNameKey = `${playerSide}PlayerName`;
       if (source?.winner) {
-        const player = tournament.players.find(item => item.id === source.winner);
+        const player = tournamentState.players.find(item => item.id === source.winner);
         bout[playerIdKey] = source.winner;
         bout[playerNameKey] = source.winnerName || player?.name || `Winner of Bout ${sourceBoutNo}`;
       } else {
@@ -1198,11 +1320,11 @@ function refreshTournamentBracket() {
     }
   }
 
-  for (const bye of tournament.byes || []) {
+  for (const bye of tournamentState.byes || []) {
     if (!bye.sourceBoutNo) continue;
-    const source = findTournamentBout(bye.sourceBoutNo);
+    const source = findTournamentBout(bye.sourceBoutNo, tournamentState);
     if (source?.winner) {
-      const player = tournament.players.find(item => item.id === source.winner);
+      const player = tournamentState.players.find(item => item.id === source.winner);
       bye.playerId = source.winner;
       bye.playerName = source.winnerName || player?.name || `Winner of Bout ${bye.sourceBoutNo}`;
     } else {
@@ -1214,8 +1336,8 @@ function refreshTournamentBracket() {
     bye.announcement = `${bye.playerName} advances by bye in round ${bye.round}, ${bye.gender}, ${bye.weightCategory}`;
   }
 
-  for (const group of tournament.groups) {
-    const groupBouts = tournament.schedule.filter(bout => bout.groupId === group.id);
+  for (const group of tournamentState.groups) {
+    const groupBouts = tournamentState.schedule.filter(bout => bout.groupId === group.id);
     const final = groupBouts.reduce((current, bout) => (
       !current || bout.round > current.round ? bout : current
     ), null);
@@ -1223,6 +1345,7 @@ function refreshTournamentBracket() {
       group.championId = final.winner;
       group.championName = final.winnerName;
     }
+    refreshTournamentGroupResults(tournamentState, group, groupBouts);
   }
 }
 
@@ -1411,7 +1534,8 @@ function rulesSummary(rulePack) {
     winnerMethods: rulePack.decisions.winnerMethods,
     maximumActiveRemotes: rulePack.voting.maximumActiveRemotes,
     kyeShiLimitSeconds: rulePack.medical.kyeShi.limitSeconds,
-    tournamentFormat: rulePack.tournament.format
+    tournamentFormat: rulePack.tournament.format,
+    tournamentPlacements: rulePack.tournament.placements
   };
 }
 

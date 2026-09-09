@@ -27,6 +27,9 @@ test('the built-in ruleset is valid and describes the current behavior', async (
   assert.equal(rules.penalties.gamJeom.roundLossAt, 5);
   assert.equal(rules.tieBreak.goldenRound.scoreToWin, 2);
   assert.equal(rules.match.breakDurationPolicy.tiers[0].breakDurationSeconds, 60);
+  assert.equal(rules.tournament.placements.enabled, true);
+  assert.equal(rules.tournament.placements.thirdPlacePolicy, 'BOTH_SEMIFINAL_LOSERS');
+  assert.deepEqual(rules.tournament.placements.labels, { first: '1ST', second: '2ND', third: '3RD' });
   assert.deepEqual(rulesMetadata(rules), {
     id: 'sfts-current',
     name: 'SFTS Default Rules',
@@ -49,11 +52,28 @@ test('commented v2 packs and legacy v1 packs are accepted safely', async () => {
   const commented = parseRulesText(`// allowed comment\n{ "schemaVersion": 2, "url": "https://rules.example/pack" }`);
   assert.equal(commented.url, 'https://rules.example/pack');
 
+  const olderV2 = await defaultRules();
+  delete olderV2.tournament.placements;
+  olderV2.compatibility.requiredCapabilities = olderV2.compatibility.requiredCapabilities
+    .filter(capability => capability !== 'TOURNAMENT_PLACEMENTS');
+  const normalizedV2 = validateRules(olderV2);
+  assert.equal(normalizedV2.tournament.placements.enabled, true);
+  assert.equal(normalizedV2.tournament.placements.thirdPlacePolicy, 'BOTH_SEMIFINAL_LOSERS');
+
   const legacy = JSON.parse(await (await import('node:fs/promises')).readFile(path.join(process.cwd(), 'test', 'fixtures', 'scoring-test-pack.json'), 'utf8'));
   const migrated = validateRules(legacy);
   assert.equal(migrated.schemaVersion, 2);
   assert.equal(migrated.tieBreak.goldenRound.scoreToWin, 2);
   assert.equal(migrated.match.breakDurationPolicy.defaultDurationSeconds, 35);
+  assert.equal(migrated.tournament.placements.enabled, true);
+  assert.equal(migrated.tournament.placements.thirdPlacePolicy, 'BOTH_SEMIFINAL_LOSERS');
+});
+
+test('unsupported tournament placement policies are rejected safely', async () => {
+  const rules = await defaultRules();
+  rules.tournament.placements.thirdPlacePolicy = 'BRONZE_MEDAL_BOUT';
+
+  assert.throws(() => validateRules(rules), /thirdPlacePolicy must be BOTH_SEMIFINAL_LOSERS/);
 });
 
 test('a valid active rules file is loaded and an invalid one falls back to defaults', async () => {

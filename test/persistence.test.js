@@ -202,7 +202,11 @@ test('server restores match history and tournament progress after restart', asyn
     await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'ROUND' && message.match.running);
     host.send(JSON.stringify({ type: 'host', action: 'editScore', player: 'RED', value: 15 }));
     await waitForMessage(host, message => message.type === 'matchEnd' && message.winner === 'RED');
-    await waitForMessage(host, message => message.type === 'state' && message.tournament.schedule[0].status === 'COMPLETED');
+    const completed = await waitForMessage(host, message => (
+      message.type === 'state' && message.tournament.schedule[0].status === 'COMPLETED'
+    ));
+    assert.equal(completed.tournament.groups[0].resultStatus, 'COMPLETED');
+    assert.deepEqual(completed.tournament.groups[0].placements.map(placement => placement.place), [1, 2]);
     await new Promise(resolve => setTimeout(resolve, 400));
     host.close();
     await stopServer(serverProcess);
@@ -217,6 +221,8 @@ test('server restores match history and tournament progress after restart', asyn
     assert.equal(restored.matchHistory[0].winner, 'RED');
     assert.equal(restored.tournament.players.length, 2);
     assert.equal(restored.tournament.schedule[0].status, 'COMPLETED');
+    assert.equal(restored.tournament.groups[0].resultStatus, 'COMPLETED');
+    assert.deepEqual(restored.tournament.groups[0].placements.map(placement => placement.place), [1, 2]);
     assert.equal(restored.match.phase, 'MATCH_END');
     assert.equal(restored.match.running, false);
     assert.equal(restored.arenaNumber, '7');

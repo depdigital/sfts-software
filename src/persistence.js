@@ -51,12 +51,36 @@ function isTournamentPlayer(value) {
   );
 }
 
+function isTournamentPlacement(value) {
+  return Boolean(
+    isObject(value) && [1, 2, 3].includes(value.place) &&
+    typeof value.playerId === 'string' && value.playerId.length > 0 &&
+    typeof value.playerName === 'string' && value.playerName.length > 0 &&
+    typeof value.basis === 'string' && value.basis.length > 0 &&
+    (value.sourceBoutNo === null || (isNonNegativeInteger(value.sourceBoutNo) && value.sourceBoutNo > 0))
+  );
+}
+
+function isTournamentPlacementPolicy(value) {
+  return Boolean(
+    isObject(value) && typeof value.enabled === 'boolean' &&
+    value.thirdPlacePolicy === 'BOTH_SEMIFINAL_LOSERS' && isObject(value.labels) &&
+    typeof value.labels.first === 'string' && value.labels.first.length > 0 &&
+    typeof value.labels.second === 'string' && value.labels.second.length > 0 &&
+    typeof value.labels.third === 'string' && value.labels.third.length > 0
+  );
+}
+
 function isTournament(value) {
   if (!isObject(value) || !Array.isArray(value.players) || !value.players.every(isTournamentPlayer)) return false;
   if (!Array.isArray(value.groups) || !value.groups.every(group => (
     isObject(group) && typeof group.id === 'string' && typeof group.gender === 'string' &&
     typeof group.weightCategory === 'string' && Array.isArray(group.playerIds) &&
-    Array.isArray(group.byePlayerIds)
+    Array.isArray(group.byePlayerIds) &&
+    (!Object.prototype.hasOwnProperty.call(group, 'resultStatus') || ['PENDING', 'COMPLETED', 'DISABLED'].includes(group.resultStatus)) &&
+    (!Object.prototype.hasOwnProperty.call(group, 'placements') || (
+      Array.isArray(group.placements) && group.placements.every(isTournamentPlacement)
+    ))
   ))) return false;
   if (!Array.isArray(value.schedule) || !value.schedule.every(bout => (
     isObject(bout) && isNonNegativeInteger(bout.boutNo) && bout.boutNo > 0 &&
@@ -67,6 +91,7 @@ function isTournament(value) {
     (bout.winnerName === null || typeof bout.winnerName === 'string')
   ))) return false;
   if (!Array.isArray(value.byes) || !value.byes.every(bye => isObject(bye) && typeof bye.status === 'string')) return false;
+  if (Object.prototype.hasOwnProperty.call(value, 'placementPolicy') && !isTournamentPlacementPolicy(value.placementPolicy)) return false;
   return value.activeBoutNo === null || (isNonNegativeInteger(value.activeBoutNo) && value.activeBoutNo > 0);
 }
 
