@@ -124,16 +124,12 @@ button {
   align-items: center;
   justify-content: center;
   gap: 18px;
-  background-color: #05070d;
-  background-image: url("/assets/tkd-text.png"), radial-gradient(
+  background: radial-gradient(
     circle at center,
     #182031 0%,
     #090c14 65%,
     #05070d 100%
   );
-  background-position: right center, center;
-  background-repeat: no-repeat;
-  background-size: auto 100%, cover;
   padding: 24px;
 }
 .homeLogo {
@@ -573,6 +569,12 @@ button {
 }
 .controlGrid b {
   font-size: clamp(20px, min(1.8vw, 3vh), 38px);
+}
+.scoreActionIcon {
+  width: clamp(34px, min(4vw, 6vh), 76px);
+  height: clamp(34px, min(4vw, 6vh), 76px);
+  object-fit: contain;
+  filter: brightness(0) invert(1) drop-shadow(0 0 6px rgba(255, 255, 255, 0.65));
 }
 .centerBottomBox {
   display: flex;
