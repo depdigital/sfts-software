@@ -176,8 +176,8 @@ test('server restores match history and tournament progress after restart', asyn
 
     const workbook = XLSX.utils.book_new();
     const sheet = XLSX.utils.json_to_sheet([
-      { Name: 'Persisted Red', Gender: 'MALE', 'Weight Category': '58 kg' },
-      { Name: 'Persisted Blue', Gender: 'MALE', 'Weight Category': '58 kg' }
+      { Name: 'Persisted Red', Gender: 'MALE', Division: 'SENIOR', 'Weight Category': 'FLYWEIGHT', Group: '' },
+      { Name: 'Persisted Blue', Gender: 'MALE', Division: 'SENIOR', 'Weight Category': 'FLYWEIGHT', Group: '' }
     ]);
     XLSX.utils.book_append_sheet(workbook, sheet, 'Players');
     const imported = await fetch(`http://127.0.0.1:${port}/api/tournament/import`, {

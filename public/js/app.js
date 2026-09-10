@@ -290,10 +290,11 @@ function renderScoringControls() {
 
 function playerMetaText(player) {
   const name = String(player.playerName || "").trim() || "PLAYER NAME —";
-  const weight = String(player.weightCategory || "").trim() || "WEIGHT —";
+  const division = String(player.division || "").trim();
+  const category = String(player.categoryGroup || player.weightCategory || "").trim() || "CATEGORY —";
   const stateCode = String(player.stateCode || "").trim() || "STATE —";
   const district = String(player.district || "").trim() || "DISTRICT —";
-  return `${name} · ${weight} · ${stateCode} · ${district}`;
+  return [name, division, category, stateCode, district].filter(Boolean).join(" · ");
 }
 
 function formatTime(ms, showTenths = true) {
@@ -1097,25 +1098,29 @@ function renderTournamentResults(tournament) {
       : (group.placements || []).map((placement) => ({
           ...placement,
           groupId: group.id,
+          division: group.division,
           gender: group.gender,
           weightCategory: group.weightCategory,
+          categoryGroup: group.categoryGroup,
           player: players.get(placement.playerId),
         })),
   );
   if (!results.length) {
-    resultList.innerHTML = "<p>Results will appear when a weight-category final is completed.</p>";
+    resultList.innerHTML = "<p>Results will appear when a category final is completed.</p>";
     return;
   }
 
   const placeLabel = (place) =>
     place === 1 ? labels.first : place === 2 ? labels.second : labels.third;
   resultList.innerHTML = `<table>
-    <thead><tr><th>GROUP</th><th>GENDER</th><th>WEIGHT</th><th>PLACE</th><th>PLAYER</th><th>PLAYER ID</th><th>STATE</th><th>CLUB</th></tr></thead>
+    <thead><tr><th>BRACKET</th><th>DIVISION</th><th>GENDER</th><th>WEIGHT CATEGORY</th><th>SUB JUNIOR GROUP</th><th>PLACE</th><th>PLAYER</th><th>PLAYER ID</th><th>STATE</th><th>CLUB</th></tr></thead>
     <tbody>${results
       .map((result) => `<tr class="place${result.place}">
         <td>${escapeHtml(result.groupId)}</td>
+        <td>${escapeHtml(result.division || "—")}</td>
         <td>${escapeHtml(result.gender)}</td>
-        <td>${escapeHtml(result.weightCategory)}</td>
+        <td>${escapeHtml(result.weightCategory || "—")}</td>
+        <td>${escapeHtml(result.categoryGroup || "—")}</td>
         <td>${escapeHtml(placeLabel(result.place))}</td>
         <td>${escapeHtml(result.playerName)}</td>
         <td>${escapeHtml(result.playerId)}</td>
@@ -1142,14 +1147,16 @@ function renderSchedule(tournament) {
     (total, group) => total + (group.byePlayerIds || []).length,
     0,
   );
-  summary.textContent = `${tournament.players.length} players · ${groups.length} groups · ${(tournament.schedule || []).length} bouts · ${byeCount} bye allocation(s) · seed ${tournament.seed}`;
+  summary.textContent = `${tournament.players.length} players · ${groups.length} brackets · ${(tournament.schedule || []).length} bouts · ${byeCount} bye allocation(s) · draw seed ${tournament.seed}`;
   const entries = [
     ...(tournament.schedule || []),
     ...(tournament.byes || []).map((bye) => ({
       boutNo: "—",
       groupId: bye.groupId,
+      division: bye.division,
       gender: bye.gender,
       weightCategory: bye.weightCategory,
+      categoryGroup: bye.categoryGroup,
       round: bye.round,
       redPlayerName: bye.playerName,
       bluePlayerName: "BYE",
@@ -1163,7 +1170,7 @@ function renderSchedule(tournament) {
     return;
   }
   table.innerHTML = `<table>
-    <thead><tr><th>BOUT</th><th>GROUP</th><th>GENDER</th><th>WEIGHT</th><th>ROUND</th><th>RED</th><th>BLUE</th><th>WINNER</th><th>STATUS</th><th>ACTIONS</th></tr></thead>
+    <thead><tr><th>BOUT</th><th>BRACKET</th><th>DIVISION</th><th>GENDER</th><th>WEIGHT CATEGORY</th><th>SUB JUNIOR GROUP</th><th>ROUND</th><th>RED</th><th>BLUE</th><th>WINNER</th><th>STATUS</th><th>ACTIONS</th></tr></thead>
     <tbody>${entries
       .map((bout) => {
         const canLoad =
@@ -1173,8 +1180,8 @@ function renderSchedule(tournament) {
           !bout.isBye &&
           (bout.status === "SCHEDULED" || bout.status === "IN_PROGRESS");
         return `<tr class="${bout.status === "COMPLETED" ? "completed" : bout.status === "IN_PROGRESS" ? "inProgress" : ""}">
-        <td>${bout.boutNo}</td><td>${escapeHtml(bout.groupId)}</td><td>${escapeHtml(bout.gender)}</td>
-        <td>${escapeHtml(bout.weightCategory)}</td><td>${bout.round}</td>
+        <td>${bout.boutNo}</td><td>${escapeHtml(bout.groupId)}</td><td>${escapeHtml(bout.division || "—")}</td><td>${escapeHtml(bout.gender)}</td>
+        <td>${escapeHtml(bout.weightCategory || "—")}</td><td>${escapeHtml(bout.categoryGroup || "—")}</td><td>${bout.round}</td>
         <td>${escapeHtml(bout.redPlayerName)}</td><td>${escapeHtml(bout.bluePlayerName)}</td>
         <td>${escapeHtml(bout.winnerName || "—")}</td>
         <td>${escapeHtml(bout.status)}</td>

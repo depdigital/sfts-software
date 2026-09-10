@@ -164,10 +164,14 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
 
   const workbook = XLSX.utils.book_new();
   const players = XLSX.utils.json_to_sheet([
-    { 'Player ID': 'M1', Name: 'Male One', Gender: 'MALE', 'Weight Category': '58 kg' },
-    { 'Player ID': 'M2', Name: 'Male Two', Gender: 'M', 'Weight Category': '58 kg' },
-    { 'Player ID': 'F1', Name: 'Female One', Gender: 'FEMALE', 'Weight Category': '49 kg' },
-    { 'Player ID': 'F2', Name: 'Female Two', Gender: 'F', 'Weight Category': '49 kg' }
+    { 'Player ID': 'M1', Name: 'Male One', Gender: 'MALE', Division: 'SENIOR', 'Weight Category': 'FLYWEIGHT', Group: '' },
+    { 'Player ID': 'M2', Name: 'Male Two', Gender: 'M', Division: 'Senior', 'Weight Category': 'flyweight', Group: '' },
+    { 'Player ID': 'F1', Name: 'Female One', Gender: 'FEMALE', Division: 'SENIOR', 'Weight Category': 'FINWEIGHT', Group: '' },
+    { 'Player ID': 'F2', Name: 'Female Two', Gender: 'F', Division: 'SENIOR', 'Weight Category': 'FINWEIGHT', Group: '' },
+    { 'Player ID': 'J1', Name: 'Junior One', Gender: 'MALE', Division: 'JUNIOR', 'Weight Category': 'FLYWEIGHT', Group: '' },
+    { 'Player ID': 'J2', Name: 'Junior Two', Gender: 'M', Division: 'JUNIOR', 'Weight Category': 'flyweight', Group: '' },
+    { 'Player ID': 'S1', Name: 'Sub Junior One', Gender: 'MALE', Division: 'SUB JUNIOR', 'Weight Category': '', Group: 'GROUP 0' },
+    { 'Player ID': 'S2', Name: 'Sub Junior Two', Gender: 'M', Division: 'SUB_JUNIOR', 'Weight Category': '', Group: 'group 0' }
   ]);
   XLSX.utils.book_append_sheet(workbook, players, 'Players');
   const workbookBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
@@ -177,9 +181,28 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
     headers: { 'X-SFTS-Host-Token': hostRole.hostToken }
   });
   assert.equal(templateResponse.status, 200);
-  const templateWorkbook = XLSX.read(Buffer.from(await templateResponse.arrayBuffer()), { type: 'buffer' });
-  const templateRows = XLSX.utils.sheet_to_json(templateWorkbook.Sheets[templateWorkbook.SheetNames[0]]);
+  const templateBuffer = Buffer.from(await templateResponse.arrayBuffer());
+  const templateWorkbook = XLSX.read(templateBuffer, { type: 'buffer' });
+  assert.deepEqual(templateWorkbook.SheetNames, ['Players', 'Categories', 'Instructions']);
+  const templateSheet = templateWorkbook.Sheets[templateWorkbook.SheetNames[0]];
+  const templateRows = XLSX.utils.sheet_to_json(templateSheet);
   assert.equal(templateRows.length, 16);
+  assert.deepEqual(XLSX.utils.sheet_to_json(templateSheet, { header: 1, defval: '' })[0], [
+    'Player ID', 'Name', 'Gender', 'Division', 'Weight Category', 'Group', 'State Code', 'District', 'Club'
+  ]);
+  assert.ok(templateRows.some(row => row.Division === 'SUB JUNIOR' && row.Group === 'GROUP 0'));
+  const categoryRows = XLSX.utils.sheet_to_json(templateWorkbook.Sheets.Categories);
+  assert.ok(categoryRows.some(row => row.Division === 'SENIOR' && row.Gender === 'MALE' && row['Weight Category'] === 'FINWEIGHT'));
+  assert.ok(categoryRows.some(row => row.Division === 'SUB JUNIOR' && row.Group === 'GROUP 5'));
+  const templateImport = await fetch(`http://127.0.0.1:${port}/api/tournament/import`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'X-SFTS-Host-Token': hostRole.hostToken },
+    body: templateBuffer
+  });
+  assert.equal(templateImport.status, 200);
+  const templateImportBody = await templateImport.json();
+  assert.equal(templateImportBody.tournament.players.length, 16);
+  assert.equal(templateImportBody.tournament.groups.length, 8);
   const imported = await fetch(`http://127.0.0.1:${port}/api/tournament/import`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'X-SFTS-Host-Token': hostRole.hostToken },
@@ -187,15 +210,38 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   });
   assert.equal(imported.status, 200);
   const importedBody = await imported.json();
-  assert.equal(importedBody.tournament.players.length, 4);
-  assert.equal(importedBody.tournament.groups.length, 2);
-  assert.equal(importedBody.tournament.schedule.length, 2);
+  assert.equal(importedBody.tournament.players.length, 8);
+  assert.equal(importedBody.tournament.groups.length, 4);
+  assert.equal(importedBody.tournament.schedule.length, 4);
   assert.equal(importedBody.tournament.placementPolicy.enabled, true);
   assert.equal(importedBody.tournament.placementPolicy.thirdPlacePolicy, 'BOTH_SEMIFINAL_LOSERS');
   const firstBout = importedBody.tournament.schedule[0];
   const firstBoutPlayers = new Map(importedBody.tournament.players.map(player => [player.id, player]));
   assert.equal(firstBoutPlayers.get(firstBout.redPlayerId).gender, firstBoutPlayers.get(firstBout.bluePlayerId).gender);
+  assert.equal(firstBoutPlayers.get(firstBout.redPlayerId).division, firstBoutPlayers.get(firstBout.bluePlayerId).division);
   assert.equal(firstBoutPlayers.get(firstBout.redPlayerId).weightCategory, firstBoutPlayers.get(firstBout.bluePlayerId).weightCategory);
+  const subJuniorGroup = importedBody.tournament.groups.find(group => group.division === 'SUB_JUNIOR');
+  assert.equal(subJuniorGroup.categoryGroup, 'GROUP 0');
+  assert.equal(subJuniorGroup.weightCategory, '');
+  assert.equal(importedBody.tournament.groups.filter(group => (
+    group.gender === 'MALE' && group.weightCategory === 'FLYWEIGHT'
+  )).length, 2);
+
+  const invalidWorkbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(invalidWorkbook, XLSX.utils.json_to_sheet([
+    { Name: 'Invalid Category', Gender: 'FEMALE', Division: 'SENIOR', 'Weight Category': 'LT MIDDLEWEIGHT', Group: '' },
+    { Name: 'Invalid Group', Gender: 'MALE', Division: 'SUB JUNIOR', 'Weight Category': 'FINWEIGHT', Group: 'GROUP 9' }
+  ]), 'Players');
+  const invalidImport = await fetch(`http://127.0.0.1:${port}/api/tournament/import`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'X-SFTS-Host-Token': hostRole.hostToken },
+    body: XLSX.write(invalidWorkbook, { type: 'buffer', bookType: 'xlsx' })
+  });
+  assert.equal(invalidImport.status, 400);
+  const invalidImportBody = await invalidImport.json();
+  assert.ok(invalidImportBody.errors.some(error => /weight category must be/.test(error)));
+  assert.ok(invalidImportBody.errors.some(error => /group must be one of/.test(error)));
+  assert.ok(invalidImportBody.errors.some(error => /weight category must be blank/.test(error)));
   const downloaded = await fetch(`http://127.0.0.1:${port}/api/tournament/schedule.xlsx`, {
     headers: { 'X-SFTS-Host-Token': hostRole.hostToken }
   });
@@ -203,6 +249,9 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   assert.match(downloaded.headers.get('content-type'), /spreadsheetml/);
   const downloadedWorkbook = XLSX.read(Buffer.from(await downloaded.arrayBuffer()), { type: 'buffer' });
   assert.deepEqual(downloadedWorkbook.SheetNames, ['Schedule', 'Results']);
+  const downloadedRows = XLSX.utils.sheet_to_json(downloadedWorkbook.Sheets.Schedule);
+  assert.ok(downloadedRows.every(row => row.Division && row['Bracket ID']));
+  assert.ok(downloadedRows.some(row => row['Sub Junior Group'] === 'GROUP 0'));
   host.send(JSON.stringify({ type: 'host', action: 'announceBout', boutNo: 1 }));
   const announcement = await waitForMessage(host, message => message.type === 'announcement' && message.boutNo === 1);
   assert.match(announcement.text, /Bout 1:/);
@@ -532,9 +581,12 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   host.send(JSON.stringify({ type: 'host', action: 'resetMatch' }));
   await waitForMessage(host, message => message.type === 'state' && message.match.red.score === 0);
   host.send(JSON.stringify({ type: 'host', action: 'loadBout', boutNo: 1 }));
-  const loadedBout = await waitForMessage(host, message => message.type === 'state' && message.tournament.activeBoutNo === 1);
+  const loadedBout = await waitForMessage(host, message => (
+    message.type === 'state' && message.tournament.players.length === 8 && message.tournament.activeBoutNo === 1
+  ));
   assert.equal(loadedBout.match.red.playerName, firstBout.redPlayerName);
   assert.equal(loadedBout.match.blue.playerName, firstBout.bluePlayerName);
+  assert.equal(loadedBout.match.red.division, firstBout.division);
   const blockedImport = await fetch(`http://127.0.0.1:${port}/api/tournament/import`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'X-SFTS-Host-Token': hostRole.hostToken },
@@ -544,12 +596,26 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   host.send(JSON.stringify({ type: 'host', action: 'resetMatch' }));
   await waitForMessage(host, message => message.type === 'state' && message.tournament.activeBoutNo === null);
 
+  const subJuniorBout = importedBody.tournament.schedule.find(bout => bout.categoryGroup === 'GROUP 0');
+  host.send(JSON.stringify({ type: 'host', action: 'loadBout', boutNo: subJuniorBout.boutNo }));
+  const loadedSubJuniorBout = await waitForMessage(host, message => (
+    message.type === 'state' && message.tournament.players.length === 8 &&
+    message.tournament.activeBoutNo === subJuniorBout.boutNo
+  ));
+  assert.equal(loadedSubJuniorBout.match.red.division, 'SUB_JUNIOR');
+  assert.equal(loadedSubJuniorBout.match.red.categoryGroup, 'GROUP 0');
+  assert.equal(loadedSubJuniorBout.match.red.weightCategory, '');
+  host.send(JSON.stringify({ type: 'host', action: 'resetMatch' }));
+  await waitForMessage(host, message => (
+    message.type === 'state' && message.tournament.players.length === 8 && message.tournament.activeBoutNo === null
+  ));
+
   const bracketPlayers = XLSX.utils.json_to_sheet([
-    { 'Player ID': 'B1', Name: 'Bracket One', Gender: 'MALE', 'Weight Category': '58 kg' },
-    { 'Player ID': 'B2', Name: 'Bracket Two', Gender: 'MALE', 'Weight Category': '58 kg' },
-    { 'Player ID': 'B3', Name: 'Bracket Three', Gender: 'MALE', 'Weight Category': '58 kg' },
-    { 'Player ID': 'B4', Name: 'Bracket Four', Gender: 'MALE', 'Weight Category': '58 kg' },
-    { 'Player ID': 'B5', Name: 'Bracket Five', Gender: 'MALE', 'Weight Category': '58 kg' }
+    { 'Player ID': 'B1', Name: 'Bracket One', Gender: 'MALE', Division: 'SENIOR', 'Weight Category': 'FLYWEIGHT', Group: '' },
+    { 'Player ID': 'B2', Name: 'Bracket Two', Gender: 'MALE', Division: 'SENIOR', 'Weight Category': 'FLYWEIGHT', Group: '' },
+    { 'Player ID': 'B3', Name: 'Bracket Three', Gender: 'MALE', Division: 'SENIOR', 'Weight Category': 'FLYWEIGHT', Group: '' },
+    { 'Player ID': 'B4', Name: 'Bracket Four', Gender: 'MALE', Division: 'SENIOR', 'Weight Category': 'FLYWEIGHT', Group: '' },
+    { 'Player ID': 'B5', Name: 'Bracket Five', Gender: 'MALE', Division: 'SENIOR', 'Weight Category': 'FLYWEIGHT', Group: '' }
   ]);
   const bracketWorkbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(bracketWorkbook, bracketPlayers, 'Players');
@@ -570,7 +636,9 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   const initialBoutTwo = bracketBody.tournament.schedule.find(bout => bout.boutNo === 2);
 
   host.send(JSON.stringify({ type: 'host', action: 'loadBout', boutNo: 1 }));
-  const firstBracketLoad = await waitForMessage(host, message => message.type === 'state' && message.tournament.activeBoutNo === 1);
+  const firstBracketLoad = await waitForMessage(host, message => (
+    message.type === 'state' && message.tournament.players.length === 5 && message.tournament.activeBoutNo === 1
+  ));
   host.send(JSON.stringify({ type: 'host', action: 'setTime', ms: 1000 }));
   await waitForMessage(host, message => message.type === 'state' && message.match.timerMs === 1000);
   host.send(JSON.stringify({ type: 'host', action: 'playPause' }));
@@ -584,6 +652,7 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   await waitForMessage(host, message => message.type === 'matchEnd' && message.winner === 'RED');
   const advanced = await waitForMessage(host, message => (
     message.type === 'state' &&
+    message.tournament.players.length === 5 &&
     message.tournament.schedule.find(bout => bout.boutNo === 3)?.status === 'SCHEDULED'
   ));
   const advancedBout = advanced.tournament.schedule.find(bout => bout.boutNo === 3);
@@ -591,7 +660,9 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   assert.ok(advancedBout.redSourceBoutNo === 1 || advancedBout.blueSourceBoutNo === 1);
 
   host.send(JSON.stringify({ type: 'host', action: 'loadBout', boutNo: 2 }));
-  const secondBracketLoad = await waitForMessage(host, message => message.type === 'state' && message.tournament.activeBoutNo === 2);
+  const secondBracketLoad = await waitForMessage(host, message => (
+    message.type === 'state' && message.tournament.players.length === 5 && message.tournament.activeBoutNo === 2
+  ));
   assert.ok(secondBracketLoad.match.matchNo > firstBracketLoad.match.matchNo);
   for (let round = 1; round <= 3; round += 1) {
     if (round > 1 || !secondBracketLoad.match.running) {

@@ -9,6 +9,10 @@ function isObject(value) {
   return value && typeof value === 'object' && !Array.isArray(value);
 }
 
+function hasOptionalString(value, key) {
+  return !Object.prototype.hasOwnProperty.call(value, key) || typeof value[key] === 'string';
+}
+
 function isNonNegativeInteger(value) {
   return Number.isSafeInteger(value) && value >= 0;
 }
@@ -16,7 +20,8 @@ function isNonNegativeInteger(value) {
 function isSide(value) {
   return Boolean(
     isObject(value) && typeof value.name === 'string' && typeof value.playerName === 'string' &&
-    typeof value.weightCategory === 'string' && typeof value.stateCode === 'string' &&
+    hasOptionalString(value, 'division') && typeof value.weightCategory === 'string' &&
+    hasOptionalString(value, 'categoryGroup') && typeof value.stateCode === 'string' &&
     typeof value.district === 'string' && isNonNegativeInteger(value.score) &&
     isNonNegativeInteger(value.gamjeom) && isObject(value.stats) &&
     isNonNegativeInteger(value.stats.plus1) && isNonNegativeInteger(value.stats.plus2) &&
@@ -46,7 +51,9 @@ function isTournamentPlayer(value) {
     isObject(value) && typeof value.id === 'string' && value.id.length > 0 &&
     typeof value.name === 'string' && value.name.length > 0 &&
     (value.gender === 'MALE' || value.gender === 'FEMALE') &&
-    typeof value.weightCategory === 'string' && value.weightCategory.length > 0 &&
+    hasOptionalString(value, 'division') && typeof value.weightCategory === 'string' &&
+    hasOptionalString(value, 'categoryGroup') &&
+    (value.weightCategory.length > 0 || value.categoryGroup?.length > 0) &&
     typeof value.stateCode === 'string' && typeof value.district === 'string' && typeof value.club === 'string'
   );
 }
@@ -75,7 +82,9 @@ function isTournament(value) {
   if (!isObject(value) || !Array.isArray(value.players) || !value.players.every(isTournamentPlayer)) return false;
   if (!Array.isArray(value.groups) || !value.groups.every(group => (
     isObject(group) && typeof group.id === 'string' && typeof group.gender === 'string' &&
-    typeof group.weightCategory === 'string' && Array.isArray(group.playerIds) &&
+    hasOptionalString(group, 'division') && typeof group.weightCategory === 'string' &&
+    hasOptionalString(group, 'categoryGroup') &&
+    (group.weightCategory.length > 0 || group.categoryGroup?.length > 0) && Array.isArray(group.playerIds) &&
     Array.isArray(group.byePlayerIds) &&
     (!Object.prototype.hasOwnProperty.call(group, 'resultStatus') || ['PENDING', 'COMPLETED', 'DISABLED'].includes(group.resultStatus)) &&
     (!Object.prototype.hasOwnProperty.call(group, 'placements') || (
@@ -85,7 +94,10 @@ function isTournament(value) {
   if (!Array.isArray(value.schedule) || !value.schedule.every(bout => (
     isObject(bout) && isNonNegativeInteger(bout.boutNo) && bout.boutNo > 0 &&
     typeof bout.groupId === 'string' && typeof bout.gender === 'string' &&
-    typeof bout.weightCategory === 'string' && isNonNegativeInteger(bout.round) && bout.round > 0 &&
+    hasOptionalString(bout, 'division') && typeof bout.weightCategory === 'string' &&
+    hasOptionalString(bout, 'categoryGroup') &&
+    (bout.weightCategory.length > 0 || bout.categoryGroup?.length > 0) &&
+    isNonNegativeInteger(bout.round) && bout.round > 0 &&
     typeof bout.redPlayerName === 'string' && typeof bout.bluePlayerName === 'string' &&
     typeof bout.status === 'string' && (bout.winner === null || typeof bout.winner === 'string') &&
     (bout.winnerName === null || typeof bout.winnerName === 'string')

@@ -35,6 +35,7 @@
       "DYNAMIC_BREAK_DURATION",
       "SINGLE_ELIMINATION",
       "TOURNAMENT_PLACEMENTS",
+      "TOURNAMENT_DIVISIONS",
       "RULE_PACK_V2"
     ]
   },
@@ -167,12 +168,121 @@
   },
 
   "tournament": {
-    // Players are separated into one bracket for each gender and weight
-    // category. The bracket winner advances after every completed bout.
+    // Players are separated by division, gender, and their competition
+    // category (weight category or manually assigned Sub Junior group).
     "format": "SINGLE_ELIMINATION",
-    "groupBy": ["GENDER", "WEIGHT_CATEGORY"],
+    "groupBy": ["DIVISION", "GENDER", "CATEGORY"],
     "byes": "AUTOMATIC",
     "seeding": "SEEDED_RANDOM",
+
+    "divisions": [
+      {
+        "id": "SENIOR",
+        "label": "SENIOR",
+        "ageLabel": "18 YEARS OLD AND ABOVE",
+        "categoryType": "WEIGHT",
+        "weightCategories": {
+          "MALE": [
+            { "name": "FINWEIGHT", "limit": "NOT EXCEEDING 54.0 KG" },
+            { "name": "FLYWEIGHT", "limit": "OVER 54.1 TO 58.0 KG" },
+            { "name": "BANTAMWEIGHT", "limit": "OVER 58.1 TO 63.0 KG" },
+            { "name": "FEATHERWEIGHT", "limit": "OVER 63.1 TO 68.0 KG" },
+            { "name": "LIGHTWEIGHT", "limit": "OVER 68.1 TO 74.0 KG" },
+            { "name": "WELTERWEIGHT", "limit": "OVER 74.1 TO 80.0 KG" },
+            { "name": "MIDDLEWEIGHT", "limit": "OVER 80.1 TO 87.0 KG" },
+            { "name": "HEAVYWEIGHT", "limit": "OVER 87.1 KG" }
+          ],
+          "FEMALE": [
+            { "name": "FINWEIGHT", "limit": "NOT EXCEEDING 46.0 KG" },
+            { "name": "FLYWEIGHT", "limit": "OVER 46.1 TO 49.0 KG" },
+            { "name": "BANTAMWEIGHT", "limit": "OVER 49.1 TO 53.0 KG" },
+            { "name": "FEATHERWEIGHT", "limit": "OVER 53.1 TO 57.0 KG" },
+            { "name": "LIGHTWEIGHT", "limit": "OVER 57.1 TO 62.0 KG" },
+            { "name": "WELTERWEIGHT", "limit": "OVER 62.1 TO 67.0 KG" },
+            { "name": "MIDDLEWEIGHT", "limit": "OVER 67.1 TO 74.0 KG" },
+            { "name": "HEAVYWEIGHT", "limit": "OVER 74.1 KG" }
+          ]
+        }
+      },
+      {
+        "id": "JUNIOR",
+        "label": "JUNIOR",
+        "ageLabel": "15-17 YEARS OLD",
+        "categoryType": "WEIGHT",
+        "weightCategories": {
+          "MALE": [
+            { "name": "FINWEIGHT", "limit": "NOT EXCEEDING 45.0 KG" },
+            { "name": "FLYWEIGHT", "limit": "OVER 45.1 TO 48.0 KG" },
+            { "name": "BANTAMWEIGHT", "limit": "OVER 48.1 TO 51.0 KG" },
+            { "name": "FEATHERWEIGHT", "limit": "OVER 51.1 TO 55.0 KG" },
+            { "name": "LIGHTWEIGHT", "limit": "OVER 55.1 TO 59.0 KG" },
+            { "name": "WELTERWEIGHT", "limit": "OVER 59.1 TO 63.0 KG" },
+            { "name": "LT MIDDLEWEIGHT", "limit": "OVER 63.1 TO 68.0 KG" },
+            { "name": "MIDDLEWEIGHT", "limit": "OVER 68.1 TO 73.0 KG" },
+            { "name": "LT HEAVYWEIGHT", "limit": "OVER 73.1 TO 78.0 KG" },
+            { "name": "HEAVYWEIGHT", "limit": "OVER 78.1 KG" }
+          ],
+          "FEMALE": [
+            { "name": "FINWEIGHT", "limit": "NOT EXCEEDING 42.0 KG" },
+            { "name": "FLYWEIGHT", "limit": "OVER 42.1 TO 44.0 KG" },
+            { "name": "BANTAMWEIGHT", "limit": "OVER 44.1 TO 46.0 KG" },
+            { "name": "FEATHERWEIGHT", "limit": "OVER 46.1 TO 49.0 KG" },
+            { "name": "LIGHTWEIGHT", "limit": "OVER 49.1 TO 52.0 KG" },
+            { "name": "WELTERWEIGHT", "limit": "OVER 52.1 TO 55.0 KG" },
+            { "name": "LT MIDDLEWEIGHT", "limit": "OVER 55.1 TO 59.0 KG" },
+            { "name": "MIDDLEWEIGHT", "limit": "OVER 59.1 TO 63.0 KG" },
+            { "name": "LT HEAVYWEIGHT", "limit": "OVER 63.1 TO 68.0 KG" },
+            { "name": "HEAVYWEIGHT", "limit": "OVER 68.1 KG" }
+          ]
+        }
+      },
+      {
+        "id": "CADET",
+        "label": "CADET",
+        "ageLabel": "12-14 YEARS OLD",
+        "categoryType": "WEIGHT",
+        "weightCategories": {
+          "MALE": [
+            { "name": "FINWEIGHT", "limit": "NOT EXCEEDING 33.0 KG" },
+            { "name": "FLYWEIGHT", "limit": "OVER 33.1 TO 37.0 KG" },
+            { "name": "BANTAMWEIGHT", "limit": "OVER 37.1 TO 41.0 KG" },
+            { "name": "FEATHERWEIGHT", "limit": "OVER 41.1 TO 45.0 KG" },
+            { "name": "LIGHTWEIGHT", "limit": "OVER 45.1 TO 49.0 KG" },
+            { "name": "WELTERWEIGHT", "limit": "OVER 49.1 TO 53.0 KG" },
+            { "name": "LT MIDDLEWEIGHT", "limit": "OVER 53.1 TO 57.0 KG" },
+            { "name": "MIDDLEWEIGHT", "limit": "OVER 57.1 TO 61.0 KG" },
+            { "name": "LT HEAVYWEIGHT", "limit": "OVER 61.1 TO 65.0 KG" },
+            { "name": "HEAVYWEIGHT", "limit": "OVER 65.1 KG" }
+          ],
+          "FEMALE": [
+            { "name": "FINWEIGHT", "limit": "NOT EXCEEDING 29.0 KG" },
+            { "name": "FLYWEIGHT", "limit": "OVER 29.1 TO 33.0 KG" },
+            { "name": "BANTAMWEIGHT", "limit": "OVER 33.1 TO 37.0 KG" },
+            { "name": "FEATHERWEIGHT", "limit": "OVER 37.1 TO 41.0 KG" },
+            { "name": "LIGHTWEIGHT", "limit": "OVER 41.1 TO 44.0 KG" },
+            { "name": "WELTERWEIGHT", "limit": "OVER 44.1 TO 47.0 KG" },
+            { "name": "LT MIDDLEWEIGHT", "limit": "OVER 47.1 TO 51.0 KG" },
+            { "name": "MIDDLEWEIGHT", "limit": "OVER 51.1 TO 55.0 KG" },
+            { "name": "LT HEAVYWEIGHT", "limit": "OVER 55.1 TO 59.0 KG" },
+            { "name": "HEAVYWEIGHT", "limit": "OVER 59.1 KG" }
+          ]
+        }
+      },
+      {
+        "id": "SUB_JUNIOR",
+        "label": "SUB JUNIOR",
+        "ageLabel": "11 YEARS OLD AND BELOW",
+        "categoryType": "GROUP",
+        "groups": [
+          { "name": "GROUP 0", "ageLabel": "NOT OVER 9 YEARS OLD" },
+          { "name": "GROUP 1", "ageLabel": "NOT OVER 10 YEARS OLD" },
+          { "name": "GROUP 2", "ageLabel": "NOT OVER 11 YEARS OLD" },
+          { "name": "GROUP 3", "ageLabel": "NOT OVER 11 YEARS OLD" },
+          { "name": "GROUP 4", "ageLabel": "NOT OVER 11 YEARS OLD" },
+          { "name": "GROUP 5", "ageLabel": "NOT OVER 11 YEARS OLD" }
+        ]
+      }
+    ],
 
     "placements": {
       // When enabled, results are finalized as soon as a category final ends.

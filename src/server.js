@@ -175,7 +175,9 @@ function makeSide(name, profile = {}) {
   return {
     name,
     playerName: String(profile?.playerName || '').trim().slice(0, 24),
+    division: String(profile?.division || '').trim().slice(0, 32),
     weightCategory: String(profile?.weightCategory || '').trim().slice(0, 32),
+    categoryGroup: String(profile?.categoryGroup || '').trim().slice(0, 32),
     stateCode: INDIAN_STATE_CODES.has(stateCode) ? stateCode : '',
     district: String(profile?.district || '').trim().slice(0, 48),
     score: 0,
@@ -249,6 +251,53 @@ function normalizeColumn(value) {
   return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
+function normalizeTournamentValue(value) {
+  return String(value || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+function tournamentDivisionDefinitions() {
+  return Array.isArray(rules.tournament.divisions) ? rules.tournament.divisions : [];
+}
+
+function resolveTournamentDivision(value) {
+  const normalized = normalizeTournamentValue(value);
+  return tournamentDivisionDefinitions().find(division => (
+    normalizeTournamentValue(division.id) === normalized || normalizeTournamentValue(division.label) === normalized
+  )) || null;
+}
+
+function resolveWeightCategory(division, gender, value) {
+  const normalized = normalizeTournamentValue(value);
+  return (division?.weightCategories?.[gender] || []).find(category => (
+    normalizeTournamentValue(category.name) === normalized
+  )) || null;
+}
+
+function resolveCategoryGroup(division, value) {
+  const normalized = normalizeTournamentValue(value);
+  return (division?.groups || []).find(group => normalizeTournamentValue(group.name) === normalized) || null;
+}
+
+function competitionCategory(entry) {
+  return String(entry?.categoryGroup || entry?.weightCategory || '').trim();
+}
+
+function tournamentDivisionOrder(divisionId) {
+  const index = tournamentDivisionDefinitions().findIndex(division => division.id === divisionId);
+  return index < 0 ? Number.MAX_SAFE_INTEGER : index;
+}
+
+function tournamentCategoryOrder(entry) {
+  const division = resolveTournamentDivision(entry.division);
+  if (!division) return Number.MAX_SAFE_INTEGER;
+  const categories = division.categoryType === 'GROUP'
+    ? division.groups || []
+    : division.weightCategories?.[entry.gender] || [];
+  const normalized = normalizeTournamentValue(competitionCategory(entry));
+  const index = categories.findIndex(category => normalizeTournamentValue(category.name) === normalized);
+  return index < 0 ? Number.MAX_SAFE_INTEGER : index;
+}
+
 function hashSeed(seed) {
   let value = 2166136261;
   for (const char of String(seed)) {
@@ -276,7 +325,8 @@ function shuffled(items, random) {
 }
 
 function scheduleAnnouncement(bout) {
-  return `Bout ${bout.boutNo}: ${bout.redPlayerName} versus ${bout.bluePlayerName}, ${bout.gender}, ${bout.weightCategory}`;
+  const details = [bout.division, bout.gender, competitionCategory(bout)].filter(Boolean).join(', ');
+  return `Bout ${bout.boutNo}: ${bout.redPlayerName} versus ${bout.bluePlayerName}${details ? `, ${details}` : ''}`;
 }
 
 function bracketSizeFor(playerCount) {
@@ -307,8 +357,10 @@ function createBracketBout({ boutNo, group, round, left, right }) {
   const bout = {
     boutNo,
     groupId: group.id,
+    division: group.division,
     gender: group.gender,
     weightCategory: group.weightCategory,
+    categoryGroup: group.categoryGroup,
     round,
     redPlayerId: bracketPlayerId(left),
     redPlayerName: bracketEntryName(left),
@@ -333,14 +385,16 @@ function addBracketBye({ byes, group, round, entry }) {
   if (playerId) group.byePlayerIds.push(playerId);
   byes.push({
     groupId: group.id,
+    division: group.division,
     gender: group.gender,
     weightCategory: group.weightCategory,
+    categoryGroup: group.categoryGroup,
     round,
     playerId,
     playerName,
     sourceBoutNo: entry.type === 'bout' ? entry.boutNo : null,
     status: 'BYE',
-    announcement: `${playerName} advances by bye in round ${round}, ${group.gender}, ${group.weightCategory}`
+    announcement: `${playerName} advances by bye in round ${round}, ${[group.division, group.gender, competitionCategory(group)].filter(Boolean).join(', ')}`
   });
 }
 
@@ -348,15 +402,17 @@ function generateTournament(players, seed = crypto.randomBytes(8).toString('hex'
   const random = seededRandom(seed);
   const grouped = new Map();
   for (const player of players) {
-    const key = `${player.gender}|${player.weightCategory.toLowerCase()}`;
+    const key = `${player.division}|${player.gender}|${normalizeTournamentValue(competitionCategory(player))}`;
     if (!grouped.has(key)) grouped.set(key, []);
     grouped.get(key).push(player);
   }
 
   const groups = [...grouped.entries()]
     .sort(([, left], [, right]) => {
+      const divisionOrder = tournamentDivisionOrder(left[0].division) - tournamentDivisionOrder(right[0].division);
       const genderOrder = left[0].gender.localeCompare(right[0].gender);
-      return genderOrder || left[0].weightCategory.localeCompare(right[0].weightCategory, undefined, { numeric: true });
+      const categoryOrder = tournamentCategoryOrder(left[0]) - tournamentCategoryOrder(right[0]);
+      return divisionOrder || genderOrder || categoryOrder || competitionCategory(left[0]).localeCompare(competitionCategory(right[0]), undefined, { numeric: true });
     });
   const expectedBouts = groups.reduce((total, [, groupPlayers]) => total + Math.max(0, groupPlayers.length - 1), 0);
   if (expectedBouts > MAX_SCHEDULE_BOUTS) {
@@ -372,8 +428,10 @@ function generateTournament(players, seed = crypto.randomBytes(8).toString('hex'
     const bracketSize = bracketSizeFor(ordered.length);
     const group = {
       id: `G${String(groupIndex + 1).padStart(3, '0')}`,
+      division: groupPlayers[0].division,
       gender: groupPlayers[0].gender,
       weightCategory: groupPlayers[0].weightCategory,
+      categoryGroup: groupPlayers[0].categoryGroup,
       playerIds: groupPlayers.map(player => player.id),
       byePlayerIds: [],
       bracketSize,
@@ -464,7 +522,9 @@ const TOURNAMENT_COLUMN_ALIASES = {
   id: new Set(['id', 'playerid', 'competitorid', 'registrationid']),
   name: new Set(['name', 'playername', 'competitor', 'competitorname']),
   gender: new Set(['gender', 'sex']),
+  division: new Set(['division', 'agedivision', 'agecategory']),
   weightCategory: new Set(['weight', 'weightcategory', 'weightclass', 'category']),
+  categoryGroup: new Set(['group', 'subjuniorgroup', 'categorygroup']),
   stateCode: new Set(['state', 'statecode']),
   district: new Set(['district', 'city']),
   club: new Set(['club', 'clubname', 'team', 'teamname'])
@@ -502,7 +562,8 @@ function importTournamentPlayers(buffer) {
     const index = headers.findIndex(header => aliases.has(header));
     if (index >= 0) columns[field] = index;
   }
-  const missing = ['name', 'gender', 'weightCategory'].filter(field => columns[field] === undefined);
+  const missing = ['name', 'gender', 'division', 'weightCategory', 'categoryGroup']
+    .filter(field => columns[field] === undefined);
   if (missing.length) {
     throw new TournamentImportError(`Missing required column(s): ${missing.join(', ')}`);
   }
@@ -522,24 +583,59 @@ function importTournamentPlayers(buffer) {
 
     const name = value('name').slice(0, 64);
     const gender = normalizeGender(value('gender'));
-    const weightCategory = value('weightCategory').slice(0, 32);
+    const divisionDefinition = resolveTournamentDivision(value('division'));
+    const division = divisionDefinition?.id || '';
+    const rawWeightCategory = value('weightCategory').slice(0, 32);
+    const rawCategoryGroup = value('categoryGroup').slice(0, 32);
+    let weightCategory = '';
+    let categoryGroup = '';
     const rawId = value('id');
     const id = (rawId || `P${String(players.length + 1).padStart(3, '0')}`).slice(0, 40);
     const stateCode = value('stateCode').toUpperCase();
 
     if (!name) errors.push(`Row ${rowNumber}: player name is required`);
     if (!gender) errors.push(`Row ${rowNumber}: gender must be MALE/M or FEMALE/F`);
-    if (!weightCategory) errors.push(`Row ${rowNumber}: weight category is required`);
+    if (!divisionDefinition) {
+      const accepted = tournamentDivisionDefinitions().map(item => item.label).join(', ');
+      errors.push(`Row ${rowNumber}: division must be one of ${accepted}`);
+    } else if (divisionDefinition.categoryType === 'GROUP') {
+      const groupDefinition = resolveCategoryGroup(divisionDefinition, rawCategoryGroup);
+      if (!groupDefinition) {
+        const accepted = (divisionDefinition.groups || []).map(item => item.name).join(', ');
+        errors.push(`Row ${rowNumber}: group must be one of ${accepted} for ${divisionDefinition.label}`);
+      } else {
+        categoryGroup = groupDefinition.name;
+      }
+      if (rawWeightCategory) errors.push(`Row ${rowNumber}: weight category must be blank for ${divisionDefinition.label}`);
+    } else {
+      const categoryDefinition = gender
+        ? resolveWeightCategory(divisionDefinition, gender, rawWeightCategory)
+        : null;
+      if (!categoryDefinition) {
+        const accepted = gender
+          ? (divisionDefinition.weightCategories?.[gender] || []).map(item => item.name).join(', ')
+          : 'a category valid for the player gender';
+        errors.push(`Row ${rowNumber}: weight category must be ${accepted} for ${divisionDefinition.label} ${gender || 'player'}`);
+      } else {
+        weightCategory = categoryDefinition.name;
+      }
+      if (rawCategoryGroup) errors.push(`Row ${rowNumber}: group must be blank for ${divisionDefinition.label}`);
+    }
     if (ids.has(id.toLowerCase())) errors.push(`Row ${rowNumber}: duplicate player ID ${id}`);
     if (stateCode && !INDIAN_STATE_CODES.has(stateCode)) errors.push(`Row ${rowNumber}: invalid state code ${stateCode}`);
-    if (!name || !gender || !weightCategory || ids.has(id.toLowerCase()) || (stateCode && !INDIAN_STATE_CODES.has(stateCode))) return;
+    const categoryIsValid = divisionDefinition?.categoryType === 'GROUP'
+      ? Boolean(categoryGroup) && !rawWeightCategory
+      : Boolean(weightCategory) && !rawCategoryGroup;
+    if (!name || !gender || !division || !categoryIsValid || ids.has(id.toLowerCase()) || (stateCode && !INDIAN_STATE_CODES.has(stateCode))) return;
 
     ids.add(id.toLowerCase());
     players.push({
       id,
       name,
       gender,
+      division,
       weightCategory,
+      categoryGroup,
       stateCode,
       district: value('district').slice(0, 48),
       club: value('club').slice(0, 64)
@@ -1127,9 +1223,11 @@ async function unmountUsb(context) {
 function tournamentScheduleRows() {
   const bouts = tournament.schedule.map(bout => ({
     Bout: bout.boutNo,
-    Group: bout.groupId,
+    'Bracket ID': bout.groupId,
+    Division: bout.division,
     Gender: bout.gender,
     'Weight Category': bout.weightCategory,
+    'Sub Junior Group': bout.categoryGroup,
     Round: bout.round,
     'Red Player': bout.redPlayerName,
     'Blue Player': bout.bluePlayerName,
@@ -1140,9 +1238,11 @@ function tournamentScheduleRows() {
   }));
   const byes = (tournament.byes || []).map(bye => ({
     Bout: '',
-    Group: bye.groupId,
+    'Bracket ID': bye.groupId,
+    Division: bye.division,
     Gender: bye.gender,
     'Weight Category': bye.weightCategory,
+    'Sub Junior Group': bye.categoryGroup,
     Round: bye.round,
     'Red Player': bye.playerName,
     'Blue Player': 'BYE',
@@ -1164,9 +1264,11 @@ function tournamentResultRows() {
           ? labels.second
           : labels.third;
       return {
-        Group: group.id,
+        'Bracket ID': group.id,
+        Division: group.division,
         Gender: group.gender,
         'Weight Category': group.weightCategory,
+        'Sub Junior Group': group.categoryGroup,
         Place: placeLabel,
         'Player ID': placement.playerId,
         Player: placement.playerName,
@@ -1186,7 +1288,7 @@ function scheduleWorkbook() {
   const resultSheet = resultRows.length
     ? XLSX.utils.json_to_sheet(resultRows)
     : XLSX.utils.aoa_to_sheet([[
-      'Group', 'Gender', 'Weight Category', 'Place', 'Player ID', 'Player',
+      'Bracket ID', 'Division', 'Gender', 'Weight Category', 'Sub Junior Group', 'Place', 'Player ID', 'Player',
       'State Code', 'District', 'Club'
     ]]);
   XLSX.utils.book_append_sheet(workbook, resultSheet, 'Results');
@@ -1333,7 +1435,7 @@ function refreshTournamentBracket(tournamentState = tournament) {
         ? `Tie pending in Bout ${bye.sourceBoutNo}`
         : `Winner of Bout ${bye.sourceBoutNo}`;
     }
-    bye.announcement = `${bye.playerName} advances by bye in round ${bye.round}, ${bye.gender}, ${bye.weightCategory}`;
+    bye.announcement = `${bye.playerName} advances by bye in round ${bye.round}, ${[bye.division, bye.gender, competitionCategory(bye)].filter(Boolean).join(', ')}`;
   }
 
   for (const group of tournamentState.groups) {
@@ -1493,25 +1595,76 @@ async function announceTournamentBout(bout) {
 
 function createPlayerTemplateBuffer() {
   const workbook = XLSX.utils.book_new();
-  const sheet = XLSX.utils.json_to_sheet([
-    { 'Player ID': 'M58-01', Name: 'Arjun Mehta', Gender: 'MALE', 'Weight Category': '58 kg', 'State Code': 'DL', District: 'New Delhi', Club: 'SFTS Demo Club' },
-    { 'Player ID': 'M58-02', Name: 'Rohan Singh', Gender: 'MALE', 'Weight Category': '58 kg', 'State Code': 'UP', District: 'Noida', Club: 'SFTS Demo Club' },
-    { 'Player ID': 'M58-03', Name: 'Karan Patel', Gender: 'MALE', 'Weight Category': '58 kg', 'State Code': 'GJ', District: 'Ahmedabad', Club: 'SFTS Demo Club' },
-    { 'Player ID': 'M58-04', Name: 'Vivek Rao', Gender: 'MALE', 'Weight Category': '58 kg', 'State Code': 'KA', District: 'Bengaluru', Club: 'SFTS Demo Club' },
-    { 'Player ID': 'M58-05', Name: 'Aditya Nair', Gender: 'MALE', 'Weight Category': '58 kg', 'State Code': 'KL', District: 'Kochi', Club: 'SFTS Demo Club' },
-    { 'Player ID': 'M58-06', Name: 'Nikhil Das', Gender: 'MALE', 'Weight Category': '58 kg', 'State Code': 'WB', District: 'Kolkata', Club: 'SFTS Demo Club' },
-    { 'Player ID': 'M58-07', Name: 'Manav Shah', Gender: 'MALE', 'Weight Category': '58 kg', 'State Code': 'MH', District: 'Mumbai', Club: 'SFTS Demo Club' },
-    { 'Player ID': 'M58-08', Name: 'Yash Verma', Gender: 'MALE', 'Weight Category': '58 kg', 'State Code': 'RJ', District: 'Jaipur', Club: 'SFTS Demo Club' },
-    { 'Player ID': 'F49-01', Name: 'Ananya Kapoor', Gender: 'FEMALE', 'Weight Category': '49 kg', 'State Code': 'DL', District: 'New Delhi', Club: 'SFTS Demo Club' },
-    { 'Player ID': 'F49-02', Name: 'Ishita Iyer', Gender: 'FEMALE', 'Weight Category': '49 kg', 'State Code': 'TN', District: 'Chennai', Club: 'SFTS Demo Club' },
-    { 'Player ID': 'F49-03', Name: 'Meera Joshi', Gender: 'FEMALE', 'Weight Category': '49 kg', 'State Code': 'MH', District: 'Pune', Club: 'SFTS Demo Club' },
-    { 'Player ID': 'F49-04', Name: 'Kavya Menon', Gender: 'FEMALE', 'Weight Category': '49 kg', 'State Code': 'KL', District: 'Thiruvananthapuram', Club: 'SFTS Demo Club' },
-    { 'Player ID': 'F49-05', Name: 'Diya Bose', Gender: 'FEMALE', 'Weight Category': '49 kg', 'State Code': 'WB', District: 'Kolkata', Club: 'SFTS Demo Club' },
-    { 'Player ID': 'M68-01', Name: 'Aarav Gupta', Gender: 'MALE', 'Weight Category': '68 kg', 'State Code': 'HR', District: 'Gurugram', Club: 'SFTS Demo Club' },
-    { 'Player ID': 'M68-02', Name: 'Dev Malhotra', Gender: 'MALE', 'Weight Category': '68 kg', 'State Code': 'PB', District: 'Ludhiana', Club: 'SFTS Demo Club' },
-    { 'Player ID': 'M68-03', Name: 'Kabir Khan', Gender: 'MALE', 'Weight Category': '68 kg', 'State Code': 'KA', District: 'Mysuru', Club: 'SFTS Demo Club' }
+  const playerHeaders = [
+    'Player ID', 'Name', 'Gender', 'Division', 'Weight Category', 'Group',
+    'State Code', 'District', 'Club'
+  ];
+  const playerExamples = [];
+  for (const division of tournamentDivisionDefinitions()) {
+    for (const gender of ['MALE', 'FEMALE']) {
+      const weightCategory = division.categoryType === 'WEIGHT'
+        ? division.weightCategories[gender][0].name
+        : '';
+      const categoryGroup = division.categoryType === 'GROUP' ? division.groups[0].name : '';
+      const idPrefix = `${division.id.replace(/[^A-Z0-9]/g, '').slice(0, 3)}-${gender[0]}`;
+      for (let index = 1; index <= 2; index += 1) {
+        playerExamples.push([
+          `${idPrefix}-${String(index).padStart(2, '0')}`,
+          `Sample ${division.label} ${gender === 'MALE' ? 'Male' : 'Female'} ${index}`,
+          gender,
+          division.label,
+          weightCategory,
+          categoryGroup,
+          '',
+          '',
+          'Sample Club'
+        ]);
+      }
+    }
+  }
+  const playersSheet = XLSX.utils.aoa_to_sheet([playerHeaders, ...playerExamples]);
+  playersSheet['!cols'] = [
+    { wch: 14 }, { wch: 24 }, { wch: 12 }, { wch: 16 }, { wch: 22 },
+    { wch: 14 }, { wch: 12 }, { wch: 22 }, { wch: 24 }
+  ];
+  playersSheet['!autofilter'] = { ref: `A1:I${playerExamples.length + 1}` };
+  XLSX.utils.book_append_sheet(workbook, playersSheet, 'Players');
+
+  const categoryRows = [['Division', 'Age Eligibility', 'Gender', 'Weight Category', 'Weight Limit', 'Group', 'Group Age Limit']];
+  for (const division of tournamentDivisionDefinitions()) {
+    if (division.categoryType === 'WEIGHT') {
+      for (const gender of ['MALE', 'FEMALE']) {
+        for (const category of division.weightCategories[gender]) {
+          categoryRows.push([division.label, division.ageLabel, gender, category.name, category.limit, '', '']);
+        }
+      }
+    } else {
+      for (const group of division.groups) {
+        categoryRows.push([division.label, division.ageLabel, 'MALE / FEMALE', '', '', group.name, group.ageLabel]);
+      }
+    }
+  }
+  const categoriesSheet = XLSX.utils.aoa_to_sheet(categoryRows);
+  categoriesSheet['!cols'] = [
+    { wch: 16 }, { wch: 27 }, { wch: 18 }, { wch: 22 }, { wch: 29 }, { wch: 14 }, { wch: 25 }
+  ];
+  categoriesSheet['!autofilter'] = { ref: `A1:G${categoryRows.length}` };
+  XLSX.utils.book_append_sheet(workbook, categoriesSheet, 'Categories');
+
+  const instructionsSheet = XLSX.utils.aoa_to_sheet([
+    ['SFTS TOURNAMENT PLAYER IMPORT'],
+    ['Use the Players sheet for import. Replace the example rows with tournament players.'],
+    ['Required columns', 'Name, Gender, Division, Weight Category, Group'],
+    ['Gender', 'Use MALE/M or FEMALE/F.'],
+    ['Senior / Junior / Cadet', 'Enter a valid Weight Category from the Categories sheet and leave Group blank.'],
+    ['Sub Junior', 'Leave Weight Category blank and manually enter GROUP 0 through GROUP 5.'],
+    ['Height', 'Height is not used to assign Sub Junior groups.'],
+    ['Player ID', 'Optional, but every supplied ID must be unique.'],
+    ['State Code / District / Club', 'Optional tournament and display information.'],
+    ['Important', 'The importer validates division, gender, weight category, and Sub Junior group against the active rule pack.']
   ]);
-  XLSX.utils.book_append_sheet(workbook, sheet, 'Players');
+  instructionsSheet['!cols'] = [{ wch: 30 }, { wch: 105 }];
+  XLSX.utils.book_append_sheet(workbook, instructionsSheet, 'Instructions');
   return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
 }
 
@@ -1535,6 +1688,7 @@ function rulesSummary(rulePack) {
     maximumActiveRemotes: rulePack.voting.maximumActiveRemotes,
     kyeShiLimitSeconds: rulePack.medical.kyeShi.limitSeconds,
     tournamentFormat: rulePack.tournament.format,
+    tournamentDivisions: rulePack.tournament.divisions,
     tournamentPlacements: rulePack.tournament.placements
   };
 }
@@ -2656,7 +2810,9 @@ function updatePlayerSettings(players) {
 
     next[player] = {
       playerName: String(input.playerName || input.name || '').trim().slice(0, 24),
+      division: '',
       weightCategory: String(input.weightCategory || '').trim().slice(0, 32),
+      categoryGroup: '',
       stateCode,
       district: hasStateCode
         ? String(input.district || '').trim().slice(0, 48)

@@ -30,6 +30,11 @@ test('the built-in ruleset is valid and describes the current behavior', async (
   assert.equal(rules.tournament.placements.enabled, true);
   assert.equal(rules.tournament.placements.thirdPlacePolicy, 'BOTH_SEMIFINAL_LOSERS');
   assert.deepEqual(rules.tournament.placements.labels, { first: '1ST', second: '2ND', third: '3RD' });
+  assert.deepEqual(rules.tournament.groupBy, ['DIVISION', 'GENDER', 'CATEGORY']);
+  assert.deepEqual(rules.tournament.divisions.map(division => division.id), ['SENIOR', 'JUNIOR', 'CADET', 'SUB_JUNIOR']);
+  assert.equal(rules.tournament.divisions.find(division => division.id === 'SENIOR').weightCategories.MALE.length, 8);
+  assert.equal(rules.tournament.divisions.find(division => division.id === 'JUNIOR').weightCategories.FEMALE.length, 10);
+  assert.equal(rules.tournament.divisions.find(division => division.id === 'SUB_JUNIOR').groups[5].name, 'GROUP 5');
   assert.deepEqual(rulesMetadata(rules), {
     id: 'sfts-current',
     name: 'SFTS Default Rules',
@@ -54,11 +59,15 @@ test('commented v2 packs and legacy v1 packs are accepted safely', async () => {
 
   const olderV2 = await defaultRules();
   delete olderV2.tournament.placements;
+  delete olderV2.tournament.divisions;
+  olderV2.tournament.groupBy = ['GENDER', 'WEIGHT_CATEGORY'];
   olderV2.compatibility.requiredCapabilities = olderV2.compatibility.requiredCapabilities
-    .filter(capability => capability !== 'TOURNAMENT_PLACEMENTS');
+    .filter(capability => capability !== 'TOURNAMENT_PLACEMENTS' && capability !== 'TOURNAMENT_DIVISIONS');
   const normalizedV2 = validateRules(olderV2);
   assert.equal(normalizedV2.tournament.placements.enabled, true);
   assert.equal(normalizedV2.tournament.placements.thirdPlacePolicy, 'BOTH_SEMIFINAL_LOSERS');
+  assert.deepEqual(normalizedV2.tournament.groupBy, ['DIVISION', 'GENDER', 'CATEGORY']);
+  assert.deepEqual(normalizedV2.tournament.divisions, (await defaultRules()).tournament.divisions);
 
   const legacy = JSON.parse(await (await import('node:fs/promises')).readFile(path.join(process.cwd(), 'test', 'fixtures', 'scoring-test-pack.json'), 'utf8'));
   const migrated = validateRules(legacy);
@@ -74,6 +83,13 @@ test('unsupported tournament placement policies are rejected safely', async () =
   rules.tournament.placements.thirdPlacePolicy = 'BRONZE_MEDAL_BOUT';
 
   assert.throws(() => validateRules(rules), /thirdPlacePolicy must be BOTH_SEMIFINAL_LOSERS/);
+});
+
+test('invalid tournament division definitions are rejected safely', async () => {
+  const rules = await defaultRules();
+  rules.tournament.divisions[0].weightCategories.MALE = [];
+
+  assert.throws(() => validateRules(rules), /weightCategories\.MALE must be a non-empty array/);
 });
 
 test('a valid active rules file is loaded and an invalid one falls back to defaults', async () => {

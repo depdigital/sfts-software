@@ -18,7 +18,7 @@ const SUPPORTED_CAPABILITIES = new Set([
   'ROUND_GAMJEOM_LIMIT', 'MATCH_GAMJEOM_LIMIT', 'MAJORITY_VOTE',
   'TECHNICAL_COMBINATION', 'KYESHI_MANUAL_DECISION', 'GOLDEN_ROUND',
   'SUPERIORITY_DECISION', 'MANUAL_MATCH_DECISIONS', 'DYNAMIC_BREAK_DURATION',
-  'SINGLE_ELIMINATION', 'TOURNAMENT_PLACEMENTS', 'RULE_PACK_V2'
+  'SINGLE_ELIMINATION', 'TOURNAMENT_PLACEMENTS', 'TOURNAMENT_DIVISIONS', 'RULE_PACK_V2'
 ]);
 const SUPPORTED_WINNER_METHODS = new Set([
   'FINAL_SCORE', 'POINT_GAP', 'ROUND_GAMJEOM_LIMIT', 'MATCH_GAMJEOM_LIMIT',
@@ -37,6 +37,103 @@ const DEFAULT_TOURNAMENT_PLACEMENTS = Object.freeze({
   thirdPlacePolicy: 'BOTH_SEMIFINAL_LOSERS',
   labels: Object.freeze({ first: '1ST', second: '2ND', third: '3RD' })
 });
+const DEFAULT_TOURNAMENT_GROUP_BY = Object.freeze(['DIVISION', 'GENDER', 'CATEGORY']);
+const DEFAULT_TOURNAMENT_DIVISIONS = Object.freeze([
+  {
+    id: 'SENIOR', label: 'SENIOR', ageLabel: '18 YEARS OLD AND ABOVE', categoryType: 'WEIGHT',
+    weightCategories: {
+      MALE: [
+        { name: 'FINWEIGHT', limit: 'NOT EXCEEDING 54.0 KG' },
+        { name: 'FLYWEIGHT', limit: 'OVER 54.1 TO 58.0 KG' },
+        { name: 'BANTAMWEIGHT', limit: 'OVER 58.1 TO 63.0 KG' },
+        { name: 'FEATHERWEIGHT', limit: 'OVER 63.1 TO 68.0 KG' },
+        { name: 'LIGHTWEIGHT', limit: 'OVER 68.1 TO 74.0 KG' },
+        { name: 'WELTERWEIGHT', limit: 'OVER 74.1 TO 80.0 KG' },
+        { name: 'MIDDLEWEIGHT', limit: 'OVER 80.1 TO 87.0 KG' },
+        { name: 'HEAVYWEIGHT', limit: 'OVER 87.1 KG' }
+      ],
+      FEMALE: [
+        { name: 'FINWEIGHT', limit: 'NOT EXCEEDING 46.0 KG' },
+        { name: 'FLYWEIGHT', limit: 'OVER 46.1 TO 49.0 KG' },
+        { name: 'BANTAMWEIGHT', limit: 'OVER 49.1 TO 53.0 KG' },
+        { name: 'FEATHERWEIGHT', limit: 'OVER 53.1 TO 57.0 KG' },
+        { name: 'LIGHTWEIGHT', limit: 'OVER 57.1 TO 62.0 KG' },
+        { name: 'WELTERWEIGHT', limit: 'OVER 62.1 TO 67.0 KG' },
+        { name: 'MIDDLEWEIGHT', limit: 'OVER 67.1 TO 74.0 KG' },
+        { name: 'HEAVYWEIGHT', limit: 'OVER 74.1 KG' }
+      ]
+    }
+  },
+  {
+    id: 'JUNIOR', label: 'JUNIOR', ageLabel: '15-17 YEARS OLD', categoryType: 'WEIGHT',
+    weightCategories: {
+      MALE: [
+        { name: 'FINWEIGHT', limit: 'NOT EXCEEDING 45.0 KG' },
+        { name: 'FLYWEIGHT', limit: 'OVER 45.1 TO 48.0 KG' },
+        { name: 'BANTAMWEIGHT', limit: 'OVER 48.1 TO 51.0 KG' },
+        { name: 'FEATHERWEIGHT', limit: 'OVER 51.1 TO 55.0 KG' },
+        { name: 'LIGHTWEIGHT', limit: 'OVER 55.1 TO 59.0 KG' },
+        { name: 'WELTERWEIGHT', limit: 'OVER 59.1 TO 63.0 KG' },
+        { name: 'LT MIDDLEWEIGHT', limit: 'OVER 63.1 TO 68.0 KG' },
+        { name: 'MIDDLEWEIGHT', limit: 'OVER 68.1 TO 73.0 KG' },
+        { name: 'LT HEAVYWEIGHT', limit: 'OVER 73.1 TO 78.0 KG' },
+        { name: 'HEAVYWEIGHT', limit: 'OVER 78.1 KG' }
+      ],
+      FEMALE: [
+        { name: 'FINWEIGHT', limit: 'NOT EXCEEDING 42.0 KG' },
+        { name: 'FLYWEIGHT', limit: 'OVER 42.1 TO 44.0 KG' },
+        { name: 'BANTAMWEIGHT', limit: 'OVER 44.1 TO 46.0 KG' },
+        { name: 'FEATHERWEIGHT', limit: 'OVER 46.1 TO 49.0 KG' },
+        { name: 'LIGHTWEIGHT', limit: 'OVER 49.1 TO 52.0 KG' },
+        { name: 'WELTERWEIGHT', limit: 'OVER 52.1 TO 55.0 KG' },
+        { name: 'LT MIDDLEWEIGHT', limit: 'OVER 55.1 TO 59.0 KG' },
+        { name: 'MIDDLEWEIGHT', limit: 'OVER 59.1 TO 63.0 KG' },
+        { name: 'LT HEAVYWEIGHT', limit: 'OVER 63.1 TO 68.0 KG' },
+        { name: 'HEAVYWEIGHT', limit: 'OVER 68.1 KG' }
+      ]
+    }
+  },
+  {
+    id: 'CADET', label: 'CADET', ageLabel: '12-14 YEARS OLD', categoryType: 'WEIGHT',
+    weightCategories: {
+      MALE: [
+        { name: 'FINWEIGHT', limit: 'NOT EXCEEDING 33.0 KG' },
+        { name: 'FLYWEIGHT', limit: 'OVER 33.1 TO 37.0 KG' },
+        { name: 'BANTAMWEIGHT', limit: 'OVER 37.1 TO 41.0 KG' },
+        { name: 'FEATHERWEIGHT', limit: 'OVER 41.1 TO 45.0 KG' },
+        { name: 'LIGHTWEIGHT', limit: 'OVER 45.1 TO 49.0 KG' },
+        { name: 'WELTERWEIGHT', limit: 'OVER 49.1 TO 53.0 KG' },
+        { name: 'LT MIDDLEWEIGHT', limit: 'OVER 53.1 TO 57.0 KG' },
+        { name: 'MIDDLEWEIGHT', limit: 'OVER 57.1 TO 61.0 KG' },
+        { name: 'LT HEAVYWEIGHT', limit: 'OVER 61.1 TO 65.0 KG' },
+        { name: 'HEAVYWEIGHT', limit: 'OVER 65.1 KG' }
+      ],
+      FEMALE: [
+        { name: 'FINWEIGHT', limit: 'NOT EXCEEDING 29.0 KG' },
+        { name: 'FLYWEIGHT', limit: 'OVER 29.1 TO 33.0 KG' },
+        { name: 'BANTAMWEIGHT', limit: 'OVER 33.1 TO 37.0 KG' },
+        { name: 'FEATHERWEIGHT', limit: 'OVER 37.1 TO 41.0 KG' },
+        { name: 'LIGHTWEIGHT', limit: 'OVER 41.1 TO 44.0 KG' },
+        { name: 'WELTERWEIGHT', limit: 'OVER 44.1 TO 47.0 KG' },
+        { name: 'LT MIDDLEWEIGHT', limit: 'OVER 47.1 TO 51.0 KG' },
+        { name: 'MIDDLEWEIGHT', limit: 'OVER 51.1 TO 55.0 KG' },
+        { name: 'LT HEAVYWEIGHT', limit: 'OVER 55.1 TO 59.0 KG' },
+        { name: 'HEAVYWEIGHT', limit: 'OVER 59.1 KG' }
+      ]
+    }
+  },
+  {
+    id: 'SUB_JUNIOR', label: 'SUB JUNIOR', ageLabel: '11 YEARS OLD AND BELOW', categoryType: 'GROUP',
+    groups: [
+      { name: 'GROUP 0', ageLabel: 'NOT OVER 9 YEARS OLD' },
+      { name: 'GROUP 1', ageLabel: 'NOT OVER 10 YEARS OLD' },
+      { name: 'GROUP 2', ageLabel: 'NOT OVER 11 YEARS OLD' },
+      { name: 'GROUP 3', ageLabel: 'NOT OVER 11 YEARS OLD' },
+      { name: 'GROUP 4', ageLabel: 'NOT OVER 11 YEARS OLD' },
+      { name: 'GROUP 5', ageLabel: 'NOT OVER 11 YEARS OLD' }
+    ]
+  }
+]);
 
 function fail(message) { throw new Error(`Invalid rules: ${message}`); }
 function isObject(value) { return value !== null && typeof value === 'object' && !Array.isArray(value); }
@@ -140,7 +237,61 @@ function normalizeRules(input) {
   const rules = input.schemaVersion === LEGACY_RULE_SCHEMA_VERSION ? migrateV1ToV2(input) : structuredClone(input);
   rules.tournament ||= {};
   rules.tournament.placements ??= structuredClone(DEFAULT_TOURNAMENT_PLACEMENTS);
+  if (!rules.tournament.divisions) {
+    rules.tournament.divisions = structuredClone(DEFAULT_TOURNAMENT_DIVISIONS);
+  }
+  if (Array.isArray(rules.tournament.groupBy) && rules.tournament.groupBy.join('|') === 'GENDER|WEIGHT_CATEGORY') {
+    rules.tournament.groupBy = [...DEFAULT_TOURNAMENT_GROUP_BY];
+  }
   return rules;
+}
+
+function validateTournamentDivisions(value) {
+  if (!Array.isArray(value) || value.length === 0) fail('tournament.divisions must be a non-empty array');
+  const ids = new Set();
+  for (const [divisionIndex, divisionValue] of value.entries()) {
+    const name = `tournament.divisions[${divisionIndex}]`;
+    const division = requireObject(divisionValue, name);
+    const id = requireString(division.id, `${name}.id`);
+    requireString(division.label, `${name}.label`);
+    requireString(division.ageLabel, `${name}.ageLabel`);
+    const normalizedId = id.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (ids.has(normalizedId)) fail('tournament.divisions must not contain duplicate ids');
+    ids.add(normalizedId);
+    if (division.categoryType !== 'WEIGHT' && division.categoryType !== 'GROUP') {
+      fail(`${name}.categoryType must be WEIGHT or GROUP`);
+    }
+    if (division.categoryType === 'WEIGHT') {
+      const weightCategories = requireObject(division.weightCategories, `${name}.weightCategories`);
+      for (const gender of ['MALE', 'FEMALE']) {
+        if (!Array.isArray(weightCategories[gender]) || weightCategories[gender].length === 0) {
+          fail(`${name}.weightCategories.${gender} must be a non-empty array`);
+        }
+        const categoryNames = new Set();
+        for (const [categoryIndex, categoryValue] of weightCategories[gender].entries()) {
+          const categoryName = `${name}.weightCategories.${gender}[${categoryIndex}]`;
+          const category = requireObject(categoryValue, categoryName);
+          const valueName = requireString(category.name, `${categoryName}.name`);
+          requireString(category.limit, `${categoryName}.limit`);
+          const normalizedName = valueName.toUpperCase().replace(/[^A-Z0-9]/g, '');
+          if (categoryNames.has(normalizedName)) fail(`${name}.weightCategories.${gender} must not contain duplicate names`);
+          categoryNames.add(normalizedName);
+        }
+      }
+    } else {
+      if (!Array.isArray(division.groups) || division.groups.length === 0) fail(`${name}.groups must be a non-empty array`);
+      const groupNames = new Set();
+      for (const [groupIndex, groupValue] of division.groups.entries()) {
+        const groupName = `${name}.groups[${groupIndex}]`;
+        const group = requireObject(groupValue, groupName);
+        const valueName = requireString(group.name, `${groupName}.name`);
+        requireString(group.ageLabel, `${groupName}.ageLabel`);
+        const normalizedName = valueName.toUpperCase().replace(/[^A-Z0-9]/g, '');
+        if (groupNames.has(normalizedName)) fail(`${name}.groups must not contain duplicate names`);
+        groupNames.add(normalizedName);
+      }
+    }
+  }
 }
 
 export function validateRules(input) {
@@ -232,8 +383,9 @@ export function validateRules(input) {
   const kyeShi = requireObject(requireObject(rules.medical, 'medical').kyeShi, 'medical.kyeShi'); requireBoolean(kyeShi.enabled, 'medical.kyeShi.enabled'); requireInteger(kyeShi.limitSeconds, 'medical.kyeShi.limitSeconds', { minimum: 1 });
   if (kyeShi.onLimit !== 'MANUAL_WINNER') fail('medical.kyeShi.onLimit must be MANUAL_WINNER');
   const tournament = requireObject(rules.tournament, 'tournament'); if (tournament.format !== 'SINGLE_ELIMINATION') fail('tournament.format must be SINGLE_ELIMINATION');
-  if (!Array.isArray(tournament.groupBy) || tournament.groupBy.join('|') !== 'GENDER|WEIGHT_CATEGORY') fail('tournament.groupBy must be [GENDER, WEIGHT_CATEGORY]');
+  if (!Array.isArray(tournament.groupBy) || tournament.groupBy.join('|') !== DEFAULT_TOURNAMENT_GROUP_BY.join('|')) fail('tournament.groupBy must be [DIVISION, GENDER, CATEGORY]');
   if (tournament.byes !== 'AUTOMATIC' || tournament.seeding !== 'SEEDED_RANDOM') fail('tournament bye/seeding policy is not supported');
+  validateTournamentDivisions(tournament.divisions);
   const placements = requireObject(tournament.placements, 'tournament.placements');
   requireBoolean(placements.enabled, 'tournament.placements.enabled');
   if (placements.thirdPlacePolicy !== 'BOTH_SEMIFINAL_LOSERS') fail('tournament.placements.thirdPlacePolicy must be BOTH_SEMIFINAL_LOSERS');
