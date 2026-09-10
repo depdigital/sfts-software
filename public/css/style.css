@@ -763,6 +763,150 @@ button {
 .playerSettingsModal {
   width: min(920px, 94vw);
 }
+.playerSettingsHub p,
+.manualHint {
+  color: #aebbd0;
+  font-size: 13px;
+}
+.playerSettingsChoices {
+  display: grid;
+  gap: 12px;
+  margin: 18px 0;
+}
+.playerSettingsChoices button {
+  min-height: 92px;
+  text-align: left;
+}
+.playerSettingsChoices strong,
+.playerSettingsChoices span {
+  display: block;
+}
+.playerSettingsChoices span {
+  margin-top: 7px;
+  color: #b9c5d8;
+  font-size: 12px;
+  font-weight: 600;
+}
+.manualEntryModal,
+.categoryResultsModal {
+  width: min(1120px, 96vw);
+  text-align: left;
+}
+.manualEntryModal > h2,
+.categoryResultsModal > h2 {
+  text-align: center;
+}
+.manualEntryToolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+}
+.manualEntryToolbar button {
+  width: auto;
+  margin: 0;
+}
+.manualSection,
+.manualPlacements {
+  margin: 14px 0;
+  padding: 14px;
+  border-radius: 12px;
+  background: #0b1017;
+}
+.manualSection h3,
+.manualPlacements h3 {
+  margin: 0 0 12px;
+}
+.manualFieldGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.manualFieldGrid.twoColumns {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.manualEntryModal label,
+.categoryResultsModal label,
+.manualEntryToolbar label {
+  display: block;
+  color: #cbd5e5;
+  font-size: 12px;
+  font-weight: 800;
+}
+.manualEntryModal input,
+.manualEntryModal select,
+.categoryResultsModal select,
+.manualEntryToolbar select {
+  box-sizing: border-box;
+  width: 100%;
+  margin-top: 6px;
+  padding: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  background: #171f2d;
+  color: #fff;
+  font: inherit;
+}
+.manualActions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+.manualActions button {
+  margin: 0;
+}
+.dataImportModal > .playerSettingsGrid,
+.dataImportModal > .playersAnnounceButton {
+  display: none;
+}
+.categoryPrintReport {
+  margin-top: 16px;
+  padding: 20px;
+  border-radius: 10px;
+  background: #fff;
+  color: #111;
+}
+.categoryPrintReport h1,
+.categoryPrintReport h2,
+.categoryPrintReport h3 {
+  text-align: center;
+}
+.categoryReportMeta,
+.categoryReportPlacements {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px 18px;
+  margin: 12px 0;
+}
+.categoryPrintReport table {
+  width: 100%;
+  margin: 12px 0;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.categoryPrintReport th,
+.categoryPrintReport td {
+  padding: 6px;
+  border: 1px solid #666;
+  text-align: left;
+  vertical-align: top;
+}
+.categoryReportBout {
+  break-inside: avoid;
+  margin-top: 18px;
+}
+.categoryReportSignatures {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 30px;
+  margin-top: 54px;
+  text-align: center;
+}
+.categoryReportSignatures span {
+  padding-top: 8px;
+  border-top: 1px solid #111;
+}
 .playerSettingsGrid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1478,6 +1622,16 @@ button {
   .playerSettingsGrid {
     grid-template-columns: 1fr;
   }
+  .manualFieldGrid,
+  .manualFieldGrid.twoColumns,
+  .manualActions,
+  .categoryReportMeta,
+  .categoryReportPlacements {
+    grid-template-columns: 1fr;
+  }
+  .manualEntryToolbar {
+    grid-template-columns: 1fr;
+  }
   .rulesActions {
     grid-template-columns: 1fr;
   }
@@ -1492,17 +1646,19 @@ button {
   body * {
     visibility: hidden !important;
   }
-  #scheduleModal,
-  #scheduleModal * {
+  body:not(.printManualCategory) #scheduleModal,
+  body:not(.printManualCategory) #scheduleModal *,
+  body.printManualCategory #categoryPrintReport,
+  body.printManualCategory #categoryPrintReport * {
     visibility: visible !important;
   }
-  #scheduleModal {
+  body:not(.printManualCategory) #scheduleModal {
     position: static;
     display: block;
     background: #fff;
     color: #000;
   }
-  #scheduleModal .modalCard {
+  body:not(.printManualCategory) #scheduleModal .modalCard {
     width: 100%;
     max-height: none;
     overflow: visible;
@@ -1511,25 +1667,52 @@ button {
     background: #fff;
     color: #000;
   }
-  #scheduleModal .scheduleActions,
-  #scheduleModal .scheduleRowActions,
-  #scheduleModal > .modalCard > button {
+  body:not(.printManualCategory) #scheduleModal .scheduleActions,
+  body:not(.printManualCategory) #scheduleModal .scheduleRowActions,
+  body:not(.printManualCategory) #scheduleModal > .modalCard > button {
     display: none !important;
   }
-  #scheduleModal .scheduleTable {
+  body:not(.printManualCategory) #scheduleModal .scheduleTable {
     max-height: none;
     overflow: visible;
     border: 0;
   }
-  #scheduleModal .scheduleTable table {
+  body:not(.printManualCategory) #scheduleModal .scheduleTable table {
     min-width: 0;
     font-size: 10px;
   }
-  #scheduleModal .scheduleTable th,
-  #scheduleModal .scheduleTable td {
+  body:not(.printManualCategory) #scheduleModal .scheduleTable th,
+  body:not(.printManualCategory) #scheduleModal .scheduleTable td {
     color: #000;
     background: #fff;
     padding: 5px;
+  }
+  body.printManualCategory #categoryPrintReport {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    color: #000;
+  }
+  body.printManualCategory #manualCategoryResultsModal,
+  body.printManualCategory #manualCategoryResultsModal .categoryResultsModal {
+    position: static;
+    display: block;
+    width: 100%;
+    max-height: none;
+    overflow: visible;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: #fff;
+  }
+  body.printManualCategory.printManualSummary .categoryReportAudit {
+    display: none !important;
+  }
+  body.printManualCategory.printManualFull .categoryReportAudit {
+    display: block !important;
   }
 }
 .homeAccessToken {

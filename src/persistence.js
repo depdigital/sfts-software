@@ -22,7 +22,7 @@ function isSide(value) {
     isObject(value) && typeof value.name === 'string' && typeof value.playerName === 'string' &&
     hasOptionalString(value, 'division') && typeof value.weightCategory === 'string' &&
     hasOptionalString(value, 'categoryGroup') && typeof value.stateCode === 'string' &&
-    typeof value.district === 'string' && isNonNegativeInteger(value.score) &&
+    typeof value.district === 'string' && hasOptionalString(value, 'club') && isNonNegativeInteger(value.score) &&
     isNonNegativeInteger(value.gamjeom) && isObject(value.stats) &&
     isNonNegativeInteger(value.stats.plus1) && isNonNegativeInteger(value.stats.plus2) &&
     isNonNegativeInteger(value.stats.plus3) &&
@@ -112,7 +112,10 @@ function isSnapshot(value) {
     isObject(value) && value.version === SNAPSHOT_VERSION && typeof value.savedAt === 'string' &&
     (!Object.prototype.hasOwnProperty.call(value, 'arenaNumber') || typeof value.arenaNumber === 'string') &&
     (!Object.prototype.hasOwnProperty.call(value, 'cleanShutdown') || typeof value.cleanShutdown === 'boolean') &&
-    isMatch(value.match) && Array.isArray(value.matchHistory) && isTournament(value.tournament)
+    isMatch(value.match) && Array.isArray(value.matchHistory) && isTournament(value.tournament) &&
+    (!Object.prototype.hasOwnProperty.call(value, 'manualCompetition') || (
+      isObject(value.manualCompetition) && Array.isArray(value.manualCompetition.categories)
+    )) && (!Object.prototype.hasOwnProperty.call(value, 'manualMatchRecords') || Array.isArray(value.manualMatchRecords))
   );
 }
 

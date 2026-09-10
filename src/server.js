@@ -11,6 +11,7 @@ import { WebSocketServer } from "ws";
 import * as XLSX from "xlsx";
 import { createTts } from "./tts.js";
 import { createPersistence } from "./persistence.js";
+import { createManualArchive } from "./manualArchive.js";
 import {
   loadRules,
   readRulesFile,
@@ -95,6 +96,7 @@ const wss = new WebSocketServer({ server, maxPayload: MAX_WS_PAYLOAD });
 const publicDir = path.join(PROJECT_ROOT, 'public');
 const tts = createTts();
 const persistence = createPersistence();
+const manualArchive = createManualArchive({ dataDir: persistence.dataDir });
 const hostAccessToken = String(process.env.SFTS_HOST_TOKEN || '').trim() || crypto.randomBytes(24).toString('hex');
 app.use(express.static(publicDir));
 
@@ -175,12 +177,13 @@ function makeSide(name, profile = {}) {
   const stateCode = String(profile?.stateCode || '').trim().toUpperCase();
   return {
     name,
-    playerName: String(profile?.playerName || '').trim().slice(0, 24),
+    playerName: String(profile?.playerName || '').trim().slice(0, 64),
     division: String(profile?.division || '').trim().slice(0, 32),
     weightCategory: String(profile?.weightCategory || '').trim().slice(0, 32),
     categoryGroup: String(profile?.categoryGroup || '').trim().slice(0, 32),
     stateCode: INDIAN_STATE_CODES.has(stateCode) ? stateCode : '',
     district: String(profile?.district || '').trim().slice(0, 48),
+    club: String(profile?.club || '').trim().slice(0, 64),
     score: 0,
     gamjeom: 0,
     stats: baseStats()
@@ -206,6 +209,7 @@ function makeMatch(
     rulesSnapshot: deep(rules),
     running: false,
     roundStarted: false,
+    startedAt: null,
     phase: "ROUND", // ROUND | BREAK | TIE_DECISION | MATCH_END
     kyeShi: makeKyeShi(),
     goldenRound: makeGoldenRound(),
@@ -214,6 +218,8 @@ function makeMatch(
     blue: makeSide(blueName, blueProfile),
     votes: {},
     cornerRefereeHistory: [],
+    operatorHistory: [],
+    manualBout: null,
     roundHistory: [],
     matchWinner: null,
     matchReason: "",
@@ -240,6 +246,13 @@ function makeTournament() {
     schedule: [],
     byes: [],
     activeBoutNo: null
+  };
+}
+
+function makeManualCompetition() {
+  return {
+    version: 1,
+    categories: []
   };
 }
 
@@ -652,6 +665,8 @@ let match = makeMatch();
 let arenaNumber = '';
 let matchHistory = [];
 let tournament = makeTournament();
+let manualCompetition = makeManualCompetition();
+let manualMatchRecords = [];
 let hostSocket = null;
 const refereeSockets = new Map();
 const remoteSockets = new Map();
@@ -750,6 +765,18 @@ function persistenceSnapshot({ cleanShutdown = false } = {}) {
   };
 }
 
+function manualArchiveSnapshot() {
+  return {
+    version: 1,
+    manualCompetition: deep(manualCompetition),
+    records: deep(manualMatchRecords)
+  };
+}
+
+function persistManualArchive() {
+  manualArchive.schedule(manualArchiveSnapshot());
+}
+
 function flushPersistedState(snapshot) {
   persistenceFlushChain = persistenceFlushChain
     .catch(() => {})
@@ -779,6 +806,7 @@ function restorePersistedState(snapshot) {
     ? match.remoteCount
     : MAX_ACTIVE_REMOTES;
   match.running = false;
+  match.startedAt = typeof match.startedAt === 'string' ? match.startedAt : null;
   match.roundStarted = Boolean(match.roundStarted || match.timerMs < match.configuredRoundMs ||
     match.red.score > 0 || match.blue.score > 0 || match.red.gamjeom > 0 || match.blue.gamjeom > 0);
   match.kyeShi = {
@@ -810,11 +838,28 @@ function restorePersistedState(snapshot) {
   match.cornerRefereeHistory = Array.isArray(match.cornerRefereeHistory)
     ? match.cornerRefereeHistory
     : [];
+  match.operatorHistory = Array.isArray(match.operatorHistory) ? match.operatorHistory : [];
+  match.manualBout = match.manualBout && typeof match.manualBout === 'object'
+    ? match.manualBout
+    : null;
   match.test = { active: false, presses: {} };
   matchHistory = snapshot.matchHistory;
   tournament = snapshot.tournament;
   tournament.placementPolicy ||= deep(rules.tournament.placements);
   refreshTournamentBracket(tournament);
+  manualCompetition = snapshot.manualCompetition && typeof snapshot.manualCompetition === 'object'
+    ? snapshot.manualCompetition
+    : makeManualCompetition();
+  manualCompetition.version = 1;
+  manualCompetition.categories = Array.isArray(manualCompetition.categories)
+    ? manualCompetition.categories.filter(category => (
+      category && typeof category === 'object' && typeof category.id === 'string' && category.id &&
+      Array.isArray(category.matchRecordIds) && category.placements && typeof category.placements === 'object'
+    ))
+    : [];
+  manualMatchRecords = Array.isArray(snapshot.manualMatchRecords)
+    ? snapshot.manualMatchRecords.filter(record => record && typeof record === 'object' && record.manualBout?.categoryId)
+    : matchHistory.filter(item => item?.source === 'MANUAL' && item.manualBout?.categoryId);
 
   if (tournament.activeBoutNo) {
     const active = findTournamentBout(tournament.activeBoutNo);
@@ -837,6 +882,20 @@ if (persistedState) {
   restorePersistedState(persistedState.snapshot);
   console.log(`Restored saved state from ${persistedState.source} snapshot`);
 }
+const archivedManualResults = await manualArchive.load();
+if (archivedManualResults) {
+  manualCompetition = archivedManualResults.manualCompetition;
+  manualMatchRecords = archivedManualResults.records;
+} else if (manualCompetition.categories.length || manualMatchRecords.length) {
+  manualArchive.schedule({ version: 1, manualCompetition, records: manualMatchRecords });
+}
+manualCompetition.categories = manualCompetition.categories.filter(category => (
+  category && typeof category === 'object' && typeof category.id === 'string' && category.id &&
+  Array.isArray(category.matchRecordIds) && category.placements && typeof category.placements === 'object'
+));
+manualMatchRecords = manualMatchRecords.filter(record => (
+  record && typeof record === 'object' && record.manualBout?.categoryId
+));
 persistenceReady = true;
 // Mark the running server as unclean until it reaches a deliberate shutdown.
 await flushPersistedState(persistenceSnapshot());
@@ -860,6 +919,20 @@ function sendText(ws, text, label = 'send') {
 function send(ws, message) {
   return sendText(ws, JSON.stringify(message));
 }
+function matchHistoryState() {
+  return matchHistory.map(item => ({
+    id: item.id,
+    matchNo: item.matchNo,
+    redName: item.redName,
+    blueName: item.blueName,
+    winner: item.winner,
+    winnerName: item.winnerName,
+    reason: item.reason,
+    roundCount: Array.isArray(item.rounds) ? item.rounds.length : 0,
+    endedAt: item.endedAt,
+    ruleset: item.ruleset
+  }));
+}
 function fullState() {
   return {
     type: "state",
@@ -870,8 +943,9 @@ function fullState() {
     remoteScoreValues,
     remoteScoreRevisions,
     match,
-    matchHistory,
+    matchHistory: matchHistoryState(),
     tournament,
+    manualCompetition,
     remotes: [...remoteStatuses.values()],
     usbImportOnly: USB_IMPORT_ONLY,
     ruleset: activeRulesMetadata,
@@ -958,6 +1032,7 @@ async function executeSystemPower(request) {
     // empty history are the state restored on the next boot.
     try {
       await flushPersistedState(persistenceSnapshot({ cleanShutdown: true }));
+      await manualArchive.flush();
     } catch (error) {
       console.error(`Could not flush reset state before shutdown: ${error.message}`);
     }
@@ -1312,6 +1387,195 @@ function tournamentMatchIsBusy() {
   );
 }
 
+const MANUAL_COMPETITIONS = new Set(['KYORUGI', 'FRESHER KYORUGI']);
+const MANUAL_BOUT_STAGES = new Set(['PRELIMINARY', 'QUARTERFINAL', 'SEMIFINAL', 'FINAL']);
+
+function manualBoutSettingsLocked() {
+  return Boolean(
+    tournament.activeBoutNo || match.test.active || match.running || match.phase !== 'ROUND' ||
+    match.roundStarted || match.roundHistory.length || match.red.score || match.blue.score ||
+    match.red.gamjeom || match.blue.gamjeom || Object.keys(match.votes).length ||
+    match.kyeShi?.running || Number(match.kyeShi?.elapsedMs) > 0
+  );
+}
+
+function manualPlayerDetails(input, corner) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    return { error: `${corner} player details are required` };
+  }
+  const playerName = String(input.playerName || input.name || '').trim().slice(0, 64);
+  const club = String(input.club || input.affiliation || '').trim().slice(0, 64);
+  const stateCode = String(input.stateCode || '').trim().toUpperCase().slice(0, 2);
+  if (!playerName) return { error: `${corner} player name is required` };
+  if (!club) return { error: `${corner} affiliation or club is required` };
+  if (stateCode && !INDIAN_STATE_CODES.has(stateCode)) return { error: `${corner} state code is invalid` };
+  return {
+    playerName,
+    club,
+    stateCode,
+    district: String(input.district || '').trim().slice(0, 48)
+  };
+}
+
+function manualCategoryFromInput(input) {
+  const divisionDefinition = resolveTournamentDivision(input?.division);
+  const gender = normalizeGender(input?.gender);
+  const competition = String(input?.competition || '').trim().toUpperCase();
+  const eventName = String(input?.eventName || '').trim().slice(0, 96);
+  const eventDate = String(input?.eventDate || '').trim().slice(0, 10);
+  const venue = String(input?.venue || '').trim().slice(0, 128);
+  const nextArenaNumber = normalizeArenaNumber(input?.arenaNumber);
+  if (!eventName || !eventDate || !venue || !nextArenaNumber) {
+    return { error: 'Tournament name, date, venue, and arena number are required' };
+  }
+  const parsedEventDate = new Date(`${eventDate}T00:00:00Z`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(eventDate) || Number.isNaN(parsedEventDate.valueOf()) || parsedEventDate.toISOString().slice(0, 10) !== eventDate) {
+    return { error: 'Tournament date must be a valid calendar date' };
+  }
+  if (!MANUAL_COMPETITIONS.has(competition)) return { error: 'Choose a valid competition type' };
+  if (!divisionDefinition || !gender) return { error: 'Choose a valid rulepack division and gender' };
+  let weightCategory = '';
+  let categoryGroup = '';
+  if (divisionDefinition.categoryType === 'GROUP') {
+    const group = resolveCategoryGroup(divisionDefinition, input?.categoryGroup);
+    if (!group) return { error: `Choose a valid ${divisionDefinition.label} group from the active rulepack` };
+    categoryGroup = group.name;
+  } else {
+    const category = resolveWeightCategory(divisionDefinition, gender, input?.weightCategory);
+    if (!category) return { error: `Choose a valid ${divisionDefinition.label} ${gender} weight category from the active rulepack` };
+    weightCategory = category.name;
+  }
+  return {
+    value: {
+      eventName,
+      eventDate,
+      venue,
+      arenaNumber: nextArenaNumber,
+      competition,
+      division: divisionDefinition.id,
+      divisionLabel: divisionDefinition.label,
+      gender,
+      weightCategory,
+      categoryGroup
+    }
+  };
+}
+
+function saveManualBout(input) {
+  if (manualBoutSettingsLocked()) {
+    return { ok: false, code: 'MATCH_IN_PROGRESS', message: 'Finish or reset the current match before changing manual bout details' };
+  }
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    return { ok: false, code: 'INVALID_MANUAL_BOUT', message: 'Manual bout details are required' };
+  }
+  const red = manualPlayerDetails(input.RED, 'RED');
+  const blue = manualPlayerDetails(input.BLUE, 'BLUE');
+  if (red.error || blue.error) {
+    return { ok: false, code: 'INVALID_MANUAL_PLAYER', message: red.error || blue.error };
+  }
+  const officialBoutNo = String(input.officialBoutNo || '').trim().slice(0, 40);
+  const stage = String(input.stage || '').trim().toUpperCase();
+  if (!officialBoutNo || !MANUAL_BOUT_STAGES.has(stage)) {
+    return { ok: false, code: 'INVALID_MANUAL_BOUT', message: 'Official bout/reference number and a valid stage are required' };
+  }
+
+  let category = null;
+  const categoryId = String(input.categoryId || '').trim();
+  if (categoryId) category = manualCompetition.categories.find(item => item.id === categoryId) || null;
+  if (categoryId && !category) {
+    return { ok: false, code: 'MANUAL_CATEGORY_NOT_FOUND', message: 'The selected manual category was not found' };
+  }
+  if (!category) {
+    if (manualCompetition.categories.length >= 2000) {
+      return { ok: false, code: 'MANUAL_CATEGORY_LIMIT', message: 'The manual category archive has reached its 2,000 category limit' };
+    }
+    const parsed = manualCategoryFromInput(input);
+    if (parsed.error) return { ok: false, code: 'INVALID_MANUAL_CATEGORY', message: parsed.error };
+    category = {
+      id: crypto.randomUUID(),
+      ...parsed.value,
+      status: 'OPEN',
+      ruleset: deep(activeRulesMetadata),
+      createdAt: new Date().toISOString(),
+      finalizedAt: null,
+      matchRecordIds: [],
+      placements: { gold: null, silver: null, bronze1: null, bronze2: null }
+    };
+    manualCompetition.categories.unshift(category);
+  } else if (category.status === 'FINALIZED') {
+    return { ok: false, code: 'MANUAL_CATEGORY_FINALIZED', message: 'This category is finalized and cannot accept another bout' };
+  }
+  if (manualMatchRecords.some(record => (
+    record.manualBout?.categoryId === category.id &&
+    String(record.manualBout?.officialBoutNo || '').trim().toUpperCase() === officialBoutNo.toUpperCase()
+  ))) {
+    return { ok: false, code: 'DUPLICATE_OFFICIAL_BOUT', message: 'That official bout/reference number is already completed in this category' };
+  }
+
+  arenaNumber = category.arenaNumber;
+  const categoryProfile = {
+    division: category.division,
+    weightCategory: category.weightCategory,
+    categoryGroup: category.categoryGroup
+  };
+  Object.assign(match.red, red, categoryProfile);
+  Object.assign(match.blue, blue, categoryProfile);
+  match.manualBout = {
+    categoryId: category.id,
+    officialBoutNo,
+    stage,
+    loadedAt: new Date().toISOString()
+  };
+  persistManualArchive();
+  return { ok: true, categoryId: category.id };
+}
+
+function manualCategoryParticipants(categoryId) {
+  const participants = new Map();
+  for (const record of manualMatchRecords.filter(item => item.manualBout?.categoryId === categoryId)) {
+    for (const player of [record.red, record.blue]) {
+      if (!player?.playerName) continue;
+      const key = `${player.playerName.trim().toUpperCase()}|${String(player.club || '').trim().toUpperCase()}`;
+      participants.set(key, { key, playerName: player.playerName, club: player.club || '' });
+    }
+  }
+  return participants;
+}
+
+function saveManualCategoryPlacements(categoryId, placements, finalize = false) {
+  const category = manualCompetition.categories.find(item => item.id === String(categoryId || ''));
+  if (!category) return { ok: false, code: 'MANUAL_CATEGORY_NOT_FOUND', message: 'Manual category not found' };
+  if (category.status === 'FINALIZED') return { ok: false, code: 'MANUAL_CATEGORY_FINALIZED', message: 'This category is already finalized' };
+  if (!placements || typeof placements !== 'object' || Array.isArray(placements)) {
+    return { ok: false, code: 'INVALID_PLACEMENTS', message: 'Category placements are required' };
+  }
+  const participants = manualCategoryParticipants(category.id);
+  const next = {};
+  const used = new Set();
+  for (const place of ['gold', 'silver', 'bronze1', 'bronze2']) {
+    const key = String(placements[place] || '').trim();
+    if (!key) {
+      next[place] = null;
+      continue;
+    }
+    if (!participants.has(key) || used.has(key)) {
+      return { ok: false, code: 'INVALID_PLACEMENTS', message: 'Placements must use distinct competitors recorded in this category' };
+    }
+    used.add(key);
+    next[place] = participants.get(key);
+  }
+  if (finalize && !next.gold) {
+    return { ok: false, code: 'INVALID_PLACEMENTS', message: 'Confirm the gold medallist before finalizing the category' };
+  }
+  category.placements = next;
+  if (finalize) {
+    category.status = 'FINALIZED';
+    category.finalizedAt = new Date().toISOString();
+  }
+  persistManualArchive();
+  return { ok: true };
+}
+
 function findTournamentBout(boutNo, tournamentState = tournament) {
   const number = Number(boutNo);
   if (!Number.isSafeInteger(number) || number < 1) return null;
@@ -1548,7 +1812,7 @@ function manualPlayersAnnouncement(details) {
     if (!input || typeof input !== 'object' || Array.isArray(input)) {
       return { ok: false, code: 'INVALID_PLAYER_DETAILS', message: `Both ${player} and ${player === 'RED' ? 'BLUE' : 'RED'} player details are required before announcing` };
     }
-    const name = String(input.playerName || '').trim().slice(0, 24);
+    const name = String(input.playerName || '').trim().slice(0, 64);
     if (!name) {
       return { ok: false, code: 'INVALID_PLAYER_DETAILS', message: `${player} player name is required before announcing` };
     }
@@ -1559,7 +1823,7 @@ function manualPlayersAnnouncement(details) {
     }
     players[player] = {
       name,
-      weightCategory,
+      weightCategory: weightCategory || String(input.categoryGroup || '').trim().slice(0, 32),
       stateCode,
       district: String(input.district || '').trim().slice(0, 48)
     };
@@ -1574,7 +1838,7 @@ function manualPlayersAnnouncement(details) {
       : '';
   return {
     ok: true,
-    text: `Bout ${match.matchNo}: ${red.name} versus ${blue.name}${weightText}`
+    text: `${match.manualBout?.officialBoutNo ? `Bout ${match.manualBout.officialBoutNo}` : `Bout ${match.matchNo}`}: ${red.name} versus ${blue.name}${weightText}`
   };
 }
 
@@ -1947,6 +2211,21 @@ app.get('/api/tournament/schedule.csv', requireHostRequest, (req, res) => {
   res.send(output);
 });
 
+app.get('/api/manual/categories', requireHostRequest, (req, res) => {
+  const categoryId = String(req.query.categoryId || '').trim();
+  if (categoryId && !manualCompetition.categories.some(category => category.id === categoryId)) {
+    res.status(404).json({ ok: false, message: 'Manual category not found' });
+    return;
+  }
+  res.json({
+    ok: true,
+    manualCompetition: deep(manualCompetition),
+    records: deep(categoryId
+      ? manualMatchRecords.filter(record => record.manualBout?.categoryId === categoryId)
+      : [])
+  });
+});
+
 function validPlayer(player) {
   return player === 'RED' || player === 'BLUE';
 }
@@ -2032,8 +2311,11 @@ function cornerRefereeDisplayName(corner, button) {
 function recordCornerRefereePress(corner, button, score = null) {
   if (match.phase !== 'ROUND' || !match.roundStarted || match.test.active) return false;
   const entry = {
+    id: `${match.matchNo}-${match.cornerRefereeHistory.length + 1}`,
     matchNo: match.matchNo,
     arenaNumber,
+    round: match.round,
+    timerMs: Math.max(0, Math.ceil(match.timerMs)),
     corner,
     cornerReferee: cornerRefereeDisplayName(corner, button),
     button,
@@ -2042,6 +2324,21 @@ function recordCornerRefereePress(corner, button, score = null) {
   };
   match.cornerRefereeHistory.push(entry);
   return entry;
+}
+
+function recordOperatorCorrection(action, player, from, to) {
+  match.operatorHistory.push({
+    id: `${match.matchNo}-operator-${match.operatorHistory.length + 1}`,
+    matchNo: match.matchNo,
+    arenaNumber,
+    round: match.round,
+    timerMs: Math.max(0, Math.ceil(match.timerMs)),
+    action,
+    player,
+    from,
+    to,
+    recordedAt: new Date().toISOString()
+  });
 }
 
 function replaceCornerRefereeHistoryEntry(entry, button, score) {
@@ -2234,7 +2531,10 @@ function setRunning(running) {
   }
   if (match.timerMs <= 0) return;
   match.running = true;
-  if (match.phase === 'ROUND') match.roundStarted = true;
+  if (match.phase === 'ROUND') {
+    match.roundStarted = true;
+    match.startedAt ||= new Date().toISOString();
+  }
   timerLastAt = performance.now();
 }
 
@@ -2670,20 +2970,38 @@ function finishMatch(winner, reason) {
   match.goldenRound.active = false;
   match.matchWinner = winner;
   match.matchReason = reason;
-  completeTournamentBout(winner);
-  matchHistory.unshift({
+  const endedAt = new Date().toISOString();
+  const record = {
+    id: crypto.randomUUID(),
+    source: match.manualBout ? 'MANUAL' : tournament.activeBoutNo ? 'TOURNAMENT' : 'UNASSIGNED',
     matchNo: match.matchNo,
+    arenaNumber,
+    manualBout: match.manualBout ? deep(match.manualBout) : null,
+    red: deep(match.red),
+    blue: deep(match.blue),
     redName: playerDisplayName(match.red),
     blueName: playerDisplayName(match.blue),
     winner,
     winnerName: winner ? playerDisplayName(side(winner)) : 'DRAW',
+    defeatedName: winner ? playerDisplayName(side(other(winner))) : '',
     reason,
     rounds: deep(match.roundHistory),
+    cornerRefereeHistory: deep(match.cornerRefereeHistory),
+    operatorHistory: deep(match.operatorHistory),
     ruleset: deep(match.ruleset || activeRulesMetadata),
     rulesSnapshot: deep(match.rulesSnapshot || rules),
-    endedAt: new Date().toISOString()
-  });
+    startedAt: match.startedAt || match.manualBout?.loadedAt || null,
+    endedAt
+  };
+  completeTournamentBout(winner);
+  matchHistory.unshift(record);
   matchHistory = matchHistory.slice(0, 50);
+  if (record.manualBout?.categoryId) {
+    manualMatchRecords.unshift(deep(record));
+    const category = manualCompetition.categories.find(item => item.id === record.manualBout.categoryId);
+    if (category && !category.matchRecordIds.includes(record.id)) category.matchRecordIds.push(record.id);
+    persistManualArchive();
+  }
   match.cornerRefereeHistory = [];
   clearRemoteScoreHighlights();
   emit({ type: 'matchEnd', winner, reason, match: deep(match) });
@@ -2789,6 +3107,7 @@ function resetCurrentMatch() {
     refreshTournamentBracket();
   }
   const remoteCount = match.remoteCount;
+  const manualBout = match.manualBout ? deep(match.manualBout) : null;
   match = makeMatch(
     match.matchNo,
     match.red.name,
@@ -2798,6 +3117,7 @@ function resetCurrentMatch() {
     match.blue
   );
   match.remoteCount = Math.min(MAX_ACTIVE_REMOTES, Math.max(MIN_ACTIVE_REMOTES, Number(remoteCount) || MAX_ACTIVE_REMOTES));
+  match.manualBout = manualBout;
   clearAllRemoteCombinations();
   clearLastRemoteButtons();
   clearRemoteScoreHighlights();
@@ -2807,7 +3127,7 @@ function resetCurrentMatch() {
   state(true);
 }
 
-function newMatch() {
+function newMatch({ clearPlayers = false } = {}) {
   if (tournament.activeBoutNo) {
     const bout = findTournamentBout(tournament.activeBoutNo);
     if (bout?.status === 'TIE_PENDING') return false;
@@ -2818,8 +3138,8 @@ function newMatch() {
     match.red.name,
     match.blue.name,
     match.configuredRoundMs,
-    match.red,
-    match.blue
+    clearPlayers ? {} : match.red,
+    clearPlayers ? {} : match.blue
   );
   match.remoteCount = Math.min(MAX_ACTIVE_REMOTES, Math.max(MIN_ACTIVE_REMOTES, Number(remoteCount) || MAX_ACTIVE_REMOTES));
   clearAllRemoteCombinations();
@@ -2855,14 +3175,15 @@ function updatePlayerSettings(players) {
     }
 
     next[player] = {
-      playerName: String(input.playerName || input.name || '').trim().slice(0, 24),
+      playerName: String(input.playerName || input.name || '').trim().slice(0, 64),
       division: '',
       weightCategory: String(input.weightCategory || '').trim().slice(0, 32),
       categoryGroup: '',
       stateCode,
       district: hasStateCode
         ? String(input.district || '').trim().slice(0, 48)
-        : ''
+        : '',
+      club: String(input.club || '').trim().slice(0, 64)
     };
   }
 
@@ -3395,6 +3716,24 @@ wss.on('connection', ws => {
           return;
         }
       }
+      if (msg.action === 'saveManualBout') {
+        const result = saveManualBout(msg.details);
+        if (!result.ok) {
+          sendError(ws, result.code, result.message);
+          return;
+        }
+        if (msg.announce === true) {
+          const announcement = manualPlayersAnnouncement({ RED: match.red, BLUE: match.blue });
+          if (announcement.ok) void announceAnnouncement(announcement.text);
+        }
+      }
+      if (msg.action === 'saveManualCategoryPlacements') {
+        const result = saveManualCategoryPlacements(msg.categoryId, msg.placements, msg.finalize === true);
+        if (!result.ok) {
+          sendError(ws, result.code, result.message);
+          return;
+        }
+      }
       if (msg.action === 'setArenaNumber') {
         const nextArenaNumber = normalizeArenaNumber(msg.value);
         if (msg.value !== '' && nextArenaNumber === '') {
@@ -3417,7 +3756,7 @@ wss.on('connection', ws => {
           sendError(ws, 'INVALID_PLAYER', 'Invalid player');
           return;
         }
-        const name = String(msg.name || '').trim().slice(0, 24);
+        const name = String(msg.name || '').trim().slice(0, 64);
         if (msg.player === 'RED') match.red.playerName = name;
         if (msg.player === 'BLUE') match.blue.playerName = name;
       }
@@ -3428,8 +3767,10 @@ wss.on('connection', ws => {
         }
         const parsed = Number(msg.value);
         const value = validInteger(parsed) ? Math.max(0, parsed) : 0;
+        const previous = side(msg.player).score;
         if (msg.player === 'RED') match.red.score = value;
         if (msg.player === 'BLUE') match.blue.score = value;
+        if (previous !== value) recordOperatorCorrection('SCORE EDIT', msg.player, previous, value);
         checkPointGap();
       }
       if (msg.action === 'editGamjeom') {
@@ -3440,8 +3781,10 @@ wss.on('connection', ws => {
         const parsed = Number(msg.value);
         const maximumGamJeoms = rules.penalties.gamJeom.matchLossAt ?? rules.penalties.gamJeom.roundLossAt;
         const value = validInteger(parsed) ? Math.max(0, Math.min(maximumGamJeoms, parsed)) : 0;
+        const previous = side(msg.player).gamjeom;
         if (msg.player === 'RED') match.red.gamjeom = value;
         if (msg.player === 'BLUE') match.blue.gamjeom = value;
+        if (previous !== value) recordOperatorCorrection('GAM-JEOM EDIT', msg.player, previous, value);
         if (isGoldenRound() && value >= rules.tieBreak.goldenRound.opponentGamJeomsToWin) {
           endGoldenRound(other(msg.player), `GDP - ${rules.tieBreak.goldenRound.opponentGamJeomsToWin} GAM-JEOMS`);
         } else if (rules.penalties.gamJeom.matchLossAt !== null &&
@@ -3469,6 +3812,16 @@ wss.on('connection', ws => {
         }
         if (!newMatch()) {
           sendError(ws, 'TIE_PENDING', 'Resolve the tied tournament bout before starting a new match');
+        }
+      }
+      if (msg.action === 'nextManualBout') {
+        if (match.phase !== 'MATCH_END') {
+          sendError(ws, 'MATCH_NOT_ENDED', 'The current match must be finished before preparing the next manual bout');
+          return;
+        }
+        if (tournament.activeBoutNo || !newMatch({ clearPlayers: true })) {
+          sendError(ws, 'MANUAL_BOUT_UNAVAILABLE', 'A tournament bout is active or awaiting tie resolution');
+          return;
         }
       }
       if (msg.action === 'loadBout') {
@@ -3630,6 +3983,7 @@ async function shutdown(signal) {
   }
   try {
     await flushPersistedState(persistenceSnapshot({ cleanShutdown: true }));
+    await manualArchive.flush();
   } catch (error) {
     console.error(`Could not flush saved state during shutdown: ${error.message}`);
   }

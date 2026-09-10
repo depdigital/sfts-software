@@ -873,6 +873,11 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   const html = await page.text();
   assert.match(html, /STRIKE FORCE TAEKWONDO SCORING SYSTEM/);
   assert.match(html, /id="playerSheetFile"/);
+  assert.match(html, /id="manualEntryModal"/);
+  assert.match(html, /id="dataImportModal"/);
+  assert.match(html, /id="manualCategoryResultsModal"/);
+  assert.match(html, />1\. MANUAL ENTRY</);
+  assert.match(html, />2\. DATA IMPORT</);
   assert.match(html, /id="scheduleModal"/);
   assert.match(html, /id="tournamentResultsList"/);
   assert.match(html, /id="redHeadButton"/);

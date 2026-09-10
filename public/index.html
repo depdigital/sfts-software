@@ -300,8 +300,111 @@
     </section>
 
     <section id="playerSettingsModal" class="overlay hidden">
-      <div class="modalCard playerSettingsModal">
+      <div class="modalCard smallModal playerSettingsHub">
         <h2>PLAYER SETTINGS</h2>
+        <p>Choose how competitors will be loaded for the next bout.</p>
+        <div class="playerSettingsChoices">
+          <button onclick="openManualEntry()">
+            <strong>1. MANUAL ENTRY</strong>
+            <span>Enter fixture bouts and produce category result reports.</span>
+          </button>
+          <button onclick="openDataImport()">
+            <strong>2. DATA IMPORT</strong>
+            <span>Import tournament players and generate a schedule.</span>
+          </button>
+        </div>
+        <button onclick="closePlayerSettings()">CLOSE</button>
+      </div>
+    </section>
+
+    <section id="manualEntryModal" class="overlay hidden">
+      <div class="modalCard manualEntryModal">
+        <h2>MANUAL ENTRY</h2>
+        <div class="manualEntryToolbar">
+          <label>EXISTING CATEGORY
+            <select id="manualCategoryId" class="playerSettingsSelect" onchange="loadManualCategorySelection()">
+              <option value="">CREATE NEW CATEGORY</option>
+            </select>
+          </label>
+          <button onclick="openManualCategoryResults()">CATEGORY RESULTS</button>
+        </div>
+        <section class="manualSection">
+          <h3>EVENT &amp; CATEGORY</h3>
+          <div class="manualFieldGrid">
+            <label>TOURNAMENT NAME<input id="manualEventName" maxlength="96" autocomplete="off" /></label>
+            <label>DATE<input id="manualEventDate" type="date" /></label>
+            <label>VENUE<input id="manualVenue" maxlength="128" autocomplete="off" /></label>
+            <label>ARENA NO.<input id="manualArenaNumber" type="number" min="1" max="999" /></label>
+            <label>COMPETITION<select id="manualCompetition"><option>KYORUGI</option><option>FRESHER KYORUGI</option></select></label>
+            <label>DIVISION<select id="manualDivision" onchange="renderManualCategories()"></select></label>
+            <label>GENDER<select id="manualGender" onchange="renderManualCategories()"><option value="MALE">MALE</option><option value="FEMALE">FEMALE</option></select></label>
+            <label id="manualWeightField">WEIGHT CATEGORY<select id="manualWeightCategory"></select></label>
+            <label id="manualGroupField" class="hidden">SUB JUNIOR GROUP<select id="manualCategoryGroup"></select></label>
+          </div>
+          <p id="manualRulepackHint" class="manualHint"></p>
+        </section>
+        <section class="manualSection">
+          <h3>BOUT DETAILS</h3>
+          <div class="manualFieldGrid twoColumns">
+            <label>OFFICIAL BOUT / REFERENCE NO.<input id="manualOfficialBoutNo" maxlength="40" autocomplete="off" /></label>
+            <label>STAGE<select id="manualStage"><option value="PRELIMINARY">PRELIMINARY</option><option value="QUARTERFINAL">QUARTERFINAL</option><option value="SEMIFINAL">SEMIFINAL</option><option value="FINAL">FINAL</option></select></label>
+          </div>
+        </section>
+        <div class="playerSettingsGrid">
+          <section class="playerSettingsPanel redPlayerPanel">
+            <h3>RED PLAYER</h3>
+            <label>PLAYER NAME<input id="manualRedName" maxlength="64" autocomplete="off" /></label>
+            <label>AFFILIATION / CLUB<input id="manualRedClub" maxlength="64" autocomplete="off" /></label>
+            <label>STATE CODE (OPTIONAL)<input id="manualRedStateCode" maxlength="2" autocomplete="off" /></label>
+            <label>DISTRICT (OPTIONAL)<input id="manualRedDistrict" maxlength="48" autocomplete="off" /></label>
+          </section>
+          <section class="playerSettingsPanel bluePlayerPanel">
+            <h3>BLUE PLAYER</h3>
+            <label>PLAYER NAME<input id="manualBlueName" maxlength="64" autocomplete="off" /></label>
+            <label>AFFILIATION / CLUB<input id="manualBlueClub" maxlength="64" autocomplete="off" /></label>
+            <label>STATE CODE (OPTIONAL)<input id="manualBlueStateCode" maxlength="2" autocomplete="off" /></label>
+            <label>DISTRICT (OPTIONAL)<input id="manualBlueDistrict" maxlength="48" autocomplete="off" /></label>
+          </section>
+        </div>
+        <div class="manualActions">
+          <button onclick="saveManualBout(false)">SAVE &amp; LOAD BOUT</button>
+          <button onclick="saveManualBout(true)">SAVE &amp; ANNOUNCE</button>
+          <button onclick="swapManualPlayers()">SWAP RED / BLUE</button>
+          <button onclick="clearManualPlayers()">CLEAR NAMES</button>
+          <button onclick="nextManualBout()">NEXT MANUAL BOUT</button>
+          <button onclick="backFromManualEntry()">BACK</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="manualCategoryResultsModal" class="overlay hidden">
+      <div class="modalCard categoryResultsModal">
+        <h2>MANUAL CATEGORY RESULTS</h2>
+        <label>CATEGORY<select id="manualResultsCategoryId" onchange="refreshManualRecords(this.value)"></select></label>
+        <section class="manualPlacements">
+          <h3>CONFIRMED PLACEMENTS</h3>
+          <div class="manualFieldGrid">
+            <label>GOLD<select id="manualPlaceGold"></select></label>
+            <label>SILVER<select id="manualPlaceSilver"></select></label>
+            <label>BRONZE<select id="manualPlaceBronze1"></select></label>
+            <label>BRONZE<select id="manualPlaceBronze2"></select></label>
+          </div>
+          <p class="manualHint">Suggested from the recorded final and semifinals. Confirm against the official paper fixture.</p>
+        </section>
+        <article id="categoryPrintReport" class="categoryPrintReport"></article>
+        <div class="manualActions reportActions">
+          <button onclick="saveManualPlacements(false)">SAVE PLACEMENTS</button>
+          <button onclick="saveManualPlacements(true)">FINALIZE CATEGORY</button>
+          <button onclick="printManualCategory('summary')">PRINT SUMMARY</button>
+          <button onclick="printManualCategory('full')">PRINT FULL REPORT</button>
+          <button onclick="closeManualCategoryResults()">BACK</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="dataImportModal" class="overlay hidden">
+      <div class="modalCard playerSettingsModal dataImportModal">
+        <h2>DATA IMPORT</h2>
         <div class="playerSettingsGrid">
           <div class="playerSettingsPanel redPlayerPanel">
             <h3>RED PLAYER</h3>
@@ -515,8 +618,8 @@
             NO TOURNAMENT SHEET IMPORTED
           </div>
         </section>
-        <button onclick="savePlayerSettings()">SAVE PLAYER SETTINGS</button>
-        <button onclick="closePlayerSettings()">CLOSE</button>
+        <button class="hidden" onclick="savePlayerSettings()">SAVE PLAYER SETTINGS</button>
+        <button onclick="backFromDataImport()">BACK</button>
       </div>
     </section>
 

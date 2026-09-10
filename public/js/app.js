@@ -8,6 +8,8 @@ let reconnectTimer = null;
 let reconnectDelay = 500;
 let lastState = null;
 let lastTournament = null;
+let lastManualCompetition = { version: 1, categories: [] };
+let manualRecordsCache = [];
 let historyCache = [];
 let currentRoundRecord = null;
 let audioCtx;
@@ -74,6 +76,7 @@ function connectSocket() {
       remoteScoreRevisions = msg.remoteScoreRevisions || { RED: 0, BLUE: 0 };
       currentArenaNumber = String(msg.arenaNumber || "");
       lastTournament = msg.tournament || null;
+      lastManualCompetition = msg.manualCompetition || { version: 1, categories: [] };
       historyCache = msg.matchHistory || [];
       usbImportOnly = msg.usbImportOnly === true;
       activeRuleset = msg.ruleset || msg.match?.ruleset || activeRuleset;
@@ -86,6 +89,8 @@ function connectSocket() {
       renderScoringControls();
       renderRemoteStatuses(msg.remotes, msg.match?.remoteCount);
       renderTournament(msg.tournament);
+      renderManualCategoryOptions();
+      if (!$('manualCategoryResultsModal')?.classList.contains('hidden')) renderManualCategoryReport();
       if (!$("scheduleModal").classList.contains("hidden"))
         renderSchedule(msg.tournament);
     }
@@ -125,6 +130,8 @@ function connectSocket() {
       if (msg.winner) showWinnerSlide(msg.winner, msg.match);
       else toast("MATCH TIED — RESOLVE IT IN THE SCHEDULE");
     }
+    if (msg.type === "matchEnd" && msg.match?.manualBout?.categoryId)
+      void refreshManualRecords(msg.match.manualBout.categoryId);
     if (msg.type === "testPress")
       markTest(msg.corner, msg.player, msg.points, msg.button);
     if (msg.type === "testReset") resetTestUi();
@@ -668,22 +675,416 @@ function closePowerModal() {
 }
 function openPlayerSettings() {
   closeSettings();
-  if (!lastState) return;
-  $("playerRedName").value = lastState.red.playerName || "";
-  $("playerRedWeight").value = lastState.red.weightCategory || "";
-  $("playerRedDistrict").value = lastState.red.district || "";
-  $("playerRedStateCode").value = lastState.red.stateCode || "";
-  $("playerBlueName").value = lastState.blue.playerName || "";
-  $("playerBlueWeight").value = lastState.blue.weightCategory || "";
-  $("playerBlueDistrict").value = lastState.blue.district || "";
-  $("playerBlueStateCode").value = lastState.blue.stateCode || "";
-  renderTournament(lastTournament);
-  renderUsbImportMode();
   $("playerSettingsModal").classList.remove("hidden");
-  if (usbImportOnly) void refreshUsbFiles();
 }
 function closePlayerSettings() {
   $("playerSettingsModal").classList.add("hidden");
+}
+
+function openDataImport() {
+  closePlayerSettings();
+  renderTournament(lastTournament);
+  renderUsbImportMode();
+  $("dataImportModal").classList.remove("hidden");
+  if (usbImportOnly) void refreshUsbFiles();
+}
+
+function backFromDataImport() {
+  $("dataImportModal").classList.add("hidden");
+  $("playerSettingsModal").classList.remove("hidden");
+}
+
+function rulepackDivisions() {
+  return Array.isArray(scoringRules?.tournament?.divisions)
+    ? scoringRules.tournament.divisions
+    : [];
+}
+
+function manualCategoryLabel(category) {
+  const competition = category.competition === "FRESHER KYORUGI" ? "FRESHER" : "KYORUGI";
+  return `${category.eventName} · ${category.divisionLabel || category.division} · ${category.gender} · ${category.categoryGroup || category.weightCategory} · ARENA ${category.arenaNumber} · ${competition}`;
+}
+
+function renderManualCategoryOptions() {
+  const categories = lastManualCompetition?.categories || [];
+  for (const id of ["manualCategoryId", "manualResultsCategoryId"]) {
+    const select = $(id);
+    if (!select) continue;
+    const previous = select.value;
+    select.replaceChildren();
+    if (id === "manualCategoryId") {
+      const create = document.createElement("option");
+      create.value = "";
+      create.textContent = "CREATE NEW CATEGORY";
+      select.appendChild(create);
+    }
+    for (const category of categories) {
+      const option = document.createElement("option");
+      option.value = category.id;
+      option.textContent = `${manualCategoryLabel(category)}${category.status === "FINALIZED" ? " · FINALIZED" : ""}`;
+      select.appendChild(option);
+    }
+    if ([...select.options].some(option => option.value === previous)) select.value = previous;
+    else if (id === "manualResultsCategoryId" && categories[0]) select.value = categories[0].id;
+  }
+}
+
+function populateManualDivisions() {
+  const select = $("manualDivision");
+  const previous = select.value;
+  select.replaceChildren();
+  for (const division of rulepackDivisions()) {
+    const option = document.createElement("option");
+    option.value = division.id;
+    option.textContent = `${division.label} · ${division.ageLabel || ""}`;
+    select.appendChild(option);
+  }
+  if ([...select.options].some(option => option.value === previous)) select.value = previous;
+  renderManualCategories();
+}
+
+function renderManualCategories() {
+  const division = rulepackDivisions().find(item => item.id === $("manualDivision")?.value);
+  const gender = $("manualGender")?.value || "MALE";
+  const isGroup = division?.categoryType === "GROUP";
+  $("manualWeightField")?.classList.toggle("hidden", isGroup);
+  $("manualGroupField")?.classList.toggle("hidden", !isGroup);
+  const select = isGroup ? $("manualCategoryGroup") : $("manualWeightCategory");
+  if (!select) return;
+  const previous = select.value;
+  const choices = isGroup ? division?.groups || [] : division?.weightCategories?.[gender] || [];
+  select.replaceChildren();
+  for (const choice of choices) {
+    const option = document.createElement("option");
+    option.value = choice.name;
+    option.textContent = `${choice.name} · ${choice.ageLabel || choice.limit || ""}`;
+    select.appendChild(option);
+  }
+  if ([...select.options].some(option => option.value === previous)) select.value = previous;
+  const hint = $("manualRulepackHint");
+  if (hint) hint.textContent = division
+    ? `ACTIVE RULEPACK: ${activeRuleset?.name || "RULESET"} ${activeRuleset?.version || ""} · ${division.label} · ${division.ageLabel || ""} · ${isGroup ? "GROUP 0–5 ARE SELECTED MANUALLY" : "WEIGHT CATEGORY IS RULEPACK CONTROLLED"}`
+    : "NO TOURNAMENT DIVISIONS ARE AVAILABLE IN THE ACTIVE RULEPACK";
+}
+
+function setManualCategoryFieldsDisabled(disabled) {
+  for (const id of ["manualEventName", "manualEventDate", "manualVenue", "manualArenaNumber", "manualCompetition", "manualDivision", "manualGender", "manualWeightCategory", "manualCategoryGroup"]) {
+    if ($(id)) $(id).disabled = disabled;
+  }
+}
+
+function loadManualCategorySelection() {
+  const category = (lastManualCompetition?.categories || []).find(item => item.id === $("manualCategoryId")?.value);
+  setManualCategoryFieldsDisabled(Boolean(category));
+  if (!category) return;
+  $("manualEventName").value = category.eventName || "";
+  $("manualEventDate").value = category.eventDate || "";
+  $("manualVenue").value = category.venue || "";
+  $("manualArenaNumber").value = category.arenaNumber || "";
+  $("manualCompetition").value = category.competition || "KYORUGI";
+  $("manualDivision").value = category.division || "";
+  $("manualGender").value = category.gender || "MALE";
+  renderManualCategories();
+  if (category.categoryGroup) $("manualCategoryGroup").value = category.categoryGroup;
+  if (category.weightCategory) $("manualWeightCategory").value = category.weightCategory;
+}
+
+function fillManualPlayer(corner, player) {
+  const prefix = corner === "RED" ? "manualRed" : "manualBlue";
+  $(`${prefix}Name`).value = player?.playerName || "";
+  $(`${prefix}Club`).value = player?.club || "";
+  $(`${prefix}StateCode`).value = player?.stateCode || "";
+  $(`${prefix}District`).value = player?.district || "";
+}
+
+function openManualEntry() {
+  closePlayerSettings();
+  populateManualDivisions();
+  renderManualCategoryOptions();
+  const activeCategoryId = lastState?.manualBout?.categoryId || "";
+  if (activeCategoryId && [...$("manualCategoryId").options].some(option => option.value === activeCategoryId)) {
+    $("manualCategoryId").value = activeCategoryId;
+    loadManualCategorySelection();
+  } else {
+    setManualCategoryFieldsDisabled(false);
+    if (!$("manualEventDate").value) $("manualEventDate").value = new Date().toISOString().slice(0, 10);
+    if (!$("manualArenaNumber").value) $("manualArenaNumber").value = currentArenaNumber || "";
+  }
+  fillManualPlayer("RED", lastState?.red);
+  fillManualPlayer("BLUE", lastState?.blue);
+  $("manualOfficialBoutNo").value = lastState?.manualBout?.officialBoutNo || "";
+  $("manualStage").value = lastState?.manualBout?.stage || "PRELIMINARY";
+  $("manualEntryModal").classList.remove("hidden");
+}
+
+function backFromManualEntry() {
+  $("manualEntryModal").classList.add("hidden");
+  $("playerSettingsModal").classList.remove("hidden");
+}
+
+function manualPlayerPayload(prefix) {
+  return {
+    playerName: $(`${prefix}Name`).value,
+    club: $(`${prefix}Club`).value,
+    stateCode: $(`${prefix}StateCode`).value,
+    district: $(`${prefix}District`).value,
+  };
+}
+
+function manualBoutPayload() {
+  return {
+    categoryId: $("manualCategoryId").value,
+    eventName: $("manualEventName").value,
+    eventDate: $("manualEventDate").value,
+    venue: $("manualVenue").value,
+    arenaNumber: $("manualArenaNumber").value,
+    competition: $("manualCompetition").value,
+    division: $("manualDivision").value,
+    gender: $("manualGender").value,
+    weightCategory: $("manualWeightCategory").value,
+    categoryGroup: $("manualCategoryGroup").value,
+    officialBoutNo: $("manualOfficialBoutNo").value,
+    stage: $("manualStage").value,
+    RED: manualPlayerPayload("manualRed"),
+    BLUE: manualPlayerPayload("manualBlue"),
+  };
+}
+
+function saveManualBout(announce = false) {
+  send({ type: "host", action: "saveManualBout", details: manualBoutPayload(), announce });
+  $("manualEntryModal").classList.add("hidden");
+}
+
+function swapManualPlayers() {
+  const red = manualPlayerPayload("manualRed");
+  const blue = manualPlayerPayload("manualBlue");
+  fillManualPlayer("RED", blue);
+  fillManualPlayer("BLUE", red);
+}
+
+function clearManualPlayers() {
+  fillManualPlayer("RED", {});
+  fillManualPlayer("BLUE", {});
+}
+
+function nextManualBout() {
+  if (lastState?.phase !== "MATCH_END") {
+    toast("FINISH THE CURRENT MATCH BEFORE PREPARING THE NEXT BOUT");
+    return;
+  }
+  send({ type: "host", action: "nextManualBout" });
+  clearManualPlayers();
+  $("manualOfficialBoutNo").value = "";
+  $("manualStage").value = "PRELIMINARY";
+}
+
+function manualCategoryRecords(categoryId) {
+  return manualRecordsCache
+    .filter(record => record.manualBout?.categoryId === categoryId)
+    .sort((left, right) => String(left.endedAt).localeCompare(String(right.endedAt)));
+}
+
+function manualParticipant(player) {
+  if (!player?.playerName) return null;
+  return {
+    key: `${player.playerName.trim().toUpperCase()}|${String(player.club || "").trim().toUpperCase()}`,
+    playerName: player.playerName,
+    club: player.club || "",
+  };
+}
+
+function manualPlacementSuggestions(records) {
+  const suggestions = { gold: null, silver: null, bronze1: null, bronze2: null };
+  const final = [...records].reverse().find(record => record.manualBout?.stage === "FINAL" && record.winner);
+  if (final) {
+    suggestions.gold = manualParticipant(final.winner === "RED" ? final.red : final.blue);
+    suggestions.silver = manualParticipant(final.winner === "RED" ? final.blue : final.red);
+  }
+  const semifinalLosers = records
+    .filter(record => record.manualBout?.stage === "SEMIFINAL" && record.winner)
+    .map(record => manualParticipant(record.winner === "RED" ? record.blue : record.red))
+    .filter(Boolean);
+  suggestions.bronze1 = semifinalLosers[0] || null;
+  suggestions.bronze2 = semifinalLosers[1] || null;
+  return suggestions;
+}
+
+function manualReportCategory() {
+  return (lastManualCompetition?.categories || []).find(item => item.id === $("manualResultsCategoryId")?.value) || null;
+}
+
+function setPlacementOptions(category, records) {
+  const participants = new Map();
+  for (const record of records) {
+    for (const player of [record.red, record.blue]) {
+      const participant = manualParticipant(player);
+      if (participant) participants.set(participant.key, participant);
+    }
+  }
+  const suggestions = manualPlacementSuggestions(records);
+  const saved = category.placements || {};
+  const mapping = {
+    manualPlaceGold: "gold",
+    manualPlaceSilver: "silver",
+    manualPlaceBronze1: "bronze1",
+    manualPlaceBronze2: "bronze2",
+  };
+  for (const [id, place] of Object.entries(mapping)) {
+    const select = $(id);
+    const previous = select.value;
+    select.replaceChildren();
+    const blank = document.createElement("option");
+    blank.value = "";
+    blank.textContent = "NOT AWARDED";
+    select.appendChild(blank);
+    for (const participant of participants.values()) {
+      const option = document.createElement("option");
+      option.value = participant.key;
+      option.textContent = `${participant.playerName}${participant.club ? ` · ${participant.club}` : ""}`;
+      select.appendChild(option);
+    }
+    const desired = saved[place]?.key || previous || suggestions[place]?.key || "";
+    if ([...select.options].some(option => option.value === desired)) select.value = desired;
+    select.disabled = category.status === "FINALIZED";
+  }
+}
+
+function reportDateTime(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.valueOf()) ? String(value) : date.toLocaleString();
+}
+
+function placementText(placement) {
+  return placement ? `${placement.playerName}${placement.club ? ` · ${placement.club}` : ""}` : "NOT AWARDED";
+}
+
+function roundWins(record) {
+  const wins = { RED: 0, BLUE: 0 };
+  for (const round of record.rounds || []) if (round.winner) wins[round.winner] += 1;
+  return `${wins.RED}–${wins.BLUE}`;
+}
+
+function roundScores(record) {
+  return (record.rounds || []).map(round => `R${round.round}: ${round.red?.score ?? 0}–${round.blue?.score ?? 0}`).join("; ") || "—";
+}
+
+function resultCode(reason) {
+  return /^[A-Z]+/.exec(String(reason || ""))?.[0] || "—";
+}
+
+function resultDescription(reason) {
+  const code = resultCode(reason);
+  const labels = {
+    RSC: "REFEREE STOP CONTEST",
+    WDR: "WITHDRAWAL",
+    DSQ: "DISQUALIFICATION",
+    PUN: "PUNITIVE DECLARATION",
+    DQB: "DISQUALIFICATION FOR UNSPORTSMAN LIKE BEHAVIOR",
+  };
+  return labels[code] ? `${labels[code]} · ${reason}` : String(reason || "—");
+}
+
+function renderManualCategoryReport() {
+  const category = manualReportCategory();
+  const report = $("categoryPrintReport");
+  if (!category) {
+    report.innerHTML = "<p>No manual category has been created.</p>";
+    return;
+  }
+  const records = manualCategoryRecords(category.id);
+  setPlacementOptions(category, records);
+  const placements = category.placements || manualPlacementSuggestions(records);
+  const boutRows = records.map(record => `<tr>
+    <td>${escapeHtml(record.manualBout?.officialBoutNo || "—")}</td>
+    <td>${escapeHtml(record.matchNo)}</td>
+    <td>${escapeHtml(record.manualBout?.stage || "—")}</td>
+    <td>${escapeHtml(record.redName)}<br><small>${escapeHtml(record.red?.club || "—")}</small></td>
+    <td>${escapeHtml(record.blueName)}<br><small>${escapeHtml(record.blue?.club || "—")}</small></td>
+    <td>${escapeHtml(roundScores(record))}</td><td>${escapeHtml(roundWins(record))}</td>
+    <td>${escapeHtml(record.winnerName || "DRAW")}</td><td>${escapeHtml(record.defeatedName || "—")}</td>
+    <td>${escapeHtml(resultCode(record.reason))}<br><small>${escapeHtml(resultDescription(record.reason))}</small></td>
+    <td>${escapeHtml(reportDateTime(record.startedAt))}<br>${escapeHtml(reportDateTime(record.endedAt))}</td>
+  </tr>`).join("");
+  const audit = records.map(record => {
+    const roundRows = (record.rounds || []).map(round => `<tr><td>${escapeHtml(round.round)}</td><td>${escapeHtml(round.red?.score ?? 0)}</td><td>${escapeHtml(round.blue?.score ?? 0)}</td><td>${escapeHtml(round.red?.gamjeom ?? 0)}</td><td>${escapeHtml(round.blue?.gamjeom ?? 0)}</td><td>${escapeHtml(round.winner || "DRAW")}</td><td>${escapeHtml(round.reason || "—")}</td></tr>`).join("");
+    const refereeRows = (record.cornerRefereeHistory || []).map(entry => `<tr><td>${escapeHtml(entry.round || "—")}</td><td>${escapeHtml(entry.cornerReferee || `C${entry.corner}`)}</td><td>${escapeHtml(entry.button || "—")}</td><td>${escapeHtml(entry.score ?? "—")}</td><td>${escapeHtml(formatTime(entry.timerMs, false))}</td><td>${escapeHtml(reportDateTime(entry.pressedAt))}</td></tr>`).join("");
+    const correctionRows = (record.operatorHistory || []).map(entry => `<tr><td>${escapeHtml(entry.round || "—")}</td><td>${escapeHtml(entry.player || "—")}</td><td>${escapeHtml(entry.action || "—")}</td><td>${escapeHtml(entry.from ?? "—")}</td><td>${escapeHtml(entry.to ?? "—")}</td><td>${escapeHtml(formatTime(entry.timerMs, false))}</td><td>${escapeHtml(reportDateTime(entry.recordedAt))}</td></tr>`).join("");
+    return `<section class="categoryReportBout"><h3>BOUT ${escapeHtml(record.manualBout?.officialBoutNo || record.matchNo)} · INTERNAL MATCH ${escapeHtml(record.matchNo)} · RULESET ${escapeHtml(record.ruleset?.name || record.ruleset?.id || "—")} ${escapeHtml(record.ruleset?.version || "")}</h3>
+      <h4>ROUND AND PENALTY DETAILS</h4><table><thead><tr><th>ROUND</th><th>RED SCORE</th><th>BLUE SCORE</th><th>RED GAM-JEOM</th><th>BLUE GAM-JEOM</th><th>WINNER</th><th>REASON</th></tr></thead><tbody>${roundRows || '<tr><td colspan="7">NO ROUND RECORDS</td></tr>'}</tbody></table>
+      <h4>OPERATOR CORRECTIONS</h4><table><thead><tr><th>ROUND</th><th>PLAYER</th><th>ACTION</th><th>FROM</th><th>TO</th><th>MATCH CLOCK</th><th>TIME</th></tr></thead><tbody>${correctionRows || '<tr><td colspan="7">NO OPERATOR CORRECTIONS RECORDED</td></tr>'}</tbody></table>
+      <h4>CORNER REFEREE HISTORY</h4><table><thead><tr><th>ROUND</th><th>REFEREE</th><th>BUTTON</th><th>SCORE</th><th>MATCH CLOCK</th><th>TIME</th></tr></thead><tbody>${refereeRows || '<tr><td colspan="6">NO CORNER INPUTS RECORDED</td></tr>'}</tbody></table>
+    </section>`;
+  }).join("");
+  report.innerHTML = `<header><h1>${escapeHtml(category.eventName)}</h1><h2>OFFICIAL CATEGORY RESULT</h2></header>
+    <div class="categoryReportMeta"><span><b>DATE:</b> ${escapeHtml(category.eventDate)}</span><span><b>VENUE:</b> ${escapeHtml(category.venue)}</span><span><b>ARENA:</b> ${escapeHtml(category.arenaNumber)}</span><span><b>COMPETITION:</b> ${escapeHtml(category.competition)}</span><span><b>DIVISION:</b> ${escapeHtml(category.divisionLabel || category.division)}</span><span><b>GENDER:</b> ${escapeHtml(category.gender)}</span><span><b>CATEGORY:</b> ${escapeHtml(category.categoryGroup || category.weightCategory)}</span><span><b>RULESET:</b> ${escapeHtml(category.ruleset?.name || "—")} ${escapeHtml(category.ruleset?.version || "")}</span><span><b>GENERATED:</b> ${escapeHtml(reportDateTime(new Date().toISOString()))}</span></div>
+    <h3>PLACEMENTS</h3><div class="categoryReportPlacements"><span><b>GOLD:</b> ${escapeHtml(placementText(placements.gold))}</span><span><b>SILVER:</b> ${escapeHtml(placementText(placements.silver))}</span><span><b>BRONZE:</b> ${escapeHtml(placementText(placements.bronze1))}</span><span><b>BRONZE:</b> ${escapeHtml(placementText(placements.bronze2))}</span><span><b>STATUS:</b> ${escapeHtml(category.status)}</span></div>
+    <h3>BOUT SUMMARY</h3><table><thead><tr><th>OFFICIAL BOUT</th><th>SFTS MATCH</th><th>STAGE</th><th>RED / AFFILIATION</th><th>BLUE / AFFILIATION</th><th>ROUND SCORES</th><th>ROUND WINS</th><th>WINNER</th><th>DEFEATED</th><th>RESULT</th><th>START / END</th></tr></thead><tbody>${boutRows || '<tr><td colspan="11">NO COMPLETED BOUTS RECORDED</td></tr>'}</tbody></table>
+    <div class="categoryReportAudit"><h2>FULL MATCH AUDIT</h2>${audit || "<p>NO COMPLETED BOUTS RECORDED</p>"}</div>
+    <footer class="categoryReportSignatures"><span>TECHNICAL OFFICIAL</span><span>REFEREE CHAIR</span><span>FEDERATION REPRESENTATIVE</span></footer>`;
+}
+
+async function refreshManualRecords(categoryId = "") {
+  if (!hostToken) return;
+  try {
+    const query = categoryId ? `?categoryId=${encodeURIComponent(categoryId)}` : "";
+    const response = await fetch(`/api/manual/categories${query}`, {
+      headers: { "X-SFTS-Host-Token": hostToken },
+    });
+    if (!response.ok) throw new Error(`CATEGORY ARCHIVE FAILED (${response.status})`);
+    const result = await response.json();
+    if (categoryId) {
+      manualRecordsCache = manualRecordsCache
+        .filter(record => record.manualBout?.categoryId !== categoryId)
+        .concat(Array.isArray(result.records) ? result.records : []);
+    }
+    lastManualCompetition = result.manualCompetition || lastManualCompetition;
+    renderManualCategoryOptions();
+    if (!$("manualCategoryResultsModal")?.classList.contains("hidden")) renderManualCategoryReport();
+  } catch (error) {
+    toast(error.message || "COULD NOT LOAD CATEGORY ARCHIVE");
+  }
+}
+
+async function openManualCategoryResults() {
+  $("manualEntryModal").classList.add("hidden");
+  renderManualCategoryOptions();
+  const currentId = $("manualCategoryId")?.value;
+  if (currentId && [...$("manualResultsCategoryId").options].some(option => option.value === currentId)) $("manualResultsCategoryId").value = currentId;
+  $("manualCategoryResultsModal").classList.remove("hidden");
+  await refreshManualRecords($("manualResultsCategoryId").value);
+  renderManualCategoryReport();
+}
+
+function closeManualCategoryResults() {
+  $("manualCategoryResultsModal").classList.add("hidden");
+  $("manualEntryModal").classList.remove("hidden");
+}
+
+function saveManualPlacements(finalize = false) {
+  const category = manualReportCategory();
+  if (!category) return;
+  if (finalize && !window.confirm("Finalize this category? Placements will be locked.")) return;
+  send({
+    type: "host",
+    action: "saveManualCategoryPlacements",
+    categoryId: category.id,
+    finalize,
+    placements: {
+      gold: $("manualPlaceGold").value,
+      silver: $("manualPlaceSilver").value,
+      bronze1: $("manualPlaceBronze1").value,
+      bronze2: $("manualPlaceBronze2").value,
+    },
+  });
+}
+
+function printManualCategory(mode) {
+  renderManualCategoryReport();
+  document.body.classList.add("printManualCategory", mode === "full" ? "printManualFull" : "printManualSummary");
+  const cleanup = () => document.body.classList.remove("printManualCategory", "printManualFull", "printManualSummary");
+  window.addEventListener("afterprint", cleanup, { once: true });
+  setTimeout(() => window.print(), 100);
 }
 function savePlayerSettings() {
   send({
@@ -1065,6 +1466,7 @@ async function uploadPlayerSheet() {
 
 function openSchedule() {
   closePlayerSettings();
+  $("dataImportModal")?.classList.add("hidden");
   renderSchedule(lastTournament);
   $("scheduleModal").classList.remove("hidden");
 }
@@ -1301,7 +1703,7 @@ function openHistory() {
         <div><b>MATCH ${String(item.matchNo).padStart(3, "0")}</b></div>
         <div>${escapeHtml(item.redName)} vs ${escapeHtml(item.blueName)}</div>
         <div><strong>${escapeHtml(item.winnerName)}</strong> — ${escapeHtml(item.reason || "")}</div>
-        <div>${item.rounds.length} round(s)</div>
+        <div>${item.roundCount ?? item.rounds?.length ?? 0} round(s)</div>
       </div>
     `,
       )
@@ -1647,6 +2049,22 @@ window.cancelPowerAction = cancelPowerAction;
 window.closePowerModal = closePowerModal;
 window.openPlayerSettings = openPlayerSettings;
 window.closePlayerSettings = closePlayerSettings;
+window.openManualEntry = openManualEntry;
+window.backFromManualEntry = backFromManualEntry;
+window.openDataImport = openDataImport;
+window.backFromDataImport = backFromDataImport;
+window.loadManualCategorySelection = loadManualCategorySelection;
+window.renderManualCategories = renderManualCategories;
+window.saveManualBout = saveManualBout;
+window.swapManualPlayers = swapManualPlayers;
+window.clearManualPlayers = clearManualPlayers;
+window.nextManualBout = nextManualBout;
+window.openManualCategoryResults = openManualCategoryResults;
+window.closeManualCategoryResults = closeManualCategoryResults;
+window.renderManualCategoryReport = renderManualCategoryReport;
+window.refreshManualRecords = refreshManualRecords;
+window.saveManualPlacements = saveManualPlacements;
+window.printManualCategory = printManualCategory;
 window.savePlayerSettings = savePlayerSettings;
 window.announceManualPlayers = announceManualPlayers;
 window.uploadPlayerSheet = uploadPlayerSheet;
