@@ -2601,6 +2601,7 @@ function endGoldenRound(winner = null, reason = 'TIME 0:00') {
   clearAllRemoteCombinations();
   match.votes = {};
   match.roundHistory.push(record);
+  clearRemoteScoreHighlights();
   emit({ type: 'roundEndSound' });
   emit({ type: 'roundEnd', record });
 
@@ -2632,6 +2633,7 @@ function endRound(winner = null, reason = 'TIME 0:00') {
   clearAllRemoteCombinations();
   match.roundHistory.push(record);
   match.votes = {};
+  clearRemoteScoreHighlights();
 
   emit({ type: 'roundEndSound' });
   emit({ type: 'roundEnd', record });

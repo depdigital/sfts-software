@@ -447,6 +447,10 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   host.send(JSON.stringify({ type: 'host', action: 'playPause' }));
   await waitForMessage(host, message => message.type === 'roundEnd' && message.record.reason === 'TIME 0:00');
   const breakState = await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'BREAK');
+  assert.deepEqual(breakState.remoteScoreHighlights.RED, []);
+  assert.deepEqual(breakState.remoteScoreHighlights.BLUE, []);
+  assert.equal(breakState.remoteScoreValues.RED, null);
+  assert.equal(breakState.remoteScoreValues.BLUE, null);
 
   host.send(JSON.stringify({ type: 'host', action: 'point', player: 'RED', points: 1 }));
   const rejected = await waitForMessage(host, message => message.type === 'error' && message.code === 'ROUND_NOT_ACTIVE');
