@@ -338,9 +338,12 @@ function shuffled(items, random) {
   return result;
 }
 
+function contestantReadyAnnouncement(hongName, chungName) {
+  return `${hongName}, HONG, red chest guard, versus ${chungName}, CHUNG, blue chest guard. Contestants, get ready.`;
+}
+
 function scheduleAnnouncement(bout) {
-  const details = [bout.division, bout.gender, competitionCategory(bout)].filter(Boolean).join(', ');
-  return `Bout ${bout.boutNo}: ${bout.redPlayerName} versus ${bout.bluePlayerName}${details ? `, ${details}` : ''}`;
+  return contestantReadyAnnouncement(bout.redPlayerName, bout.bluePlayerName);
 }
 
 function bracketSizeFor(playerCount) {
@@ -1810,35 +1813,18 @@ function manualPlayersAnnouncement(details) {
   for (const player of ['RED', 'BLUE']) {
     const input = details[player];
     if (!input || typeof input !== 'object' || Array.isArray(input)) {
-      return { ok: false, code: 'INVALID_PLAYER_DETAILS', message: `Both ${player} and ${player === 'RED' ? 'BLUE' : 'RED'} player details are required before announcing` };
+      return { ok: false, code: 'INVALID_PLAYER_DETAILS', message: 'Both HONG and CHUNG player details are required before announcing' };
     }
     const name = String(input.playerName || '').trim().slice(0, 64);
     if (!name) {
-      return { ok: false, code: 'INVALID_PLAYER_DETAILS', message: `${player} player name is required before announcing` };
+      return { ok: false, code: 'INVALID_PLAYER_DETAILS', message: `${player === 'RED' ? 'HONG' : 'CHUNG'} player name is required before announcing` };
     }
-    const weightCategory = String(input.weightCategory || '').trim().slice(0, 32);
-    const stateCode = String(input.stateCode || '').trim().toUpperCase().slice(0, 2);
-    if (stateCode && !INDIAN_STATE_CODES.has(stateCode)) {
-      return { ok: false, code: 'INVALID_STATE_CODE', message: 'State code must be a valid Indian state code' };
-    }
-    players[player] = {
-      name,
-      weightCategory: weightCategory || String(input.categoryGroup || '').trim().slice(0, 32),
-      stateCode,
-      district: String(input.district || '').trim().slice(0, 48)
-    };
+    players[player] = { name };
   }
 
-  const red = players.RED;
-  const blue = players.BLUE;
-  const weightText = red.weightCategory && red.weightCategory === blue.weightCategory
-    ? `, ${red.weightCategory}`
-    : red.weightCategory || blue.weightCategory
-      ? `, Red weight category ${red.weightCategory || 'not specified'}, Blue weight category ${blue.weightCategory || 'not specified'}`
-      : '';
   return {
     ok: true,
-    text: `${match.manualBout?.officialBoutNo ? `Bout ${match.manualBout.officialBoutNo}` : `Bout ${match.matchNo}`}: ${red.name} versus ${blue.name}${weightText}`
+    text: contestantReadyAnnouncement(players.RED.name, players.BLUE.name)
   };
 }
 

@@ -151,7 +151,10 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
     }
   }));
   const playerAnnouncement = await waitForMessage(host, message => message.type === 'announcement');
-  assert.equal(playerAnnouncement.text, 'Bout 1: Manual Red versus Manual Blue, -58 kg');
+  assert.equal(
+    playerAnnouncement.text,
+    'Manual Red, HONG, red chest guard, versus Manual Blue, CHUNG, blue chest guard. Contestants, get ready.'
+  );
 
   host.send(JSON.stringify({ type: 'host', action: 'systemPower', powerAction: 'reboot' }));
   const powerScheduled = await waitForMessage(host, message => message.type === 'systemPowerScheduled');
@@ -257,8 +260,10 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   assert.ok(downloadedRows.some(row => row['Sub Junior Group'] === 'GROUP 0'));
   host.send(JSON.stringify({ type: 'host', action: 'announceBout', boutNo: 1 }));
   const announcement = await waitForMessage(host, message => message.type === 'announcement' && message.boutNo === 1);
-  assert.match(announcement.text, /Bout 1:/);
-  assert.match(announcement.text, / versus /);
+  assert.equal(
+    announcement.text,
+    `${firstBout.redPlayerName}, HONG, red chest guard, versus ${firstBout.bluePlayerName}, CHUNG, blue chest guard. Contestants, get ready.`
+  );
 
   host.send(JSON.stringify({
     type: 'host',
@@ -876,8 +881,9 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(html, /id="manualEntryModal"/);
   assert.match(html, /id="dataImportModal"/);
   assert.match(html, /id="manualCategoryResultsModal"/);
-  assert.match(html, />1\. MANUAL ENTRY</);
-  assert.match(html, />2\. DATA IMPORT</);
+  assert.match(html, />MANUAL ENTRY</);
+  assert.match(html, />DATA IMPORT</);
+  assert.doesNotMatch(html, />[12]\. (?:MANUAL ENTRY|DATA IMPORT)</);
   assert.match(html, /id="scheduleModal"/);
   assert.match(html, /id="tournamentResultsList"/);
   assert.match(html, /id="redHeadButton"/);
