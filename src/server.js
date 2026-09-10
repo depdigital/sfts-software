@@ -1599,25 +1599,56 @@ function createPlayerTemplateBuffer() {
     'Player ID', 'Name', 'Gender', 'Division', 'Weight Category', 'Group',
     'State Code', 'District', 'Club'
   ];
+  const sampleProfiles = {
+    MALE: [
+      ['Arjun Mehta', 'DL', 'New Delhi', 'Capital Taekwondo Academy'],
+      ['Rohan Singh', 'UP', 'Noida', 'Noida Warriors TKD'],
+      ['Vikram Nair', 'KL', 'Kochi', 'Cochin Martial Arts Club'],
+      ['Aditya Rao', 'KA', 'Bengaluru', 'Karnataka Taekwondo Centre'],
+      ['Karan Patel', 'GJ', 'Ahmedabad', 'Sabarmati TKD Club'],
+      ['Dev Sharma', 'RJ', 'Jaipur', 'Pink City Taekwondo'],
+      ['Ishaan Das', 'WB', 'Kolkata', 'Bengal Tigers TKD'],
+      ['Nikhil Verma', 'MP', 'Indore', 'Indore Combat Academy']
+    ],
+    FEMALE: [
+      ['Ananya Kapoor', 'MH', 'Mumbai', 'Mumbai Elite Taekwondo'],
+      ['Meera Iyer', 'TN', 'Chennai', 'Chennai TKD Academy'],
+      ['Priya Reddy', 'TS', 'Hyderabad', 'Deccan Taekwondo Club'],
+      ['Kavya Menon', 'KL', 'Thiruvananthapuram', 'Travancore TKD'],
+      ['Simran Kaur', 'PB', 'Chandigarh', 'Punjab Champions TKD'],
+      ['Riya Gupta', 'HR', 'Gurugram', 'Gurugram Taekwondo Academy'],
+      ['Tania Bose', 'WB', 'Kolkata', 'Eastern Kick Academy'],
+      ['Aarohi Joshi', 'MH', 'Pune', 'Pune Warriors Taekwondo']
+    ]
+  };
+  const profileIndexes = { MALE: 0, FEMALE: 0 };
   const playerExamples = [];
-  for (const division of tournamentDivisionDefinitions()) {
+  for (const [divisionIndex, division] of tournamentDivisionDefinitions().entries()) {
     for (const gender of ['MALE', 'FEMALE']) {
       const weightCategory = division.categoryType === 'WEIGHT'
-        ? division.weightCategories[gender][0].name
+        ? division.weightCategories[gender][Math.min(
+          divisionIndex + (gender === 'FEMALE' ? 1 : 0),
+          division.weightCategories[gender].length - 1
+        )].name
         : '';
-      const categoryGroup = division.categoryType === 'GROUP' ? division.groups[0].name : '';
+      const categoryGroup = division.categoryType === 'GROUP'
+        ? division.groups[Math.min(gender === 'MALE' ? 0 : 1, division.groups.length - 1)].name
+        : '';
       const idPrefix = `${division.id.replace(/[^A-Z0-9]/g, '').slice(0, 3)}-${gender[0]}`;
       for (let index = 1; index <= 2; index += 1) {
+        const profiles = sampleProfiles[gender];
+        const profile = profiles[profileIndexes[gender] % profiles.length];
+        profileIndexes[gender] += 1;
         playerExamples.push([
           `${idPrefix}-${String(index).padStart(2, '0')}`,
-          `Sample ${division.label} ${gender === 'MALE' ? 'Male' : 'Female'} ${index}`,
+          profile[0],
           gender,
           division.label,
           weightCategory,
           categoryGroup,
-          '',
-          '',
-          'Sample Club'
+          profile[1],
+          profile[2],
+          profile[3]
         ]);
       }
     }
@@ -1654,6 +1685,7 @@ function createPlayerTemplateBuffer() {
   const instructionsSheet = XLSX.utils.aoa_to_sheet([
     ['SFTS TOURNAMENT PLAYER IMPORT'],
     ['Use the Players sheet for import. Replace the example rows with tournament players.'],
+    ['Dummy data', 'Every row in the Players sheet is test data. Delete or replace all example rows before importing a real tournament.'],
     ['Required columns', 'Name, Gender, Division, Weight Category, Group'],
     ['Gender', 'Use MALE/M or FEMALE/F.'],
     ['Senior / Junior / Cadet', 'Enter a valid Weight Category from the Categories sheet and leave Group blank.'],

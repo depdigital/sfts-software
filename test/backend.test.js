@@ -190,7 +190,10 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   assert.deepEqual(XLSX.utils.sheet_to_json(templateSheet, { header: 1, defval: '' })[0], [
     'Player ID', 'Name', 'Gender', 'Division', 'Weight Category', 'Group', 'State Code', 'District', 'Club'
   ]);
+  assert.ok(templateRows.some(row => row.Name === 'Arjun Mehta'));
+  assert.ok(templateRows.every(row => row['State Code'] && row.District && row.Club));
   assert.ok(templateRows.some(row => row.Division === 'SUB JUNIOR' && row.Group === 'GROUP 0'));
+  assert.ok(templateRows.some(row => row.Division === 'SUB JUNIOR' && row.Gender === 'FEMALE' && row.Group === 'GROUP 1'));
   const categoryRows = XLSX.utils.sheet_to_json(templateWorkbook.Sheets.Categories);
   assert.ok(categoryRows.some(row => row.Division === 'SENIOR' && row.Gender === 'MALE' && row['Weight Category'] === 'FINWEIGHT'));
   assert.ok(categoryRows.some(row => row.Division === 'SUB JUNIOR' && row.Group === 'GROUP 5'));
