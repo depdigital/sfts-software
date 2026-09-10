@@ -207,6 +207,8 @@ function makeMatch(
     remoteCount: MAX_ACTIVE_REMOTES,
     ruleset: deep(activeRulesMetadata),
     rulesSnapshot: deep(rules),
+    mode: 'OFFICIAL',
+    practiceMatchNo: null,
     running: false,
     roundStarted: false,
     startedAt: null,
@@ -809,6 +811,8 @@ function restorePersistedState(snapshot) {
     ? match.remoteCount
     : MAX_ACTIVE_REMOTES;
   match.running = false;
+  match.mode = match.mode === 'PRACTICE' ? 'PRACTICE' : 'OFFICIAL';
+  match.practiceMatchNo = match.mode === 'PRACTICE' ? 1 : null;
   match.startedAt = typeof match.startedAt === 'string' ? match.startedAt : null;
   match.roundStarted = Boolean(match.roundStarted || match.timerMs < match.configuredRoundMs ||
     match.red.score > 0 || match.blue.score > 0 || match.red.gamjeom > 0 || match.blue.gamjeom > 0);
@@ -1402,6 +1406,67 @@ function manualBoutSettingsLocked() {
   );
 }
 
+function practiceMatchIsBusy() {
+  if (tournament.activeBoutNo || match.test.active || match.running) return true;
+  if (match.phase === 'BREAK' || match.phase === 'TIE_DECISION') return true;
+  if (match.phase === 'MATCH_END') return false;
+  return Boolean(
+    match.roundStarted || match.roundHistory.length || match.red.score || match.blue.score ||
+    match.red.gamjeom || match.blue.gamjeom || Object.keys(match.votes).length ||
+    match.kyeShi?.running || Number(match.kyeShi?.elapsedMs) > 0
+  );
+}
+
+function practicePlayerDetails(input, corner) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    return { error: `${corner} player details are required` };
+  }
+  const playerName = String(input.playerName || input.name || '').trim().slice(0, 64);
+  const stateCode = String(input.stateCode || '').trim().toUpperCase().slice(0, 2);
+  if (!playerName) return { error: `${corner} player name is required` };
+  if (stateCode && !INDIAN_STATE_CODES.has(stateCode)) return { error: `${corner} state code is invalid` };
+  return {
+    playerName,
+    stateCode,
+    district: String(input.district || '').trim().slice(0, 48)
+  };
+}
+
+function loadPracticeMatch(details) {
+  if (practiceMatchIsBusy()) {
+    return { ok: false, code: 'MATCH_IN_PROGRESS', message: 'Finish or reset the current match before loading practice mode' };
+  }
+  const hong = practicePlayerDetails(details?.RED, 'HONG');
+  const chung = practicePlayerDetails(details?.BLUE, 'CHUNG');
+  if (hong.error || chung.error) {
+    return { ok: false, code: 'INVALID_PRACTICE_PLAYER', message: hong.error || chung.error };
+  }
+  const remoteCount = match.remoteCount;
+  const officialMatchNo = match.mode === 'PRACTICE'
+    ? match.matchNo
+    : match.phase === 'MATCH_END'
+      ? match.matchNo + 1
+      : match.matchNo;
+  match = makeMatch(
+    officialMatchNo,
+    'HONG',
+    'CHUNG',
+    match.configuredRoundMs,
+    hong,
+    chung
+  );
+  match.mode = 'PRACTICE';
+  match.practiceMatchNo = 1;
+  match.remoteCount = Math.min(MAX_ACTIVE_REMOTES, Math.max(MIN_ACTIVE_REMOTES, Number(remoteCount) || MAX_ACTIVE_REMOTES));
+  clearAllRemoteCombinations();
+  clearLastRemoteButtons();
+  clearRemoteScoreHighlights();
+  clearVoteSettleGuard();
+  timerLastAt = null;
+  kyeShiLastAt = null;
+  return { ok: true };
+}
+
 function manualPlayerDetails(input, corner) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
     return { error: `${corner} player details are required` };
@@ -1516,6 +1581,8 @@ function saveManualBout(input) {
   }
 
   arenaNumber = category.arenaNumber;
+  match.mode = 'OFFICIAL';
+  match.practiceMatchNo = null;
   const categoryProfile = {
     division: category.division,
     weightCategory: category.weightCategory,
@@ -1739,7 +1806,11 @@ function loadTournamentBout(bout) {
   }
   const remoteCount = match.remoteCount;
   match = makeMatch(
-    match.phase === 'MATCH_END' ? match.matchNo + 1 : match.matchNo,
+    match.mode === 'PRACTICE'
+      ? match.matchNo
+      : match.phase === 'MATCH_END'
+        ? match.matchNo + 1
+        : match.matchNo,
     red.name,
     blue.name,
     match.configuredRoundMs,
@@ -2957,6 +3028,22 @@ function finishMatch(winner, reason) {
   match.matchWinner = winner;
   match.matchReason = reason;
   const endedAt = new Date().toISOString();
+  if (match.mode === 'PRACTICE') {
+    const finishedPracticeMatch = deep(match);
+    match.cornerRefereeHistory = [];
+    match.operatorHistory = [];
+    match.roundHistory = [];
+    match.votes = {};
+    match.kyeShi = makeKyeShi();
+    match.practiceMatchNo = 1;
+    clearAllRemoteCombinations();
+    clearLastRemoteButtons();
+    clearRemoteScoreHighlights();
+    clearVoteSettleGuard();
+    emit({ type: 'matchEnd', winner, reason, match: finishedPracticeMatch });
+    state(true);
+    return;
+  }
   const record = {
     id: crypto.randomUUID(),
     source: match.manualBout ? 'MANUAL' : tournament.activeBoutNo ? 'TOURNAMENT' : 'UNASSIGNED',
@@ -3093,7 +3180,8 @@ function resetCurrentMatch() {
     refreshTournamentBracket();
   }
   const remoteCount = match.remoteCount;
-  const manualBout = match.manualBout ? deep(match.manualBout) : null;
+  const resetMode = match.mode;
+  const manualBout = resetMode === 'PRACTICE' ? null : match.manualBout ? deep(match.manualBout) : null;
   match = makeMatch(
     match.matchNo,
     match.red.name,
@@ -3103,6 +3191,8 @@ function resetCurrentMatch() {
     match.blue
   );
   match.remoteCount = Math.min(MAX_ACTIVE_REMOTES, Math.max(MIN_ACTIVE_REMOTES, Number(remoteCount) || MAX_ACTIVE_REMOTES));
+  match.mode = resetMode === 'PRACTICE' ? 'PRACTICE' : 'OFFICIAL';
+  match.practiceMatchNo = match.mode === 'PRACTICE' ? 1 : null;
   match.manualBout = manualBout;
   clearAllRemoteCombinations();
   clearLastRemoteButtons();
@@ -3119,13 +3209,14 @@ function newMatch({ clearPlayers = false } = {}) {
     if (bout?.status === 'TIE_PENDING') return false;
   }
   const remoteCount = match.remoteCount;
+  const leavingPractice = match.mode === 'PRACTICE';
   match = makeMatch(
-    match.matchNo + 1,
+    leavingPractice ? match.matchNo : match.matchNo + 1,
     match.red.name,
     match.blue.name,
     match.configuredRoundMs,
-    clearPlayers ? {} : match.red,
-    clearPlayers ? {} : match.blue
+    clearPlayers || leavingPractice ? {} : match.red,
+    clearPlayers || leavingPractice ? {} : match.blue
   );
   match.remoteCount = Math.min(MAX_ACTIVE_REMOTES, Math.max(MIN_ACTIVE_REMOTES, Number(remoteCount) || MAX_ACTIVE_REMOTES));
   clearAllRemoteCombinations();
@@ -3715,6 +3806,26 @@ wss.on('connection', ws => {
       }
       if (msg.action === 'saveManualCategoryPlacements') {
         const result = saveManualCategoryPlacements(msg.categoryId, msg.placements, msg.finalize === true);
+        if (!result.ok) {
+          sendError(ws, result.code, result.message);
+          return;
+        }
+      }
+      if (msg.action === 'announcePractice') {
+        if (practiceMatchIsBusy()) {
+          sendError(ws, 'MATCH_IN_PROGRESS', 'Finish or reset the current match before making a practice announcement');
+          return;
+        }
+        const result = manualPlayersAnnouncement(msg.details);
+        if (!result.ok) {
+          sendError(ws, result.code, result.message);
+          return;
+        }
+        void announceAnnouncement(result.text);
+        return;
+      }
+      if (msg.action === 'loadPractice') {
+        const result = loadPracticeMatch(msg.details);
         if (!result.ok) {
           sendError(ws, result.code, result.message);
           return;

@@ -36,6 +36,7 @@ let recoveryNoticeShown = false;
 let displayedTieDecisionMode = null;
 let tieDecisionView = "METHOD";
 let manualDecisionCode = "";
+let practiceLoadPending = false;
 const REMOTE_SCORE_TRANSITION_MS = 300;
 
 const $ = (id) => document.getElementById(id);
@@ -83,6 +84,10 @@ function connectSocket() {
       scoringRules = msg.scoringRules || scoringRules;
       renderUsbImportMode();
       renderState(msg.match);
+      if (practiceLoadPending && msg.match?.mode === "PRACTICE") {
+        practiceLoadPending = false;
+        $("practiceModeModal")?.classList.add("hidden");
+      }
       if (!$('cornerRefereeHistoryModal')?.classList.contains('hidden'))
         renderCornerRefereeHistory();
       renderActiveRuleset(activeRuleset);
@@ -95,6 +100,7 @@ function connectSocket() {
         renderSchedule(msg.tournament);
     }
     if (msg.type === "error") {
+      if (["MATCH_IN_PROGRESS", "INVALID_PRACTICE_PLAYER"].includes(msg.code)) practiceLoadPending = false;
       if (msg.code === "HOST_UNAUTHORIZED") {
         requestedRole = null;
         role = "unknown";
@@ -223,15 +229,17 @@ function renderState(match) {
   );
   renderRemoteMode(match.remoteCount);
   renderCornerRefereeIndicators(match.remoteCount);
+  const practiceMode = match.mode === "PRACTICE";
+  $("practiceModeBadge")?.classList.toggle("hidden", !practiceMode);
   $("redName").textContent = "HONG";
   $("blueName").textContent = "CHUNG";
-  $("redMeta").textContent = playerMetaText(match.red);
-  $("blueMeta").textContent = playerMetaText(match.blue);
+  $("redMeta").textContent = playerMetaText(match.red, practiceMode);
+  $("blueMeta").textContent = playerMetaText(match.blue, practiceMode);
   $("redScore").textContent = match.red.score;
   $("blueScore").textContent = match.blue.score;
   $("redGam").textContent = match.red.gamjeom;
   $("blueGam").textContent = match.blue.gamjeom;
-  $("matchNo").textContent = String(match.matchNo).padStart(3, "0");
+  $("matchNo").textContent = String(practiceMode ? match.practiceMatchNo || 1 : match.matchNo).padStart(3, "0");
   $("arenaNo").textContent = currentArenaNumber || "—";
   $("timer").textContent = formatTime(match.timerMs, match.phase === "ROUND");
   $("roundText").textContent =
@@ -295,7 +303,13 @@ function renderScoringControls() {
   }
 }
 
-function playerMetaText(player) {
+function playerMetaText(player, practiceMode = false) {
+  if (practiceMode) {
+    const name = String(player.playerName || "").trim() || "PLAYER NAME";
+    const stateCode = String(player.stateCode || "").trim();
+    const district = String(player.district || "").trim();
+    return [name, stateCode, district].filter(Boolean).join(" · ");
+  }
   const name = String(player.playerName || "").trim() || "PLAYER NAME —";
   const division = String(player.division || "").trim();
   const category = String(player.categoryGroup || player.weightCategory || "").trim() || "CATEGORY —";
@@ -692,6 +706,64 @@ function openDataImport() {
 function backFromDataImport() {
   $("dataImportModal").classList.add("hidden");
   $("playerSettingsModal").classList.remove("hidden");
+}
+
+function practicePlayerPayload(prefix) {
+  return {
+    playerName: $(`${prefix}Name`).value,
+    stateCode: $(`${prefix}StateCode`).value,
+    district: $(`${prefix}District`).value,
+  };
+}
+
+function fillPracticePlayer(corner, player) {
+  const prefix = corner === "RED" ? "practiceRed" : "practiceBlue";
+  $(`${prefix}Name`).value = player?.playerName || "";
+  $(`${prefix}StateCode`).value = player?.stateCode || "";
+  $(`${prefix}District`).value = player?.district || "";
+}
+
+function practiceDetails() {
+  return {
+    RED: practicePlayerPayload("practiceRed"),
+    BLUE: practicePlayerPayload("practiceBlue"),
+  };
+}
+
+function practiceNamesAreReady(details) {
+  if (!details.RED.playerName.trim() || !details.BLUE.playerName.trim()) {
+    toast("ENTER BOTH HONG AND CHUNG PLAYER NAMES");
+    return false;
+  }
+  return true;
+}
+
+function openPracticeMode() {
+  closePlayerSettings();
+  if (lastState?.mode === "PRACTICE") {
+    fillPracticePlayer("RED", lastState.red);
+    fillPracticePlayer("BLUE", lastState.blue);
+  }
+  $("practiceModeModal").classList.remove("hidden");
+}
+
+function backFromPracticeMode() {
+  practiceLoadPending = false;
+  $("practiceModeModal").classList.add("hidden");
+  $("playerSettingsModal").classList.remove("hidden");
+}
+
+function announcePracticePlayers() {
+  const details = practiceDetails();
+  if (!practiceNamesAreReady(details)) return;
+  send({ type: "host", action: "announcePractice", details });
+}
+
+function loadPracticeMatch() {
+  const details = practiceDetails();
+  if (!practiceNamesAreReady(details)) return;
+  practiceLoadPending = true;
+  send({ type: "host", action: "loadPractice", details });
 }
 
 function rulepackDivisions() {
@@ -1735,7 +1807,9 @@ function renderCornerRefereeHistory() {
       const cornerReferee = side
         ? `C${item.corner || "?"}-${side}`
         : item.cornerReferee || `C${item.corner || "?"}`;
-      const matchNo = Number.isInteger(item.matchNo)
+      const matchNo = lastState?.mode === "PRACTICE"
+        ? String(lastState.practiceMatchNo || 1).padStart(3, "0")
+        : Number.isInteger(item.matchNo)
         ? String(item.matchNo).padStart(3, "0")
         : String(lastState?.matchNo || "—").padStart(3, "0");
       const arenaNumber = String(item.arenaNumber || currentArenaNumber || "—");
@@ -2053,6 +2127,10 @@ window.openManualEntry = openManualEntry;
 window.backFromManualEntry = backFromManualEntry;
 window.openDataImport = openDataImport;
 window.backFromDataImport = backFromDataImport;
+window.openPracticeMode = openPracticeMode;
+window.backFromPracticeMode = backFromPracticeMode;
+window.announcePracticePlayers = announcePracticePlayers;
+window.loadPracticeMatch = loadPracticeMatch;
 window.loadManualCategorySelection = loadManualCategorySelection;
 window.renderManualCategories = renderManualCategories;
 window.saveManualBout = saveManualBout;

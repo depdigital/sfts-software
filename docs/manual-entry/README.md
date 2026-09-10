@@ -36,6 +36,8 @@ Do not enter the blue competitor under HONG or the red competitor under CHUNG.
 
 Use **DATA IMPORT** only when you have a prepared tournament spreadsheet. It is not required for a paper fixture.
 
+Use **PRACTICE MODE** only for temporary club training. Practice matches use the normal scoring rules, but their match and corner-referee histories are not saved.
+
 ## Step 1: Create a category
 
 At the top of Manual Entry, leave **EXISTING CATEGORY** set to **CREATE NEW CATEGORY**.

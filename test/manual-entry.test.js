@@ -178,4 +178,50 @@ test('manual categories are rulepack validated and preserve official bout eviden
   const finalized = await waitFor(host, message => message.type === 'state' && message.manualCompetition.categories[0]?.status === 'FINALIZED');
   assert.equal(finalized.manualCompetition.categories[0].placements.gold.playerName, 'Aarav Sen');
   assert.equal(finalized.manualCompetition.categories[0].placements.silver.playerName, 'Rohan Das');
+
+  const practiceDetails = {
+    RED: { playerName: 'Practice Hong', stateCode: 'WB', district: 'Nadia' },
+    BLUE: { playerName: 'Practice Chung', stateCode: 'DL', district: 'New Delhi' }
+  };
+  host.send(JSON.stringify({ type: 'host', action: 'announcePractice', details: practiceDetails }));
+  const practiceAnnouncement = await waitFor(host, message => message.type === 'announcement');
+  assert.equal(
+    practiceAnnouncement.text,
+    'Practice Hong, HONG, red chest guard, versus Practice Chung, CHUNG, blue chest guard. Contestants, get ready.'
+  );
+
+  host.send(JSON.stringify({ type: 'host', action: 'loadPractice', details: practiceDetails }));
+  const practiceLoaded = await waitFor(host, message => message.type === 'state' && message.match.mode === 'PRACTICE');
+  const reservedOfficialMatchNo = finalized.match.matchNo + 1;
+  assert.equal(practiceLoaded.match.matchNo, reservedOfficialMatchNo);
+  assert.equal(practiceLoaded.match.practiceMatchNo, 1);
+  assert.equal(practiceLoaded.match.red.playerName, 'Practice Hong');
+  assert.equal(practiceLoaded.match.red.division, '');
+  assert.equal(practiceLoaded.matchHistory.length, 1);
+
+  host.send(JSON.stringify({ type: 'host', action: 'playPause' }));
+  await waitFor(host, message => message.type === 'state' && message.match.mode === 'PRACTICE' && message.match.running);
+  remote.send(JSON.stringify({ type: 'remote_event', deviceId: 'C1', sessionId: 'manual-category-test', sequence: 2, button: 'RED_1' }));
+  await waitFor(remote, message => message.type === 'remote_event_ack' && message.sequence === 2);
+  await waitFor(host, message => message.type === 'state' && message.match.mode === 'PRACTICE' && message.match.red.score === 1);
+  host.send(JSON.stringify({ type: 'host', action: 'manualMatchDecision', player: 'RED', decision: 'RSC' }));
+  const practiceWinner = await waitFor(host, message => message.type === 'matchEnd' && message.match?.mode === 'PRACTICE');
+  assert.equal(practiceWinner.winner, 'RED');
+  assert.equal(practiceWinner.match.roundHistory.length, 1);
+  const practiceCleaned = await waitFor(host, message => message.type === 'state' && message.match.mode === 'PRACTICE' && message.match.phase === 'MATCH_END');
+  assert.equal(practiceCleaned.matchHistory.length, 1);
+  assert.deepEqual(practiceCleaned.match.roundHistory, []);
+  assert.deepEqual(practiceCleaned.match.cornerRefereeHistory, []);
+  assert.deepEqual(practiceCleaned.match.operatorHistory, []);
+  assert.equal(practiceCleaned.match.practiceMatchNo, 1);
+
+  host.send(JSON.stringify({ type: 'host', action: 'newMatch' }));
+  const officialAfterPractice = await waitFor(host, message => (
+    message.type === 'state' && message.match.mode === 'OFFICIAL' &&
+    message.match.phase === 'ROUND' && message.match.matchNo === reservedOfficialMatchNo
+  ));
+  assert.equal(officialAfterPractice.match.matchNo, reservedOfficialMatchNo);
+  assert.equal(officialAfterPractice.match.practiceMatchNo, null);
+  assert.equal(officialAfterPractice.match.red.playerName, '');
+  assert.equal(officialAfterPractice.matchHistory.length, 1);
 });

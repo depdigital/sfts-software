@@ -82,6 +82,7 @@
         </div>
 
         <div class="centerBoard">
+          <div id="practiceModeBadge" class="practiceModeBadge hidden">PRACTICE MODE</div>
           <div class="arenaText">ARENA NO. <b id="arenaNo">—</b></div>
           <div class="matchText">MATCH <b id="matchNo">001</b></div>
           <div id="timer" class="timerText">1:00</div>
@@ -312,8 +313,38 @@
             <strong>DATA IMPORT</strong>
             <span>Import tournament players and generate a schedule.</span>
           </button>
+          <button onclick="openPracticeMode()">
+            <strong>PRACTICE MODE</strong>
+            <span>Load a temporary club practice match without saving match records.</span>
+          </button>
         </div>
         <button onclick="closePlayerSettings()">CLOSE</button>
+      </div>
+    </section>
+
+    <section id="practiceModeModal" class="overlay hidden">
+      <div class="modalCard practiceModeModal">
+        <h2>PRACTICE MODE</h2>
+        <p class="practiceModeNotice">Practice uses the normal scoring rules, but its match and referee histories are not saved.</p>
+        <div class="playerSettingsGrid">
+          <section class="playerSettingsPanel redPlayerPanel">
+            <h3>HONG</h3>
+            <label>PLAYER NAME<input id="practiceRedName" maxlength="64" autocomplete="off" /></label>
+            <label>STATE CODE (OPTIONAL)<input id="practiceRedStateCode" maxlength="2" autocomplete="off" /></label>
+            <label>DISTRICT (OPTIONAL)<input id="practiceRedDistrict" maxlength="48" autocomplete="off" /></label>
+          </section>
+          <section class="playerSettingsPanel bluePlayerPanel">
+            <h3>CHUNG</h3>
+            <label>PLAYER NAME<input id="practiceBlueName" maxlength="64" autocomplete="off" /></label>
+            <label>STATE CODE (OPTIONAL)<input id="practiceBlueStateCode" maxlength="2" autocomplete="off" /></label>
+            <label>DISTRICT (OPTIONAL)<input id="practiceBlueDistrict" maxlength="48" autocomplete="off" /></label>
+          </section>
+        </div>
+        <div class="practiceModeActions">
+          <button onclick="announcePracticePlayers()">ANNOUNCE</button>
+          <button onclick="loadPracticeMatch()">LOAD PRACTICE</button>
+          <button onclick="backFromPracticeMode()">BACK</button>
+        </div>
       </div>
     </section>
 

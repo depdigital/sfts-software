@@ -399,6 +399,19 @@ button {
   margin-inline: clamp(2px, 0.35vw, 8px);
   border-radius: 14px;
 }
+.practiceModeBadge {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 5px 7px;
+  border: 1px solid #ffd65a;
+  border-radius: 6px;
+  background: #6a4a00;
+  color: #fff0ae;
+  font-size: clamp(9px, min(0.9vw, 1.5vh), 16px);
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-align: center;
+}
 .matchText {
   font-size: clamp(13px, min(1.1vw, 1.8vh), 24px);
   font-weight: 800;
@@ -788,11 +801,13 @@ button {
   font-weight: 600;
 }
 .manualEntryModal,
+.practiceModeModal,
 .categoryResultsModal {
   width: min(1120px, 96vw);
   text-align: left;
 }
 .manualEntryModal > h2,
+.practiceModeModal > h2,
 .categoryResultsModal > h2 {
   text-align: center;
 }
@@ -826,6 +841,7 @@ button {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .manualEntryModal label,
+.practiceModeModal label,
 .categoryResultsModal label,
 .manualEntryToolbar label {
   display: block;
@@ -835,6 +851,7 @@ button {
 }
 .manualEntryModal input,
 .manualEntryModal select,
+.practiceModeModal input,
 .categoryResultsModal select,
 .manualEntryToolbar select {
   box-sizing: border-box;
@@ -846,6 +863,25 @@ button {
   background: #171f2d;
   color: #fff;
   font: inherit;
+}
+.practiceModeNotice {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #312600;
+  color: #ffe89a;
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+}
+.practiceModeActions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+.practiceModeActions button {
+  margin: 0;
 }
 .manualActions {
   display: grid;
@@ -1625,6 +1661,7 @@ button {
   .manualFieldGrid,
   .manualFieldGrid.twoColumns,
   .manualActions,
+  .practiceModeActions,
   .categoryReportMeta,
   .categoryReportPlacements {
     grid-template-columns: 1fr;
