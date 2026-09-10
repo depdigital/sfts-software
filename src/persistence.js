@@ -252,10 +252,12 @@ export function createPersistence({ logger = console, dataDir: configuredDataDir
 
   function drainQueue() {
     saveTimer = null;
-    const snapshot = queuedSnapshot;
+    const pendingSnapshot = queuedSnapshot;
     queuedSnapshot = null;
-    if (!snapshot) return;
-    writeChain = writeChain.then(() => writeWithRetry(snapshot)).catch(logWriteError);
+    if (!pendingSnapshot) return;
+    writeChain = writeChain
+      .then(() => writeWithRetry(typeof pendingSnapshot === 'function' ? pendingSnapshot() : pendingSnapshot))
+      .catch(logWriteError);
     if (queuedSnapshot && !saveTimer) saveTimer = setTimeout(drainQueue, saveDelayMs);
   }
 
@@ -273,7 +275,10 @@ export function createPersistence({ logger = console, dataDir: configuredDataDir
     queuedSnapshot = null;
     await writeChain;
     if (queued || snapshot) {
-      writeChain = writeChain.then(() => writeWithRetry(snapshot || queued)).catch(logWriteError);
+      const pendingSnapshot = snapshot || queued;
+      writeChain = writeChain
+        .then(() => writeWithRetry(typeof pendingSnapshot === 'function' ? pendingSnapshot() : pendingSnapshot))
+        .catch(logWriteError);
       await writeChain;
     }
   }

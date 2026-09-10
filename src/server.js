@@ -66,6 +66,7 @@ const REMOTE_ACK_CACHE_SIZE = 100;
 const WS_MESSAGE_LIMIT = 120;
 const WS_MESSAGE_WINDOW_MS = 1000;
 const VOTE_SETTLE_MS = 750;
+const COALESCED_HOST_ACTIONS = new Set(['point', 'headPoint', 'gamjeom', 'editScore', 'editGamjeom']);
 let TECHNICAL_COMBO_WINDOW_MS = rules.scoring.technicalInput.windowMilliseconds;
 let MIN_ACTIVE_REMOTES = rules.voting.minimumActiveRemotes;
 let MAX_ACTIVE_REMOTES = rules.voting.maximumActiveRemotes;
@@ -681,12 +682,14 @@ let persistenceFlushChain = Promise.resolve();
 let recoveredFromUnexpectedShutdown = false;
 let voteSettleGuard = null;
 let pendingSystemPower = null;
+let cachedScoringRulesState = null;
 
 function deep(v) { return JSON.parse(JSON.stringify(v)); }
 
 function configureRuntimeRules(nextRules) {
   rules = nextRules;
   activeRulesMetadata = rulesMetadata(rules);
+  cachedScoringRulesState = null;
   ROUND_MS_DEFAULT = rules.match.roundDurationSeconds * 1000;
   MIN_TIMER_MS = rules.match.minimumRoundDurationSeconds * 1000;
   MAX_TIMER_MS = rules.match.maximumRoundDurationSeconds * 1000;
@@ -708,7 +711,8 @@ function configureRuntimeRules(nextRules) {
 }
 
 function scoringRulesState() {
-  return {
+  if (cachedScoringRulesState) return cachedScoringRulesState;
+  cachedScoringRulesState = {
     basePointValues: [...rules.scoring.basePointValues],
     basePointLabels: { ...rules.scoring.basePointLabels },
     acceptedPointValues: [...rules.scoring.acceptedPointValues],
@@ -722,6 +726,7 @@ function scoringRulesState() {
     },
     tournament: deep(rules.tournament)
   };
+  return cachedScoringRulesState;
 }
 
 function persistenceSnapshot({ cleanShutdown = false } = {}) {
@@ -757,9 +762,8 @@ function flushPersistedState(snapshot) {
 
 function persistState(immediate = false) {
   if (!persistenceReady) return;
-  const snapshot = persistenceSnapshot();
-  if (immediate) void flushPersistedState(snapshot);
-  else persistence.schedule(snapshot);
+  if (immediate) void flushPersistedState(persistenceSnapshot());
+  else persistence.schedule(() => persistenceSnapshot());
   lastTimerPersistAt = Date.now();
 }
 
@@ -862,15 +866,15 @@ function fullState() {
     recoveredFromUnexpectedShutdown,
     arenaNumber,
     remoteButtons: [1, 2, 3, 4].map(corner => lastRemoteButtons.get(corner) || null),
-    remoteScoreHighlights: deep(remoteScoreHighlights),
-    remoteScoreValues: deep(remoteScoreValues),
-    remoteScoreRevisions: deep(remoteScoreRevisions),
-    match: deep(match),
-    matchHistory: deep(matchHistory),
-    tournament: deep(tournament),
-    remotes: [...remoteStatuses.values()].map(status => deep(status)),
+    remoteScoreHighlights,
+    remoteScoreValues,
+    remoteScoreRevisions,
+    match,
+    matchHistory,
+    tournament,
+    remotes: [...remoteStatuses.values()],
     usbImportOnly: USB_IMPORT_ONLY,
-    ruleset: deep(activeRulesMetadata),
+    ruleset: activeRulesMetadata,
     scoringRules: scoringRulesState()
   };
 }
@@ -884,7 +888,7 @@ function remoteState(ws) {
     phase: match.phase,
     timerMs: Math.max(0, Math.ceil(match.timerMs)),
     running: match.running,
-    kyeShi: deep(match.kyeShi),
+    kyeShi: match.kyeShi,
     activeRemoteCount: match.remoteCount,
     requiredVotes: Math.floor(match.remoteCount / 2) + 1,
     connected: Boolean(remoteStatuses.get(ws.deviceId)?.connected),
@@ -892,7 +896,7 @@ function remoteState(ws) {
     battery: remoteStatuses.get(ws.deviceId)?.battery ?? null,
     red: { score: match.red.score, gamjeom: match.red.gamjeom },
     blue: { score: match.blue.score, gamjeom: match.blue.gamjeom },
-    votes: deep(match.votes)
+    votes: match.votes
   };
 }
 function state(persist = false, immediate = persist) {
@@ -2062,7 +2066,8 @@ function showLastRemoteButton(corner, button) {
     if (lastRemoteButtonTimers.get(corner) !== timer) return;
     lastRemoteButtonTimers.delete(corner);
     lastRemoteButtons.delete(corner);
-    state(true);
+    // This is transient display state and does not belong in the durable match snapshot.
+    state();
   }, REMOTE_BUTTON_DISPLAY_MS);
   timer.unref?.();
   lastRemoteButtonTimers.set(corner, timer);
@@ -2458,7 +2463,9 @@ function addPoint(player, points, source = "manual", countAsHit = true, allowPau
   if (!validPlayer(player) || (!validPoints(points) && !technicalAward) || !canScore) return false;
   side(player).score += points;
   if (countAsHit) addHitStat(player, points);
-  emit({ type: 'scoreSound', player, points, source });
+  // Queue sound after the authoritative score state has been broadcast. This keeps
+  // a slow first-time browser audio initialization off the visible score path.
+  queueMicrotask(() => emit({ type: 'scoreSound', player, points, source }));
   checkPointGap();
   return true;
 }
@@ -2471,7 +2478,12 @@ function addGamjeom(player, allowPaused = false) {
   const opponent = other(player);
   if (rules.scoring.gamJeomPointValue > 0 && rules.penalties.gamJeom.awardsPointToOpponent) {
     side(opponent).score += rules.scoring.gamJeomPointValue;
-    emit({ type: 'scoreSound', player: opponent, points: rules.scoring.gamJeomPointValue, source: 'gamjeom' });
+    queueMicrotask(() => emit({
+      type: 'scoreSound',
+      player: opponent,
+      points: rules.scoring.gamJeomPointValue,
+      source: 'gamjeom'
+    }));
   }
   if (isGoldenRound() && penalized.gamjeom >= rules.tieBreak.goldenRound.opponentGamJeomsToWin) {
     endGoldenRound(opponent, `GDP - ${rules.tieBreak.goldenRound.opponentGamJeomsToWin} GAM-JEOMS`);
@@ -2889,13 +2901,13 @@ function evaluateVotes() {
           requiredVotes,
           corners: winningCorners
         };
+        state(true, false);
         emit({ type: 'award', ...result });
-        state(true);
         return result;
       }
     }
   }
-  state(true);
+  state(true, false);
   return { awarded: false };
 }
 
@@ -3092,7 +3104,7 @@ function handleRemoteEvent(ws, msg) {
     return;
   }
   if (button === 'CANCEL') {
-    if (recordCornerRefereePress(ws.corner, button)) state(true);
+    recordCornerRefereePress(ws.corner, button);
     if (match.test.active) {
       const ack = remoteAck(ws, sequence, { accepted: false, reason: 'TEST_MODE_ACTIVE' });
       rememberRemoteAck(session, sequence, ack);
@@ -3106,7 +3118,7 @@ function handleRemoteEvent(ws, msg) {
     showLastRemoteButton(ws.corner, button);
     clearRemoteCombination(ws.corner);
     delete match.votes[ws.corner];
-    state(true);
+    state(true, false);
     const ack = remoteAck(ws, sequence, { accepted: true, reason: 'VOTE_CANCELLED', awarded: false });
     rememberRemoteAck(session, sequence, ack);
     return;
@@ -3203,7 +3215,6 @@ function handleRemoteEvent(ws, msg) {
     cornerRefereeButtonLabel(vote.player, vote.points),
     vote.points
   );
-  if (historyEntry) state(true);
   const outcome = completeRemoteVote(ws, sequence, {
     ...vote,
     basePoints: vote.points,
@@ -3515,7 +3526,7 @@ wss.on('connection', ws => {
         resetTest();
         return;
       }
-      state(true);
+      state(true, !COALESCED_HOST_ACTIONS.has(msg.action));
       return;
     }
 
@@ -3526,7 +3537,7 @@ wss.on('connection', ws => {
       const points = Number(msg.points);
 
       if (msg.action === 'vote' && validPlayer(player) && validPoints(points)) {
-        if (recordCornerRefereePress(ws.corner, cornerRefereeButtonLabel(player, points), points)) state(true);
+        recordCornerRefereePress(ws.corner, cornerRefereeButtonLabel(player, points), points);
         if (match.test.active) {
           const button = `${player}_${points}`;
           match.test.presses[`${ws.corner}-${button}`] = true;
@@ -3540,9 +3551,9 @@ wss.on('connection', ws => {
       }
 
       if (msg.action === 'cancel' && !match.test.active) {
-        if (recordCornerRefereePress(ws.corner, 'CANCEL')) state(true);
+        recordCornerRefereePress(ws.corner, 'CANCEL');
         delete match.votes[ws.corner];
-        state(true);
+        state(true, false);
       }
     }
   });

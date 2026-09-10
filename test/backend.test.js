@@ -289,12 +289,22 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   host.send(JSON.stringify({ type: 'host', action: 'playPause' }));
   await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'ROUND' && message.match.running);
 
+  const firstScoreMessageOrder = [];
+  const captureFirstScoreOrder = raw => {
+    let message;
+    try { message = JSON.parse(String(raw)); } catch { return; }
+    if (message.type === 'state' && message.match?.red?.score === 3) firstScoreMessageOrder.push('state');
+    if (message.type === 'scoreSound' && message.player === 'RED' && message.points === 3) firstScoreMessageOrder.push('scoreSound');
+  };
+  host.on('message', captureFirstScoreOrder);
   host.send(JSON.stringify({ type: 'host', action: 'headPoint', player: 'RED' }));
   await waitForMessage(host, message => message.type === 'scoreSound' && message.player === 'RED' && message.points === 3);
   const manualRedHead = await waitForMessage(host, message => (
     message.type === 'state' && message.match.red.score === 3 && message.match.red.stats.plus3 === 1
   ));
+  host.off('message', captureFirstScoreOrder);
   assert.equal(manualRedHead.match.red.score, 3);
+  assert.deepEqual(firstScoreMessageOrder.slice(0, 2), ['state', 'scoreSound']);
   host.send(JSON.stringify({ type: 'host', action: 'headPoint', player: 'BLUE' }));
   await waitForMessage(host, message => message.type === 'scoreSound' && message.player === 'BLUE' && message.points === 3);
   const manualBlueHead = await waitForMessage(host, message => (

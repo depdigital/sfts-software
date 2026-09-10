@@ -144,6 +144,31 @@ test('local persistence writes a backup and restores it when the primary is corr
   }
 });
 
+test('scheduled persistence coalesces snapshots and creates only the latest snapshot lazily', async () => {
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), 'sfts-persistence-lazy-'));
+  let snapshotCalls = 0;
+  try {
+    const persistence = createPersistence({ dataDir });
+    persistence.schedule(() => {
+      snapshotCalls += 1;
+      return snapshot('superseded');
+    });
+    persistence.schedule(() => {
+      snapshotCalls += 1;
+      return snapshot('latest');
+    });
+
+    assert.equal(snapshotCalls, 0);
+    await persistence.flush();
+
+    const primary = JSON.parse(await readFile(persistence.stateFile, 'utf8'));
+    assert.equal(snapshotCalls, 1);
+    assert.equal(primary.savedAt, 'latest');
+  } finally {
+    await rm(dataDir, { recursive: true, force: true });
+  }
+});
+
 test('local persistence prevents two server instances sharing one data folder', async () => {
   const dataDir = await mkdtemp(path.join(os.tmpdir(), 'sfts-persistence-lock-'));
   try {
