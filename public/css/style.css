@@ -628,10 +628,10 @@ button {
 .bottomArea {
   display: grid;
   grid-template-columns:
-    minmax(0, 1fr) minmax(250px, clamp(250px, min(20vw, 32vh), 560px))
+    minmax(0, 1fr) minmax(280px, clamp(280px, min(24vw, 38vh), 620px))
     minmax(0, 1fr);
   gap: clamp(10px, 1.2vw, 30px);
-  padding: clamp(8px, 1.5vh, 24px) clamp(10px, 2vw, 36px);
+  padding: clamp(8px, 1.5vh, 24px) clamp(8px, 2vw, 36px);
   background: #0d1118;
   position: relative;
   z-index: 10;
@@ -1680,9 +1680,9 @@ button {
   }
 
   .bottomArea {
-    grid-template-columns: minmax(0, 1fr) minmax(300px, 20vw) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 24vw) minmax(0, 1fr);
     gap: clamp(16px, 1.4vw, 30px);
-    padding: clamp(14px, 1.5vh, 24px) clamp(18px, 2vw, 36px);
+    padding: clamp(14px, 1.5vh, 24px) clamp(14px, 2vw, 36px);
   }
   .controlGrid {
     grid-template-rows: repeat(2, clamp(70px, 8vh, 112px));
