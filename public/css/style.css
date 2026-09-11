@@ -410,14 +410,57 @@ button {
 }
 
 .centerBoard {
+  --score-card-chamfer: clamp(10px, 1.2vw, 24px);
+  --center-outline-width: 2px;
+  --center-inner-chamfer: calc(var(--score-card-chamfer) - var(--center-outline-width));
+  position: relative;
+  isolation: isolate;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: clamp(10px, 1.6vh, 24px);
-  background: #090c13;
   padding: clamp(10px, 1.5vw, 28px) clamp(8px, 1vw, 20px);
   margin-inline: clamp(2px, 0.35vw, 8px);
-  border-radius: 14px;
+}
+.centerBoard::before,
+.centerBoard::after {
+  position: absolute;
+  content: "";
+  pointer-events: none;
+}
+.centerBoard::before {
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(135deg, rgba(236, 242, 252, 0.82), rgba(139, 159, 194, 0.62));
+  clip-path: polygon(
+    var(--score-card-chamfer) 0,
+    calc(100% - var(--score-card-chamfer)) 0,
+    100% var(--score-card-chamfer),
+    100% calc(100% - var(--score-card-chamfer)),
+    calc(100% - var(--score-card-chamfer)) 100%,
+    var(--score-card-chamfer) 100%,
+    0 calc(100% - var(--score-card-chamfer)),
+    0 var(--score-card-chamfer)
+  );
+}
+.centerBoard::after {
+  inset: var(--center-outline-width);
+  z-index: 1;
+  background: #090c13;
+  clip-path: polygon(
+    var(--center-inner-chamfer) 0,
+    calc(100% - var(--center-inner-chamfer)) 0,
+    100% var(--center-inner-chamfer),
+    100% calc(100% - var(--center-inner-chamfer)),
+    calc(100% - var(--center-inner-chamfer)) 100%,
+    var(--center-inner-chamfer) 100%,
+    0 calc(100% - var(--center-inner-chamfer)),
+    0 var(--center-inner-chamfer)
+  );
+}
+.centerBoard > * {
+  position: relative;
+  z-index: 2;
 }
 .practiceModeBadge {
   width: 100%;
