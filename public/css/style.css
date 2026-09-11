@@ -201,12 +201,96 @@ button {
   align-items: center;
   justify-content: center;
 }
+.launchBrandTitle {
+  position: fixed;
+  top: var(--launch-title-top, 50%);
+  left: 50%;
+  z-index: 280;
+  width: max-content;
+  max-width: 92vw;
+  color: #fff;
+  font-size: clamp(16px, 2vw, 38px);
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  line-height: 1.05;
+  text-align: center;
+  text-shadow: 0 0 14px rgba(204, 226, 255, 0.88), 0 0 32px rgba(108, 174, 255, 0.55);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+}
+.hostScreen.launchBrandingActive .launchBrandTitle {
+  visibility: visible;
+  animation: launchBrandTitleSequence 6.2s ease-in-out forwards;
+}
+.hostScreen.launchBrandingActive .systemLogo {
+  opacity: 0;
+}
+.hostScreen.launchBrandingActive.launchLogoReveal .systemLogo {
+  animation: launchLogoSequence 5.6s ease-out forwards;
+}
+@keyframes launchBrandTitleSequence {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + var(--launch-title-start-offset, 0px))) scale(0.88);
+    filter: blur(5px);
+  }
+  11% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+    filter: blur(0);
+  }
+  92% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+    filter: blur(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.05);
+    filter: blur(8px);
+  }
+}
+@keyframes launchLogoSequence {
+  0% {
+    opacity: 0;
+    filter: drop-shadow(0 0 0 rgba(212, 235, 255, 0));
+    transform: scale(0.96);
+  }
+  8% {
+    opacity: 1;
+    filter: drop-shadow(0 0 12px rgba(212, 235, 255, 0.95)) drop-shadow(0 0 28px rgba(104, 174, 255, 0.62));
+    transform: scale(1);
+  }
+  92% {
+    opacity: 1;
+    filter: drop-shadow(0 0 12px rgba(212, 235, 255, 0.95)) drop-shadow(0 0 28px rgba(104, 174, 255, 0.62));
+    transform: scale(1);
+  }
+  100% {
+    opacity: 1;
+    filter: none;
+    transform: scale(1);
+  }
+}
 .systemLogo {
   display: block;
   width: clamp(120px, 14vw, 280px);
   height: 82%;
   object-fit: cover;
   object-position: center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .hostScreen.launchBrandingActive .launchBrandTitle {
+    visibility: hidden;
+    animation: none;
+  }
+  .hostScreen.launchBrandingActive .systemLogo,
+  .hostScreen.launchBrandingActive.launchLogoReveal .systemLogo {
+    opacity: 1;
+    animation: none;
+  }
 }
 .voteStrip {
   width: 100%;

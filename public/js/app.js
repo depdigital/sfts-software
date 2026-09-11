@@ -39,7 +39,10 @@ let manualDecisionCode = "";
 let practiceLoadPending = false;
 let userPermissionResolver = null;
 let userPermissionInputMode = false;
+let launchBrandingTimers = [];
 const REMOTE_SCORE_TRANSITION_MS = 300;
+const LAUNCH_TITLE_SEQUENCE_MS = 6200;
+const LAUNCH_LOGO_SEQUENCE_MS = 6000;
 
 const $ = (id) => document.getElementById(id);
 
@@ -454,6 +457,36 @@ function openHost() {
   hostAccessToken = $("hostAccessToken")?.value.trim() || "";
   send({ type: "role", role: "host", accessToken: hostAccessToken });
   showScreen("host");
+  requestAnimationFrame(playLaunchBranding);
+}
+
+function playLaunchBranding() {
+  const host = $("host");
+  const title = $("launchBrandTitle");
+  const heading = document.querySelector(".systemHeading");
+  const arena = document.querySelector(".arenaText");
+  if (!host || !title || !heading || !arena) return;
+
+  for (const timer of launchBrandingTimers) clearTimeout(timer);
+  launchBrandingTimers = [];
+  host.classList.remove("launchBrandingActive", "launchLogoReveal");
+
+  const headingRect = heading.getBoundingClientRect();
+  const arenaRect = arena.getBoundingClientRect();
+  const headingCenter = headingRect.top + headingRect.height / 2;
+  const arenaCenter = arenaRect.top + arenaRect.height / 2;
+  title.style.setProperty("--launch-title-top", `${headingCenter}px`);
+  title.style.setProperty("--launch-title-start-offset", `${arenaCenter - headingCenter}px`);
+
+  void title.offsetWidth;
+  host.classList.add("launchBrandingActive");
+  launchBrandingTimers.push(setTimeout(() => {
+    host.classList.add("launchLogoReveal");
+  }, LAUNCH_TITLE_SEQUENCE_MS));
+  launchBrandingTimers.push(setTimeout(() => {
+    host.classList.remove("launchBrandingActive", "launchLogoReveal");
+    launchBrandingTimers = [];
+  }, LAUNCH_TITLE_SEQUENCE_MS + LAUNCH_LOGO_SEQUENCE_MS));
 }
 
 function nameChange(player, value) {
