@@ -355,7 +355,7 @@ button {
 }
 .gamRibbon b {
   display: block;
-  font-size: 50px;
+  font-size: 64px;
 }
 .nameInput {
   width: 82%;
@@ -1582,7 +1582,7 @@ button {
     right: clamp(12px, 1.2vw, 24px);
   }
   .gamRibbon b {
-    font-size: 50px;
+    font-size: 68px;
   }
   .nameInput {
     font-size: clamp(72px, 5vw, 124px);
