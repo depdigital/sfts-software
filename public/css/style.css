@@ -327,6 +327,20 @@ button {
 .blueSide {
   background: linear-gradient(140deg, #0f88e2 0%, #11c5f2 100%);
 }
+.redSide,
+.blueSide {
+  --score-card-chamfer: clamp(10px, 1.2vw, 24px);
+  clip-path: polygon(
+    var(--score-card-chamfer) 0,
+    calc(100% - var(--score-card-chamfer)) 0,
+    100% var(--score-card-chamfer),
+    100% calc(100% - var(--score-card-chamfer)),
+    calc(100% - var(--score-card-chamfer)) 100%,
+    var(--score-card-chamfer) 100%,
+    0 calc(100% - var(--score-card-chamfer)),
+    0 var(--score-card-chamfer)
+  );
+}
 .gamRibbon {
   position: absolute;
   top: 16px;
