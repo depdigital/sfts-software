@@ -374,6 +374,16 @@ button {
   outline: none;
   padding: 4px 8px 10px;
 }
+.redSide .nameInput {
+  text-shadow:
+    0 0 7px rgba(104, 0, 0, 0.78),
+    0 0 16px rgba(78, 0, 0, 0.5);
+}
+.blueSide .nameInput {
+  text-shadow:
+    0 0 7px rgba(0, 42, 118, 0.78),
+    0 0 16px rgba(0, 27, 82, 0.5);
+}
 .playerMeta {
   min-height: 28px;
   margin-top: 8px;
