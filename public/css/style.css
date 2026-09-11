@@ -203,7 +203,7 @@ button {
 }
 .systemLogo {
   display: block;
-  width: clamp(140px, 18vw, 320px);
+  width: clamp(120px, 14vw, 280px);
   height: 82%;
   object-fit: cover;
   object-position: center;
@@ -221,7 +221,7 @@ button {
 .mainBoard {
   display: grid;
   grid-template-columns:
-    minmax(0, 1fr) minmax(250px, clamp(250px, min(20vw, 32vh), 560px))
+    minmax(0, 1fr) minmax(280px, clamp(280px, min(24vw, 38vh), 620px))
     minmax(0, 1fr);
   gap: clamp(10px, 1.2vw, 30px);
   padding-inline: clamp(8px, 2vw, 36px);
@@ -530,7 +530,7 @@ button {
   font-weight: 900;
 }
 .centerControl {
-  width: 100%;
+  width: min(78%, 340px);
   padding: clamp(12px, 1.5vh, 24px) clamp(8px, 0.8vw, 18px);
   border-radius: 7px;
   color: #fff;
@@ -1607,11 +1607,11 @@ button {
     height: clamp(80px, 8vh, 110px);
   }
   .systemLogo {
-    width: clamp(180px, 18vw, 380px);
+    width: clamp(150px, 14vw, 320px);
   }
 
   .mainBoard {
-    grid-template-columns: minmax(0, 1fr) minmax(300px, 20vw) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 24vw) minmax(0, 1fr);
     gap: clamp(16px, 1.4vw, 30px);
     padding-inline: clamp(14px, 2vw, 36px);
     min-height: 0;
