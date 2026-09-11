@@ -731,10 +731,17 @@ button {
   min-height: 0;
   flex: 1;
   border-radius: 8px;
-  background: #262f3b;
   color: #fff;
   font-weight: 900;
   font-size: clamp(13px, min(1.2vw, 2vh), 26px);
+}
+.settingsButton {
+  border-color: rgba(159, 201, 235, 0.42);
+  background: linear-gradient(135deg, #38546b, #273b4e);
+}
+.playerSettingsButton {
+  border-color: rgba(196, 174, 232, 0.42);
+  background: linear-gradient(135deg, #4b4164, #352e4a);
 }
 
 .icon {
