@@ -13,6 +13,26 @@
   </head>
   <body>
     <div id="toast"></div>
+    <section
+      id="userPermissionModal"
+      class="overlay hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="userPermissionTitle"
+    >
+      <div class="modalCard smallModal userPermissionModal">
+        <h2 id="userPermissionTitle">SFTS user permission</h2>
+        <p id="userPermissionMessage"></p>
+        <label id="userPermissionInputLabel" class="userPermissionInputLabel hidden">
+          VALUE
+          <input id="userPermissionInput" type="number" inputmode="numeric" />
+        </label>
+        <div class="userPermissionActions">
+          <button id="userPermissionConfirmButton" class="userPermissionConfirmButton" onclick="resolveUserPermission(true)">CONFIRM</button>
+          <button onclick="resolveUserPermission(false)">CANCEL</button>
+        </div>
+      </div>
+    </section>
     <div id="remoteDisconnectPopup" class="remoteDisconnectPopup" role="alert" aria-live="assertive"></div>
     <div id="screensaver" class="screensaver" aria-hidden="true">
       <div class="screensaverContent">

@@ -37,6 +37,8 @@ let displayedTieDecisionMode = null;
 let tieDecisionView = "METHOD";
 let manualDecisionCode = "";
 let practiceLoadPending = false;
+let userPermissionResolver = null;
+let userPermissionInputMode = false;
 const REMOTE_SCORE_TRANSITION_MS = 300;
 
 const $ = (id) => document.getElementById(id);
@@ -178,6 +180,7 @@ function toggleScreensaver() {
 }
 
 document.addEventListener("keydown", (event) => {
+  if (!$("userPermissionModal")?.classList.contains("hidden")) return;
   if (
     !["Space", "KeyR", "KeyB", "KeyS"].includes(event.code) ||
     event.repeat ||
@@ -202,6 +205,17 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
+document.addEventListener("keydown", (event) => {
+  if ($("userPermissionModal")?.classList.contains("hidden")) return;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    resolveUserPermission(false);
+  } else if (event.key === "Enter" && event.target !== $("userPermissionConfirmButton")) {
+    event.preventDefault();
+    resolveUserPermission(true);
+  }
+});
+
 function send(data) {
   if (ws && ws.readyState === 1) ws.send(JSON.stringify(data));
   else toast("NOT CONNECTED");
@@ -212,6 +226,45 @@ function toast(text) {
   node.textContent = text;
   node.classList.add("show");
   setTimeout(() => node.classList.remove("show"), 2200);
+}
+
+function requestUserPermission(message) {
+  return new Promise((resolve) => {
+    if (userPermissionResolver) userPermissionResolver(false);
+    userPermissionResolver = resolve;
+    userPermissionInputMode = false;
+    $("userPermissionMessage").textContent = message;
+    $("userPermissionInputLabel").classList.add("hidden");
+    $("userPermissionConfirmButton").textContent = "CONFIRM";
+    $("userPermissionModal").classList.remove("hidden");
+    $("userPermissionConfirmButton").focus();
+  });
+}
+
+function requestUserInput(message, current) {
+  return new Promise((resolve) => {
+    if (userPermissionResolver) userPermissionResolver(null);
+    userPermissionResolver = resolve;
+    userPermissionInputMode = true;
+    $("userPermissionMessage").textContent = message;
+    $("userPermissionInputLabel").classList.remove("hidden");
+    $("userPermissionInput").value = current;
+    $("userPermissionConfirmButton").textContent = "SAVE";
+    $("userPermissionModal").classList.remove("hidden");
+    $("userPermissionInput").focus();
+    $("userPermissionInput").select();
+  });
+}
+
+function resolveUserPermission(value) {
+  const resolver = userPermissionResolver;
+  const inputMode = userPermissionInputMode;
+  userPermissionResolver = null;
+  userPermissionInputMode = false;
+  $("userPermissionModal").classList.add("hidden");
+  if (resolver) {
+    resolver(inputMode && value === true ? $("userPermissionInput").value : inputMode ? null : value);
+  }
 }
 
 function showScreen(id) {
@@ -415,22 +468,22 @@ function resetRoundTimer() {
 function startKyeShi() {
   send({ type: "host", action: "startKyeShi" });
 }
-function toggleKyeShi() {
+async function toggleKyeShi() {
   if (!lastState?.kyeShi) return;
   if (lastState.kyeShi.running) {
-    if (confirm("Suspend the Kye-shi timer?"))
+    if (await requestUserPermission("Suspend the Kye-shi timer?"))
       send({ type: "host", action: "pauseKyeShi" });
   } else {
     send({ type: "host", action: "resumeKyeShi" });
   }
 }
-function endKyeShi() {
-  if (confirm("End Kye-shi and resume the match timer?"))
+async function endKyeShi() {
+  if (await requestUserPermission("End Kye-shi and resume the match timer?"))
     send({ type: "host", action: "endKyeShi" });
 }
-function declareWinner(player) {
+async function declareWinner(player) {
   const name = player === "RED" ? "HONG" : "CHUNG";
-  if (confirm(`Declare ${name} the winner of the entire match?`)) {
+  if (await requestUserPermission(`Declare ${name} the winner of the entire match?`)) {
     send({ type: "host", action: "declareKyeShiWinner", player });
   }
 }
@@ -445,13 +498,13 @@ function showTieMethods() {
   tieDecisionView = "METHOD";
   renderTieDecision(lastState);
 }
-function decideTieWinner(player) {
+async function decideTieWinner(player) {
   if (!lastState) return;
   const action = lastState.tieDecision?.mode === "GOLDEN_SUPERIORITY"
     ? "decideGoldenRoundSuperiority"
     : "decideWooSeGirok";
   const name = displayPlayerName(lastState, player);
-  if (confirm(`Declare ${name} the match winner?`)) {
+  if (await requestUserPermission(`Declare ${name} the match winner?`)) {
     send({ type: "host", action, player });
   }
 }
@@ -529,18 +582,18 @@ function manualGam(player) {
   send({ type: "host", action: "gamjeom", player });
 }
 
-function editScore(player) {
+async function editScore(player) {
   if (!lastState) return;
   const current = player === "RED" ? lastState.red.score : lastState.blue.score;
-  const value = prompt(`Set ${player} score`, current);
+  const value = await requestUserInput(`Set ${player} score`, current);
   if (value !== null)
     send({ type: "host", action: "editScore", player, value: Number(value) });
 }
-function editGam(player) {
+async function editGam(player) {
   if (!lastState) return;
   const current =
     player === "RED" ? lastState.red.gamjeom : lastState.blue.gamjeom;
-  const value = prompt(`Set ${player} gam-jeom`, current);
+  const value = await requestUserInput(`Set ${player} gam-jeom`, current);
   if (value !== null)
     send({ type: "host", action: "editGamjeom", player, value: Number(value) });
 }
@@ -586,10 +639,10 @@ function selectManualDecision(code) {
   $("manualDecisionWinnerActions").classList.remove("hidden");
   $("manualDecisionCloseButton").classList.add("hidden");
 }
-function submitManualDecision(player) {
+async function submitManualDecision(player) {
   if (!manualDecisionCode || !lastState) return;
   const name = displayPlayerName(lastState, player);
-  if (!confirm(`Declare ${name} the winner by ${manualDecisionCode}?`)) return;
+  if (!await requestUserPermission(`Declare ${name} the winner by ${manualDecisionCode}?`)) return;
   send({ type: "host", action: "manualMatchDecision", player, decision: manualDecisionCode });
   closeMatchDecision();
 }
@@ -1137,10 +1190,10 @@ function closeManualCategoryResults() {
   $("manualEntryModal").classList.remove("hidden");
 }
 
-function saveManualPlacements(finalize = false) {
+async function saveManualPlacements(finalize = false) {
   const category = manualReportCategory();
   if (!category) return;
-  if (finalize && !window.confirm("Finalize this category? Placements will be locked.")) return;
+  if (finalize && !await requestUserPermission("Finalize this category? Placements will be locked.")) return;
   send({
     type: "host",
     action: "saveManualCategoryPlacements",
@@ -1357,7 +1410,7 @@ async function applyRulesFile() {
     toast("SELECT A RULE PACK");
     return;
   }
-  if (!window.confirm("Apply this ruleset? The current match must be finished or reset first.")) return;
+  if (!await requestUserPermission("Apply this ruleset? The current match must be finished or reset first.")) return;
   if (!hostToken) {
     toast("HOST SESSION REQUIRED");
     return;
@@ -1383,7 +1436,7 @@ async function applyRulesFile() {
 }
 
 async function loadDefaultRules() {
-  if (!window.confirm("Load the default rules? The current match must be finished or reset first.")) return;
+  if (!await requestUserPermission("Load the default rules? The current match must be finished or reset first.")) return;
   if (!hostToken) {
     toast("HOST SESSION REQUIRED");
     return;
@@ -1485,7 +1538,7 @@ async function unmountUsb() {
     toast("HOST SESSION REQUIRED");
     return;
   }
-  if (!window.confirm("Unmount the USB drive safely before removing it?")) return;
+  if (!await requestUserPermission("Unmount the USB drive safely before removing it?")) return;
   try {
     const response = await fetch("/api/usb/unmount", {
       method: "POST",
@@ -1691,8 +1744,8 @@ function announceScheduledBout(boutNo) {
   send({ type: "host", action: "announceBout", boutNo });
 }
 
-function resolveScheduledTie(boutNo, winner) {
-  if (!confirm(`Resolve this tied bout in favor of ${winner}?`)) return;
+async function resolveScheduledTie(boutNo, winner) {
+  if (!await requestUserPermission(`Resolve this tied bout in favor of ${winner}?`)) return;
   send({ type: "host", action: "resolveTie", boutNo, winner });
 }
 
@@ -1743,8 +1796,8 @@ function announceText(text, audioUrl = "") {
   }
   browserAnnounce(text);
 }
-function resetCurrentMatch() {
-  if (confirm("Reset the current match?"))
+async function resetCurrentMatch() {
+  if (await requestUserPermission("Reset the current match?"))
     send({ type: "host", action: "resetMatch" });
   closeSettings();
 }
@@ -2112,6 +2165,7 @@ window.editScore = editScore;
 window.editGam = editGam;
 window.openSettings = openSettings;
 window.closeSettings = closeSettings;
+window.resolveUserPermission = resolveUserPermission;
 window.openMatchDecision = openMatchDecision;
 window.closeMatchDecision = closeMatchDecision;
 window.selectManualDecision = selectManualDecision;

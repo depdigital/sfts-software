@@ -706,6 +706,58 @@ button {
 .smallModal {
   width: min(440px, 92vw);
 }
+#userPermissionModal {
+  z-index: 280;
+}
+.userPermissionModal {
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.46);
+}
+.userPermissionModal h2 {
+  margin-bottom: 14px;
+  color: #fff;
+  letter-spacing: 0.04em;
+}
+.userPermissionModal p {
+  margin: 0 0 18px;
+  color: #c8d2e4;
+  font-weight: 800;
+  line-height: 1.45;
+}
+.userPermissionInputLabel {
+  display: block;
+  margin: 0 0 18px;
+  color: #c8d2e4;
+  font-size: 12px;
+  font-weight: 900;
+  text-align: left;
+}
+.userPermissionInputLabel input {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 11px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 8px;
+  background: #090c13;
+  color: #fff;
+  outline: none;
+}
+.userPermissionInputLabel input:focus {
+  border-color: #8bb8ff;
+  box-shadow: 0 0 0 2px rgba(139, 184, 255, 0.18);
+}
+.userPermissionActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.userPermissionActions button {
+  margin: 0;
+}
+.userPermissionConfirmButton {
+  background: #245a9b !important;
+}
 .powerModal {
   border-top: 4px solid #f0b429;
 }
