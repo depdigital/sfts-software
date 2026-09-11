@@ -203,7 +203,7 @@ button {
 }
 .systemLogo {
   display: block;
-  width: clamp(180px, 24vw, 420px);
+  width: clamp(140px, 18vw, 320px);
   height: 82%;
   object-fit: cover;
   object-position: center;
@@ -1607,7 +1607,7 @@ button {
     height: clamp(80px, 8vh, 110px);
   }
   .systemLogo {
-    width: clamp(240px, 24vw, 500px);
+    width: clamp(180px, 18vw, 380px);
   }
 
   .mainBoard {
