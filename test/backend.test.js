@@ -994,6 +994,12 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(jsText, /action: "setArenaNumber"/);
   assert.match(jsText, /technicalChest/);
   assert.match(jsText, /technicalHead/);
+  assert.match(jsText, /function winnerReasonDescription\(reason\)/);
+  assert.match(jsText, /PTF: "WIN BY FINAL SCORE"/);
+  assert.match(jsText, /PTG: "WIN BY POINT GAP"/);
+  assert.match(jsText, /GDP: "WIN BY GOLDEN POINTS"/);
+  assert.match(jsText, /SUP: "WIN BY SUPERIORITY"/);
+  assert.match(jsText, /winnerReasonDescription\(match\.matchReason\)/);
   assert.match(jsText, /event\?\.ctrlKey/);
   assert.match(serverSource, /technicalPoint/);
   assert.match(html, /id="hostAccessToken"/);

@@ -1109,13 +1109,35 @@ function resultCode(reason) {
 function resultDescription(reason) {
   const code = resultCode(reason);
   const labels = {
-    RSC: "REFEREE STOP CONTEST",
+    RSC: "REFEREE STOPS CONTEST",
     WDR: "WITHDRAWAL",
     DSQ: "DISQUALIFICATION",
     PUN: "PUNITIVE DECLARATION",
-    DQB: "DISQUALIFICATION FOR UNSPORTSMAN LIKE BEHAVIOR",
+    DQB: "DISQUALIFICATION FOR UNSPORTSMANLIKE BEHAVIOR",
   };
   return labels[code] ? `${labels[code]} · ${reason}` : String(reason || "—");
+}
+
+function winnerReasonDescription(reason) {
+  const text = String(reason || "—");
+  const code = resultCode(text);
+  const labels = {
+    PTF: "WIN BY FINAL SCORE",
+    PTG: "WIN BY POINT GAP",
+    GDP: "WIN BY GOLDEN POINTS",
+    SUP: "WIN BY SUPERIORITY",
+    RSC: "WIN BY REFEREE STOPS CONTEST",
+    WDR: "WIN BY WITHDRAWAL",
+    DSQ: "WIN BY DISQUALIFICATION",
+    PUN: "WIN BY REFEREE'S PUNITIVE DECLARATION",
+    DQB: "WIN BY DISQUALIFICATION FOR UNSPORTSMANLIKE BEHAVIOR",
+  };
+  const label = labels[code];
+  if (!label) return text;
+  const detail = text.replace(/^[A-Z]+\s*-\s*/, "").trim();
+  return detail && detail !== "REFEREE DECLARATION"
+    ? `${label} - ${detail}`
+    : label;
 }
 
 function renderManualCategoryReport() {
@@ -1957,7 +1979,7 @@ function showWinnerSlide(winner, match) {
   const side = winner === "RED" ? match.red : match.blue;
   const name = side.playerName || side.name;
   $("winnerNameText").textContent = name;
-  $("winnerReasonText").textContent = match.matchReason || "";
+  $("winnerReasonText").textContent = winnerReasonDescription(match.matchReason);
   $("winnerSlide").classList.remove("redWinner", "blueWinner", "hidden");
   $("winnerSlide").classList.add(winner === "RED" ? "redWinner" : "blueWinner");
 }
