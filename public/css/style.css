@@ -675,56 +675,10 @@ button {
   filter: brightness(0) invert(1) drop-shadow(0 0 6px rgba(255, 255, 255, 0.65));
 }
 .centerBottomBox {
-  --score-card-chamfer: clamp(8px, 1vw, 18px);
-  --center-bottom-outline-width: 2px;
-  --center-bottom-inner-chamfer: calc(var(--score-card-chamfer) - var(--center-bottom-outline-width));
-  position: relative;
-  isolation: isolate;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: clamp(8px, 1vh, 16px);
-  padding: clamp(8px, 1vh, 16px);
-}
-.centerBottomBox::before,
-.centerBottomBox::after {
-  position: absolute;
-  content: "";
-  pointer-events: none;
-}
-.centerBottomBox::before {
-  inset: 0;
-  z-index: 0;
-  background: linear-gradient(135deg, rgba(236, 242, 252, 0.72), rgba(139, 159, 194, 0.52));
-  clip-path: polygon(
-    var(--score-card-chamfer) 0,
-    calc(100% - var(--score-card-chamfer)) 0,
-    100% var(--score-card-chamfer),
-    100% calc(100% - var(--score-card-chamfer)),
-    calc(100% - var(--score-card-chamfer)) 100%,
-    var(--score-card-chamfer) 100%,
-    0 calc(100% - var(--score-card-chamfer)),
-    0 var(--score-card-chamfer)
-  );
-}
-.centerBottomBox::after {
-  inset: var(--center-bottom-outline-width);
-  z-index: 1;
-  background: #111924;
-  clip-path: polygon(
-    var(--center-bottom-inner-chamfer) 0,
-    calc(100% - var(--center-bottom-inner-chamfer)) 0,
-    100% var(--center-bottom-inner-chamfer),
-    100% calc(100% - var(--center-bottom-inner-chamfer)),
-    calc(100% - var(--center-bottom-inner-chamfer)) 100%,
-    var(--center-bottom-inner-chamfer) 100%,
-    0 calc(100% - var(--center-bottom-inner-chamfer)),
-    0 var(--center-bottom-inner-chamfer)
-  );
-}
-.centerBottomBox > * {
-  position: relative;
-  z-index: 2;
 }
 .centerBottomButton {
   width: min(78%, 300px);
