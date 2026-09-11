@@ -316,6 +316,20 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
     message.type === 'state' && message.match.blue.score === 3 && message.match.blue.stats.plus3 === 1
   ));
   assert.equal(manualBlueHead.match.blue.score, 3);
+  host.send(JSON.stringify({ type: 'host', action: 'technicalPoint', player: 'RED', basePoints: 2 }));
+  await waitForMessage(host, message => message.type === 'scoreSound' && message.player === 'RED' && message.points === 4);
+  const manualRedTechnicalChest = await waitForMessage(host, message => (
+    message.type === 'state' && message.match.red.score === 7 &&
+    message.match.red.stats.plus2 === 0 && message.match.red.stats.technicalChest === 1
+  ));
+  assert.equal(manualRedTechnicalChest.match.operatorHistory.at(-1).action, 'TECHNICAL CHEST KICK');
+  host.send(JSON.stringify({ type: 'host', action: 'technicalPoint', player: 'BLUE', basePoints: 3 }));
+  await waitForMessage(host, message => message.type === 'scoreSound' && message.player === 'BLUE' && message.points === 6);
+  const manualBlueTechnicalHead = await waitForMessage(host, message => (
+    message.type === 'state' && message.match.blue.score === 9 &&
+    message.match.blue.stats.plus3 === 1 && message.match.blue.stats.technicalHead === 1
+  ));
+  assert.equal(manualBlueTechnicalHead.match.operatorHistory.at(-1).action, 'TECHNICAL HEAD KICK');
   host.send(JSON.stringify({ type: 'host', action: 'resetMatch' }));
   await waitForMessage(host, message => message.type === 'state' && message.match.red.score === 0 && message.match.blue.score === 0);
   host.send(JSON.stringify({ type: 'host', action: 'playPause' }));
@@ -941,6 +955,10 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(html, /id="blueChestButton"[\s\S]*src="\/assets\/chestguard\.png"/);
   assert.match(html, /id="blueHeadButton"[\s\S]*src="\/assets\/headgear\.png"/);
   assert.match(html, /id="bluePunchButton"[\s\S]*src="\/assets\/fist\.png"/);
+  assert.match(html, /manualConfiguredPoint\('RED', 'redHeadButton', event\)/);
+  assert.match(html, /manualConfiguredPoint\('RED', 'redChestButton', event\)/);
+  assert.match(html, /manualConfiguredPoint\('BLUE', 'blueHeadButton', event\)/);
+  assert.match(html, /manualConfiguredPoint\('BLUE', 'blueChestButton', event\)/);
   assert.ok(html.indexOf('id="redHeadButton"') < html.indexOf('id="redChestButton"'));
   assert.ok(html.indexOf('id="redChestButton"') < html.indexOf('id="redPunchButton"'));
   assert.ok(html.indexOf('id="blueHeadButton"') < html.indexOf('id="blueChestButton"'));
@@ -976,6 +994,8 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(jsText, /action: "setArenaNumber"/);
   assert.match(jsText, /technicalChest/);
   assert.match(jsText, /technicalHead/);
+  assert.match(jsText, /event\?\.ctrlKey/);
+  assert.match(serverSource, /technicalPoint/);
   assert.match(html, /id="hostAccessToken"/);
   assert.match(html, /id="kyeShiPanel"/);
   assert.match(html, /id="redDeclareWinnerButton"/);

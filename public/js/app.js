@@ -566,11 +566,15 @@ function renderTieDecision(match) {
             : "MANUAL TOURNAMENT RESOLUTION REQUIRED";
   modal.classList.remove("hidden");
 }
-function manualConfiguredPoint(player, buttonId) {
+function manualConfiguredPoint(player, buttonId, event) {
   const button = $(buttonId);
   const points = Number(button?.dataset.scorePoint);
   if (!Number.isInteger(points) || !scoringRules?.basePointValues?.includes(points)) {
     toast("SCORING OPTION NOT AVAILABLE IN ACTIVE RULES");
+    return;
+  }
+  if (event?.ctrlKey && (points === 2 || points === 3)) {
+    send({ type: "host", action: "technicalPoint", player, basePoints: points });
     return;
   }
   manualPoint(player, points);

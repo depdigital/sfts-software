@@ -67,7 +67,7 @@ const REMOTE_ACK_CACHE_SIZE = 100;
 const WS_MESSAGE_LIMIT = 120;
 const WS_MESSAGE_WINDOW_MS = 1000;
 const VOTE_SETTLE_MS = 750;
-const COALESCED_HOST_ACTIONS = new Set(['point', 'headPoint', 'gamjeom', 'editScore', 'editGamjeom']);
+const COALESCED_HOST_ACTIONS = new Set(['point', 'headPoint', 'technicalPoint', 'gamjeom', 'editScore', 'editGamjeom']);
 let TECHNICAL_COMBO_WINDOW_MS = rules.scoring.technicalInput.windowMilliseconds;
 let MIN_ACTIVE_REMOTES = rules.voting.minimumActiveRemotes;
 let MAX_ACTIVE_REMOTES = rules.voting.maximumActiveRemotes;
@@ -2383,7 +2383,7 @@ function recordCornerRefereePress(corner, button, score = null) {
   return entry;
 }
 
-function recordOperatorCorrection(action, player, from, to) {
+function recordOperatorAction(action, player, from, to) {
   match.operatorHistory.push({
     id: `${match.matchNo}-operator-${match.operatorHistory.length + 1}`,
     matchNo: match.matchNo,
@@ -2396,6 +2396,10 @@ function recordOperatorCorrection(action, player, from, to) {
     to,
     recordedAt: new Date().toISOString()
   });
+}
+
+function recordOperatorCorrection(action, player, from, to) {
+  recordOperatorAction(action, player, from, to);
 }
 
 function replaceCornerRefereeHistoryEntry(entry, button, score) {
@@ -2825,6 +2829,27 @@ function addPoint(player, points, source = "manual", countAsHit = true, allowPau
   queueMicrotask(() => emit({ type: 'scoreSound', player, points, source }));
   checkPointGap();
   return true;
+}
+
+function addTechnicalPoint(player, basePoints) {
+  const points = technicalPointsFor(basePoints);
+  if (!validPlayer(player)) {
+    return { ok: false, code: 'INVALID_PLAYER', message: 'Technical points require a valid player' };
+  }
+  if (points === null) {
+    return { ok: false, code: 'INVALID_TECHNICAL_POINT', message: 'Technical scoring requires an eligible chest or head point' };
+  }
+  if (!operatorScoringIsAllowed()) {
+    return { ok: false, code: 'ROUND_NOT_ACTIVE', message: 'Technical points can only be awarded during a round' };
+  }
+
+  const previous = side(player).score;
+  side(player).score += points;
+  addTechnicalStat(player, basePoints);
+  recordOperatorAction(`TECHNICAL ${basePoints === 2 ? 'CHEST' : 'HEAD'} KICK`, player, previous, side(player).score);
+  queueMicrotask(() => emit({ type: 'scoreSound', player, points, source: 'referee-technical' }));
+  checkPointGap();
+  return { ok: true, points, basePoints, technical: true };
 }
 
 function addGamjeom(player, allowPaused = false) {
@@ -3893,6 +3918,10 @@ wss.on('connection', ws => {
       }
       if (msg.action === 'point' && !addPoint(msg.player, Number(msg.points), 'manual', true, true)) {
         sendError(ws, 'ROUND_NOT_ACTIVE', 'Points can only be awarded during a round');
+      }
+      if (msg.action === 'technicalPoint') {
+        const result = addTechnicalPoint(String(msg.player || '').toUpperCase(), Number(msg.basePoints));
+        if (!result.ok) sendError(ws, result.code, result.message);
       }
       if (msg.action === 'headPoint' && !addPoint(msg.player, 3, 'manual-head', true, true)) {
         sendError(ws, 'ROUND_NOT_ACTIVE', 'Head points can only be awarded during a round');
