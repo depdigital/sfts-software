@@ -581,7 +581,7 @@ function importTournamentPlayers(buffer) {
     const index = headers.findIndex(header => aliases.has(header));
     if (index >= 0) columns[field] = index;
   }
-  const missing = ['name', 'gender', 'division', 'weightCategory', 'categoryGroup']
+  const missing = ['name', 'gender', 'division']
     .filter(field => columns[field] === undefined);
   if (missing.length) {
     throw new TournamentImportError(`Missing required column(s): ${missing.join(', ')}`);
@@ -1313,7 +1313,7 @@ function tournamentScheduleRows() {
     Division: bout.division,
     Gender: bout.gender,
     'Weight Category': bout.weightCategory,
-    'Sub Junior Group': bout.categoryGroup,
+    'Category Group': bout.categoryGroup,
     Round: bout.round,
     'Red Player': bout.redPlayerName,
     'Blue Player': bout.bluePlayerName,
@@ -1328,7 +1328,7 @@ function tournamentScheduleRows() {
     Division: bye.division,
     Gender: bye.gender,
     'Weight Category': bye.weightCategory,
-    'Sub Junior Group': bye.categoryGroup,
+    'Category Group': bye.categoryGroup,
     Round: bye.round,
     'Red Player': bye.playerName,
     'Blue Player': 'BYE',
@@ -1354,7 +1354,7 @@ function tournamentResultRows() {
         Division: group.division,
         Gender: group.gender,
         'Weight Category': group.weightCategory,
-        'Sub Junior Group': group.categoryGroup,
+        'Category Group': group.categoryGroup,
         Place: placeLabel,
         'Player ID': placement.playerId,
         Player: placement.playerName,
@@ -1374,7 +1374,7 @@ function scheduleWorkbook() {
   const resultSheet = resultRows.length
     ? XLSX.utils.json_to_sheet(resultRows)
     : XLSX.utils.aoa_to_sheet([[
-      'Bracket ID', 'Division', 'Gender', 'Weight Category', 'Sub Junior Group', 'Place', 'Player ID', 'Player',
+      'Bracket ID', 'Division', 'Gender', 'Weight Category', 'Category Group', 'Place', 'Player ID', 'Player',
       'State Code', 'District', 'Club'
     ]]);
   XLSX.utils.book_append_sheet(workbook, resultSheet, 'Results');
@@ -2011,14 +2011,13 @@ function createPlayerTemplateBuffer() {
     ['SFTS TOURNAMENT PLAYER IMPORT'],
     ['Use the Players sheet for import. Replace the example rows with tournament players.'],
     ['Dummy data', 'Every row in the Players sheet is test data. Delete or replace all example rows before importing a real tournament.'],
-    ['Required columns', 'Name, Gender, Division, Weight Category, Group'],
+    ['Required columns', 'Name, Gender, Division, plus Weight Category or Group when required by the selected rulepack division.'],
     ['Gender', 'Use MALE/M or FEMALE/F.'],
-    ['Senior / Junior / Cadet', 'Enter a valid Weight Category from the Categories sheet and leave Group blank.'],
-    ['Sub Junior', 'Leave Weight Category blank and manually enter GROUP 0 through GROUP 5.'],
-    ['Height', 'Height is not used to assign Sub Junior groups.'],
+    ['Weight divisions', 'Enter a valid Weight Category from the Categories sheet and leave Group blank.'],
+    ['Group divisions', 'Enter a valid Group from the Categories sheet and leave Weight Category blank.'],
     ['Player ID', 'Optional, but every supplied ID must be unique.'],
     ['State Code / District / Club', 'Optional tournament and display information.'],
-    ['Important', 'The importer validates division, gender, weight category, and Sub Junior group against the active rule pack.']
+    ['Important', 'The importer validates division, gender, and category against the active rule pack.']
   ]);
   instructionsSheet['!cols'] = [{ wch: 30 }, { wch: 105 }];
   XLSX.utils.book_append_sheet(workbook, instructionsSheet, 'Instructions');

@@ -31,7 +31,7 @@ Target operator workflow:
 1. Upload the committee PDF or a machine-readable fixture workbook.
 2. Extract players, categories, bracket positions, BYEs, and progression links.
 3. Show a short review screen containing only errors and unresolved decisions.
-4. Confirm Sub Junior groups, possible duplicate athletes, red/blue convention, and event running order.
+4. Confirm Sub Junior weight categories, possible duplicate athletes, red/blue convention, and event running order.
 5. Validate the complete tournament graph.
 6. Commit the tournament to SFTS.
 7. Optionally save the normalized SFTS fixture workbook to USB for audit or reuse.
@@ -66,7 +66,7 @@ Recommended fields:
 - Competition
 - Division
 - Gender
-- Category or Sub Junior group
+- Category or rulepack-defined category group
 - Round
 - Red player ID or red source bout number
 - Blue player ID or blue source bout number
@@ -85,7 +85,7 @@ Record unresolved or corrected information, including:
 
 - Missing or generated player IDs
 - Possible duplicate names
-- Sub Junior group assignments
+- Sub Junior weight-category assignments
 - Competition-type mapping
 - Category aliases
 - Red/blue assignments
@@ -109,18 +109,17 @@ Single-entry groups are already capable of becoming completed first-place result
 
 ## Required Data and Policy Resolutions
 
-### Sub Junior mismatch
+### Sub Junior weight categories
 
 The reviewed PDF contains 18 Sub Junior entries divided by weight ranges, for example `14-16 kg`, `29-32 kg`, and `50-60 kg`.
 
-The agreed SFTS rule is different:
+The active default SFTS rulepack supports these as gender-specific Sub Junior weight categories:
 
 - Division name: `SUB JUNIOR`.
+- Select a valid male or female weight category from the active rulepack.
 - Height must not be considered.
-- The operator manually supplies `GROUP 0` through `GROUP 5`.
-- Groups are based on age eligibility as defined by the active rule pack.
 
-The PDF does not contain the required group or age information, so Sub Junior entries cannot be mapped automatically. Once groups are assigned, athletes shown as single entries in different weight ranges may fall into the same group and require bouts. The management committee must therefore approve or regenerate the Sub Junior draw after group assignment. SFTS must not silently reinterpret these entries.
+The importer should map each fixture range to the matching active-rulepack category, show that mapping for review, and reject it if it is ambiguous or outside the active rulepack.
 
 ### Competition type
 
@@ -141,7 +140,7 @@ The PDF uses numeric labels such as `UNDER 42 KG`, `44-47 KG`, and `OVER 78 KG`,
 
 For Senior, Junior, and Cadet divisions, the importer can map a PDF range to a rulepack category using division, gender, and the category limits. The mapping must be shown in the import review and rejected when it is ambiguous or outside the active rule pack.
 
-Do not treat a numeric range as sufficient for Sub Junior, because Sub Junior uses manually supplied groups rather than weight categories.
+For Sub Junior, map the fixture's numeric range to the matching gender-specific rulepack weight category and show the result for review.
 
 ### Player identity
 
@@ -175,7 +174,7 @@ Before committing an imported official fixture, require all of the following:
 - Every player ID is unique.
 - Every category is valid under the active competition configuration.
 - Fresher and regular competition entries cannot collide.
-- Every Sub Junior player has a manually confirmed group.
+- Every Sub Junior player has a valid gender-specific weight category.
 - Each contested single-elimination bracket with `N` players has exactly `N - 1` bouts.
 - Every source-bout reference exists and points from an earlier round to a later round.
 - Each non-final bout feeds exactly one later position.

@@ -169,7 +169,7 @@
 
   "tournament": {
     // Players are separated by division, gender, and their competition
-    // category (weight category or manually assigned Sub Junior group).
+    // category (a weight category or a rulepack-defined category group).
     "format": "SINGLE_ELIMINATION",
     "groupBy": ["DIVISION", "GENDER", "CATEGORY"],
     "byes": "AUTOMATIC",
@@ -272,15 +272,41 @@
         "id": "SUB_JUNIOR",
         "label": "SUB JUNIOR",
         "ageLabel": "11 YEARS OLD AND BELOW",
-        "categoryType": "GROUP",
-        "groups": [
-          { "name": "GROUP 0", "ageLabel": "NOT OVER 9 YEARS OLD" },
-          { "name": "GROUP 1", "ageLabel": "NOT OVER 10 YEARS OLD" },
-          { "name": "GROUP 2", "ageLabel": "NOT OVER 11 YEARS OLD" },
-          { "name": "GROUP 3", "ageLabel": "NOT OVER 11 YEARS OLD" },
-          { "name": "GROUP 4", "ageLabel": "NOT OVER 11 YEARS OLD" },
-          { "name": "GROUP 5", "ageLabel": "NOT OVER 11 YEARS OLD" }
-        ]
+        "categoryType": "WEIGHT",
+        "weightCategories": {
+          "MALE": [
+            { "name": "UNDER 16 KG", "limit": "NOT EXCEEDING 16.0 KG" },
+            { "name": "UNDER 18 KG", "limit": "OVER 16.0 TO 18.0 KG" },
+            { "name": "UNDER 21 KG", "limit": "OVER 18.0 TO 21.0 KG" },
+            { "name": "UNDER 23 KG", "limit": "OVER 21.0 TO 23.0 KG" },
+            { "name": "UNDER 25 KG", "limit": "OVER 23.0 TO 25.0 KG" },
+            { "name": "UNDER 27 KG", "limit": "OVER 25.0 TO 27.0 KG" },
+            { "name": "UNDER 29 KG", "limit": "OVER 27.0 TO 29.0 KG" },
+            { "name": "UNDER 32 KG", "limit": "OVER 29.0 TO 32.0 KG" },
+            { "name": "UNDER 35 KG", "limit": "OVER 32.0 TO 35.0 KG" },
+            { "name": "UNDER 38 KG", "limit": "OVER 35.0 TO 38.0 KG" },
+            { "name": "UNDER 41 KG", "limit": "OVER 38.0 TO 41.0 KG" },
+            { "name": "UNDER 44 KG", "limit": "OVER 41.0 TO 44.0 KG" },
+            { "name": "UNDER 50 KG", "limit": "OVER 44.0 TO 50.0 KG" },
+            { "name": "UNDER 60 KG", "limit": "OVER 50.0 TO 60.0 KG" }
+          ],
+          "FEMALE": [
+            { "name": "UNDER 14 KG", "limit": "NOT EXCEEDING 14.0 KG" },
+            { "name": "UNDER 16 KG", "limit": "OVER 14.0 TO 16.0 KG" },
+            { "name": "UNDER 18 KG", "limit": "OVER 16.0 TO 18.0 KG" },
+            { "name": "UNDER 20 KG", "limit": "OVER 18.0 TO 20.0 KG" },
+            { "name": "UNDER 22 KG", "limit": "OVER 20.0 TO 22.0 KG" },
+            { "name": "UNDER 24 KG", "limit": "OVER 22.0 TO 24.0 KG" },
+            { "name": "UNDER 26 KG", "limit": "OVER 24.0 TO 26.0 KG" },
+            { "name": "UNDER 29 KG", "limit": "OVER 26.0 TO 29.0 KG" },
+            { "name": "UNDER 32 KG", "limit": "OVER 29.0 TO 32.0 KG" },
+            { "name": "UNDER 35 KG", "limit": "OVER 32.0 TO 35.0 KG" },
+            { "name": "UNDER 38 KG", "limit": "OVER 35.0 TO 38.0 KG" },
+            { "name": "UNDER 41 KG", "limit": "OVER 38.0 TO 41.0 KG" },
+            { "name": "UNDER 47 KG", "limit": "OVER 41.0 TO 47.0 KG" },
+            { "name": "UNDER 57 KG", "limit": "OVER 47.0 TO 57.0 KG" }
+          ]
+        }
       }
     ],
 

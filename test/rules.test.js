@@ -34,7 +34,12 @@ test('the built-in ruleset is valid and describes the current behavior', async (
   assert.deepEqual(rules.tournament.divisions.map(division => division.id), ['SENIOR', 'JUNIOR', 'CADET', 'SUB_JUNIOR']);
   assert.equal(rules.tournament.divisions.find(division => division.id === 'SENIOR').weightCategories.MALE.length, 8);
   assert.equal(rules.tournament.divisions.find(division => division.id === 'JUNIOR').weightCategories.FEMALE.length, 10);
-  assert.equal(rules.tournament.divisions.find(division => division.id === 'SUB_JUNIOR').groups[5].name, 'GROUP 5');
+  const subJunior = rules.tournament.divisions.find(division => division.id === 'SUB_JUNIOR');
+  assert.equal(subJunior.categoryType, 'WEIGHT');
+  assert.equal(subJunior.weightCategories.MALE.length, 14);
+  assert.equal(subJunior.weightCategories.FEMALE.length, 14);
+  assert.equal(subJunior.weightCategories.MALE[0].name, 'UNDER 16 KG');
+  assert.equal(subJunior.weightCategories.FEMALE[13].name, 'UNDER 57 KG');
   assert.deepEqual(rulesMetadata(rules), {
     id: 'sfts-current',
     name: 'SFTS Default Rules',

@@ -12,7 +12,7 @@ Keep the official paper fixture beside you. Confirm that it shows:
 - Arena number
 - Competition type
 - Division and gender
-- Weight category or Sub Junior group
+- Weight category or rulepack-defined category group
 - Official bout/reference numbers
 - Names and affiliations of the competitors
 - Whether each bout is a preliminary, quarterfinal, semifinal, or final
@@ -57,9 +57,9 @@ The division and category lists come from the active competition rulepack. They 
 
 ### Sub Junior categories
 
-When **SUB JUNIOR** is selected, the Weight Category field is replaced by **SUB JUNIOR GROUP**.
+Under the default SFTS rulepack, **SUB JUNIOR** uses gender-specific weight categories. Select the exact **UNDER … KG** category shown on the fixture; the available categories change when you select MALE or FEMALE.
 
-Select **GROUP 0, GROUP 1, GROUP 2, GROUP 3, GROUP 4, or GROUP 5** exactly as written on the fixture. The operator chooses the group manually. Do not use height to choose a group.
+If an authorized custom rulepack defines a division as a category group instead, Manual Entry replaces Weight Category with **CATEGORY GROUP** and shows only that rulepack's valid groups.
 
 The event and category details are saved when the first bout is loaded.
 
@@ -206,7 +206,7 @@ The current match already contains match activity. Finish it normally, or reset 
 
 ### "Choose a valid item from the active rulepack"
 
-The selected division, weight category, gender, or Sub Junior group is not allowed by the current rulepack. Check the fixture and choose an item from the displayed list.
+The selected division, gender, weight category, or category group is not allowed by the current rulepack. Check the fixture and choose an item from the displayed list.
 
 ### "That official bout/reference number is already completed"
 

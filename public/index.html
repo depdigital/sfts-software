@@ -390,7 +390,7 @@
             <label>DIVISION<select id="manualDivision" onchange="renderManualCategories()"></select></label>
             <label>GENDER<select id="manualGender" onchange="renderManualCategories()"><option value="MALE">MALE</option><option value="FEMALE">FEMALE</option></select></label>
             <label id="manualWeightField">WEIGHT CATEGORY<select id="manualWeightCategory"></select></label>
-            <label id="manualGroupField" class="hidden">SUB JUNIOR GROUP<select id="manualCategoryGroup"></select></label>
+            <label id="manualGroupField" class="hidden">CATEGORY GROUP<select id="manualCategoryGroup"></select></label>
           </div>
           <p id="manualRulepackHint" class="manualHint"></p>
         </section>
@@ -622,7 +622,7 @@
         </button>
         <section class="tournamentImportPanel">
           <h3>TOURNAMENT PLAYERS &amp; SCHEDULE</h3>
-          <p>Upload a sheet with Name, Gender, Division, Weight Category, and Group columns.</p>
+          <p>Upload a sheet with Name, Gender, Division, and the category required by the active rulepack.</p>
           <div id="nativeTournamentImport">
             <input
               id="playerSheetFile"

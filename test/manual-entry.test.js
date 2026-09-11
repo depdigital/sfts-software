@@ -93,7 +93,7 @@ test('manual categories are rulepack validated and preserve official bout eviden
   const role = await waitFor(host, message => message.type === 'roleAccepted');
   const initial = await waitFor(host, message => message.type === 'state');
   assert.deepEqual(initial.manualCompetition.categories, []);
-  assert.equal(initial.scoringRules.tournament.divisions.find(item => item.id === 'SUB_JUNIOR').categoryType, 'GROUP');
+  assert.equal(initial.scoringRules.tournament.divisions.find(item => item.id === 'SUB_JUNIOR').categoryType, 'WEIGHT');
 
   const details = {
     eventName: 'Nadia District Championship 2026',
@@ -103,9 +103,9 @@ test('manual categories are rulepack validated and preserve official bout eviden
     competition: 'KYORUGI',
     division: 'SUB_JUNIOR',
     gender: 'MALE',
-    weightCategory: '',
-    categoryGroup: 'GROUP 9',
-    officialBoutNo: 'SJ-G0-01',
+    weightCategory: 'UNDER 14 KG',
+    categoryGroup: '',
+    officialBoutNo: 'SJ-U16-01',
     stage: 'FINAL',
     RED: { playerName: 'Aarav Sen', club: 'Nadia TKD Academy', stateCode: 'WB', district: 'Nadia' },
     BLUE: { playerName: 'Rohan Das', club: 'Krishnanagar Club', stateCode: 'WB', district: 'Nadia' }
@@ -114,14 +114,14 @@ test('manual categories are rulepack validated and preserve official bout eviden
   const invalid = await waitFor(host, message => message.type === 'error' && message.code === 'INVALID_MANUAL_CATEGORY');
   assert.match(invalid.message, /active rulepack/i);
 
-  details.categoryGroup = 'GROUP 0';
+  details.weightCategory = 'UNDER 16 KG';
   host.send(JSON.stringify({ type: 'host', action: 'saveManualBout', details }));
-  const loaded = await waitFor(host, message => message.type === 'state' && message.match.manualBout?.officialBoutNo === 'SJ-G0-01');
+  const loaded = await waitFor(host, message => message.type === 'state' && message.match.manualBout?.officialBoutNo === 'SJ-U16-01');
   const category = loaded.manualCompetition.categories[0];
   assert.equal(category.division, 'SUB_JUNIOR');
-  assert.equal(category.categoryGroup, 'GROUP 0');
+  assert.equal(category.categoryGroup, '');
   assert.equal(loaded.match.red.club, 'Nadia TKD Academy');
-  assert.equal(loaded.match.red.weightCategory, '');
+  assert.equal(loaded.match.red.weightCategory, 'UNDER 16 KG');
 
   host.send(JSON.stringify({ type: 'host', action: 'setRemoteMode', count: 1 }));
   await waitFor(host, message => message.type === 'state' && message.match.remoteCount === 1);
@@ -164,7 +164,7 @@ test('manual categories are rulepack validated and preserve official bout eviden
   const liveSnapshot = JSON.parse(await readFile(path.join(dataDir, 'sfts-state.json'), 'utf8'));
   const officialArchive = JSON.parse(await readFile(path.join(dataDir, 'manual-results.json'), 'utf8'));
   assert.equal(liveSnapshot.manualMatchRecords, undefined);
-  assert.equal(officialArchive.records[0].manualBout.officialBoutNo, 'SJ-G0-01');
+  assert.equal(officialArchive.records[0].manualBout.officialBoutNo, 'SJ-U16-01');
 
   const redKey = 'AARAV SEN|NADIA TKD ACADEMY';
   const blueKey = 'ROHAN DAS|KRISHNANAGAR CLUB';

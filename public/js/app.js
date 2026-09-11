@@ -896,7 +896,7 @@ function renderManualCategories() {
   if ([...select.options].some(option => option.value === previous)) select.value = previous;
   const hint = $("manualRulepackHint");
   if (hint) hint.textContent = division
-    ? `ACTIVE RULEPACK: ${activeRuleset?.name || "RULESET"} ${activeRuleset?.version || ""} · ${division.label} · ${division.ageLabel || ""} · ${isGroup ? "GROUP 0–5 ARE SELECTED MANUALLY" : "WEIGHT CATEGORY IS RULEPACK CONTROLLED"}`
+    ? `ACTIVE RULEPACK: ${activeRuleset?.name || "RULESET"} ${activeRuleset?.version || ""} · ${division.label} · ${division.ageLabel || ""} · ${isGroup ? "CATEGORY GROUP IS RULEPACK CONTROLLED" : "WEIGHT CATEGORY IS RULEPACK CONTROLLED"}`
     : "NO TOURNAMENT DIVISIONS ARE AVAILABLE IN THE ACTIVE RULEPACK";
 }
 
@@ -1670,7 +1670,7 @@ function renderTournamentResults(tournament) {
   const placeLabel = (place) =>
     place === 1 ? labels.first : place === 2 ? labels.second : labels.third;
   resultList.innerHTML = `<table>
-    <thead><tr><th>BRACKET</th><th>DIVISION</th><th>GENDER</th><th>WEIGHT CATEGORY</th><th>SUB JUNIOR GROUP</th><th>PLACE</th><th>PLAYER</th><th>PLAYER ID</th><th>STATE</th><th>CLUB</th></tr></thead>
+    <thead><tr><th>BRACKET</th><th>DIVISION</th><th>GENDER</th><th>WEIGHT CATEGORY</th><th>CATEGORY GROUP</th><th>PLACE</th><th>PLAYER</th><th>PLAYER ID</th><th>STATE</th><th>CLUB</th></tr></thead>
     <tbody>${results
       .map((result) => `<tr class="place${result.place}">
         <td>${escapeHtml(result.groupId)}</td>
@@ -1727,7 +1727,7 @@ function renderSchedule(tournament) {
     return;
   }
   table.innerHTML = `<table>
-    <thead><tr><th>BOUT</th><th>BRACKET</th><th>DIVISION</th><th>GENDER</th><th>WEIGHT CATEGORY</th><th>SUB JUNIOR GROUP</th><th>ROUND</th><th>RED</th><th>BLUE</th><th>WINNER</th><th>STATUS</th><th>ACTIONS</th></tr></thead>
+    <thead><tr><th>BOUT</th><th>BRACKET</th><th>DIVISION</th><th>GENDER</th><th>WEIGHT CATEGORY</th><th>CATEGORY GROUP</th><th>ROUND</th><th>RED</th><th>BLUE</th><th>WINNER</th><th>STATUS</th><th>ACTIONS</th></tr></thead>
     <tbody>${entries
       .map((bout) => {
         const canLoad =

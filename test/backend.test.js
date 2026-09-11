@@ -167,14 +167,14 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
 
   const workbook = XLSX.utils.book_new();
   const players = XLSX.utils.json_to_sheet([
-    { 'Player ID': 'M1', Name: 'Male One', Gender: 'MALE', Division: 'SENIOR', 'Weight Category': 'FLYWEIGHT', Group: '' },
-    { 'Player ID': 'M2', Name: 'Male Two', Gender: 'M', Division: 'Senior', 'Weight Category': 'flyweight', Group: '' },
-    { 'Player ID': 'F1', Name: 'Female One', Gender: 'FEMALE', Division: 'SENIOR', 'Weight Category': 'FINWEIGHT', Group: '' },
-    { 'Player ID': 'F2', Name: 'Female Two', Gender: 'F', Division: 'SENIOR', 'Weight Category': 'FINWEIGHT', Group: '' },
-    { 'Player ID': 'J1', Name: 'Junior One', Gender: 'MALE', Division: 'JUNIOR', 'Weight Category': 'FLYWEIGHT', Group: '' },
-    { 'Player ID': 'J2', Name: 'Junior Two', Gender: 'M', Division: 'JUNIOR', 'Weight Category': 'flyweight', Group: '' },
-    { 'Player ID': 'S1', Name: 'Sub Junior One', Gender: 'MALE', Division: 'SUB JUNIOR', 'Weight Category': '', Group: 'GROUP 0' },
-    { 'Player ID': 'S2', Name: 'Sub Junior Two', Gender: 'M', Division: 'SUB_JUNIOR', 'Weight Category': '', Group: 'group 0' }
+    { 'Player ID': 'M1', Name: 'Male One', Gender: 'MALE', Division: 'SENIOR', 'Weight Category': 'FLYWEIGHT' },
+    { 'Player ID': 'M2', Name: 'Male Two', Gender: 'M', Division: 'Senior', 'Weight Category': 'flyweight' },
+    { 'Player ID': 'F1', Name: 'Female One', Gender: 'FEMALE', Division: 'SENIOR', 'Weight Category': 'FINWEIGHT' },
+    { 'Player ID': 'F2', Name: 'Female Two', Gender: 'F', Division: 'SENIOR', 'Weight Category': 'FINWEIGHT' },
+    { 'Player ID': 'J1', Name: 'Junior One', Gender: 'MALE', Division: 'JUNIOR', 'Weight Category': 'FLYWEIGHT' },
+    { 'Player ID': 'J2', Name: 'Junior Two', Gender: 'M', Division: 'JUNIOR', 'Weight Category': 'flyweight' },
+    { 'Player ID': 'S1', Name: 'Sub Junior One', Gender: 'MALE', Division: 'SUB JUNIOR', 'Weight Category': 'UNDER 16 KG' },
+    { 'Player ID': 'S2', Name: 'Sub Junior Two', Gender: 'M', Division: 'SUB_JUNIOR', 'Weight Category': 'under 16 kg' }
   ]);
   XLSX.utils.book_append_sheet(workbook, players, 'Players');
   const workbookBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
@@ -195,11 +195,12 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   ]);
   assert.ok(templateRows.some(row => row.Name === 'Arjun Mehta'));
   assert.ok(templateRows.every(row => row['State Code'] && row.District && row.Club));
-  assert.ok(templateRows.some(row => row.Division === 'SUB JUNIOR' && row.Group === 'GROUP 0'));
-  assert.ok(templateRows.some(row => row.Division === 'SUB JUNIOR' && row.Gender === 'FEMALE' && row.Group === 'GROUP 1'));
+  assert.ok(templateRows.some(row => row.Division === 'SUB JUNIOR' && row.Gender === 'MALE' && row['Weight Category'] === 'UNDER 23 KG' && !row.Group));
+  assert.ok(templateRows.some(row => row.Division === 'SUB JUNIOR' && row.Gender === 'FEMALE' && row['Weight Category'] === 'UNDER 22 KG' && !row.Group));
   const categoryRows = XLSX.utils.sheet_to_json(templateWorkbook.Sheets.Categories);
   assert.ok(categoryRows.some(row => row.Division === 'SENIOR' && row.Gender === 'MALE' && row['Weight Category'] === 'FINWEIGHT'));
-  assert.ok(categoryRows.some(row => row.Division === 'SUB JUNIOR' && row.Group === 'GROUP 5'));
+  assert.ok(categoryRows.some(row => row.Division === 'SUB JUNIOR' && row.Gender === 'MALE' && row['Weight Category'] === 'UNDER 16 KG'));
+  assert.ok(categoryRows.some(row => row.Division === 'SUB JUNIOR' && row.Gender === 'FEMALE' && row['Weight Category'] === 'UNDER 57 KG'));
   const templateImport = await fetch(`http://127.0.0.1:${port}/api/tournament/import`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'X-SFTS-Host-Token': hostRole.hostToken },
@@ -227,8 +228,8 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   assert.equal(firstBoutPlayers.get(firstBout.redPlayerId).division, firstBoutPlayers.get(firstBout.bluePlayerId).division);
   assert.equal(firstBoutPlayers.get(firstBout.redPlayerId).weightCategory, firstBoutPlayers.get(firstBout.bluePlayerId).weightCategory);
   const subJuniorGroup = importedBody.tournament.groups.find(group => group.division === 'SUB_JUNIOR');
-  assert.equal(subJuniorGroup.categoryGroup, 'GROUP 0');
-  assert.equal(subJuniorGroup.weightCategory, '');
+  assert.equal(subJuniorGroup.categoryGroup, '');
+  assert.equal(subJuniorGroup.weightCategory, 'UNDER 16 KG');
   assert.equal(importedBody.tournament.groups.filter(group => (
     group.gender === 'MALE' && group.weightCategory === 'FLYWEIGHT'
   )).length, 2);
@@ -236,7 +237,7 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   const invalidWorkbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(invalidWorkbook, XLSX.utils.json_to_sheet([
     { Name: 'Invalid Category', Gender: 'FEMALE', Division: 'SENIOR', 'Weight Category': 'LT MIDDLEWEIGHT', Group: '' },
-    { Name: 'Invalid Group', Gender: 'MALE', Division: 'SUB JUNIOR', 'Weight Category': 'FINWEIGHT', Group: 'GROUP 9' }
+    { Name: 'Invalid Sub Junior Category', Gender: 'MALE', Division: 'SUB JUNIOR', 'Weight Category': 'UNDER 14 KG' }
   ]), 'Players');
   const invalidImport = await fetch(`http://127.0.0.1:${port}/api/tournament/import`, {
     method: 'POST',
@@ -246,8 +247,6 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   assert.equal(invalidImport.status, 400);
   const invalidImportBody = await invalidImport.json();
   assert.ok(invalidImportBody.errors.some(error => /weight category must be/.test(error)));
-  assert.ok(invalidImportBody.errors.some(error => /group must be one of/.test(error)));
-  assert.ok(invalidImportBody.errors.some(error => /weight category must be blank/.test(error)));
   const downloaded = await fetch(`http://127.0.0.1:${port}/api/tournament/schedule.xlsx`, {
     headers: { 'X-SFTS-Host-Token': hostRole.hostToken }
   });
@@ -257,7 +256,7 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   assert.deepEqual(downloadedWorkbook.SheetNames, ['Schedule', 'Results']);
   const downloadedRows = XLSX.utils.sheet_to_json(downloadedWorkbook.Sheets.Schedule);
   assert.ok(downloadedRows.every(row => row.Division && row['Bracket ID']));
-  assert.ok(downloadedRows.some(row => row['Sub Junior Group'] === 'GROUP 0'));
+  assert.ok(downloadedRows.some(row => row.Division === 'SUB_JUNIOR' && row['Weight Category'] === 'UNDER 16 KG' && !row['Category Group']));
   host.send(JSON.stringify({ type: 'host', action: 'announceBout', boutNo: 1 }));
   const announcement = await waitForMessage(host, message => message.type === 'announcement' && message.boutNo === 1);
   assert.equal(
@@ -632,15 +631,15 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   host.send(JSON.stringify({ type: 'host', action: 'resetMatch' }));
   await waitForMessage(host, message => message.type === 'state' && message.tournament.activeBoutNo === null);
 
-  const subJuniorBout = importedBody.tournament.schedule.find(bout => bout.categoryGroup === 'GROUP 0');
+  const subJuniorBout = importedBody.tournament.schedule.find(bout => bout.weightCategory === 'UNDER 16 KG');
   host.send(JSON.stringify({ type: 'host', action: 'loadBout', boutNo: subJuniorBout.boutNo }));
   const loadedSubJuniorBout = await waitForMessage(host, message => (
     message.type === 'state' && message.tournament.players.length === 8 &&
     message.tournament.activeBoutNo === subJuniorBout.boutNo
   ));
   assert.equal(loadedSubJuniorBout.match.red.division, 'SUB_JUNIOR');
-  assert.equal(loadedSubJuniorBout.match.red.categoryGroup, 'GROUP 0');
-  assert.equal(loadedSubJuniorBout.match.red.weightCategory, '');
+  assert.equal(loadedSubJuniorBout.match.red.categoryGroup, '');
+  assert.equal(loadedSubJuniorBout.match.red.weightCategory, 'UNDER 16 KG');
   host.send(JSON.stringify({ type: 'host', action: 'resetMatch' }));
   await waitForMessage(host, message => (
     message.type === 'state' && message.tournament.players.length === 8 && message.tournament.activeBoutNo === null
