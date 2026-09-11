@@ -444,11 +444,19 @@ button {
   margin-top: 4px;
 }
 .timerText {
+  border-radius: 18px;
   background: #000;
   border: 2px solid rgba(255, 255, 255, 0.18);
   padding: 6px 14px;
   font-size: clamp(44px, min(7vw, 12vh), 164px);
   font-weight: 900;
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+}
+.timerText.timerWarning {
+  border-color: rgba(255, 116, 116, 0.9);
+  box-shadow:
+    0 0 10px rgba(255, 92, 92, 0.4),
+    0 0 22px rgba(255, 92, 92, 0.18);
 }
 .roundText {
   font-size: clamp(24px, min(2.2vw, 4.2vh), 48px);

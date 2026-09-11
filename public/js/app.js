@@ -242,6 +242,10 @@ function renderState(match) {
   $("matchNo").textContent = String(practiceMode ? match.practiceMatchNo || 1 : match.matchNo).padStart(3, "0");
   $("arenaNo").textContent = currentArenaNumber || "—";
   $("timer").textContent = formatTime(match.timerMs, match.phase === "ROUND");
+  $("timer").classList.toggle(
+    "timerWarning",
+    match.phase === "ROUND" && match.timerMs > 0 && match.timerMs <= 10000,
+  );
   $("roundText").textContent =
     match.phase === "MATCH_END"
       ? "MATCH END"
