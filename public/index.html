@@ -770,12 +770,13 @@
         <h2 id="tieDecisionTitle">REGULATION MATCH TIED</h2>
         <p id="tieDecisionMessage">SELECT THE MATCH DECISION</p>
         <div id="tieDecisionMethodActions" class="tieDecisionActions">
-          <button id="goldenRoundChoice" class="goldenRoundButton" onclick="startGoldenRound()">GOLDEN ROUND</button>
+          <button id="goldenRoundChoice" class="goldenRoundButton" onclick="startGoldenRound()">PROCEED TO GOLDEN ROUND (ROUND 4)</button>
           <button id="wooSeGirokChoice" onclick="showWooSeGirokChoices()">WOO-SE-GIROK</button>
+          <button id="tieDecisionExitButton" onclick="backFromTieDecision()">BACK</button>
         </div>
         <div id="tieDecisionWinnerActions" class="tieDecisionActions hidden">
-          <button id="tieDecisionRedButton" class="redDecisionButton" onclick="decideTieWinner('RED')">HONG WIN</button>
-          <button id="tieDecisionBlueButton" class="blueDecisionButton" onclick="decideTieWinner('BLUE')">CHUNG WIN</button>
+          <button id="tieDecisionRedButton" class="redDecisionButton" onclick="decideTieWinner('RED')">DECLARE "HONG" WINNER</button>
+          <button id="tieDecisionBlueButton" class="blueDecisionButton" onclick="decideTieWinner('BLUE')">DECLARE "CHUNG" WINNER</button>
           <button id="tieDecisionBackButton" onclick="showTieMethods()">BACK</button>
         </div>
       </div>

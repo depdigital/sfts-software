@@ -929,6 +929,10 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(html, /id="summaryBlueTechnicalHead"/);
   assert.match(html, /id="tieDecisionModal"/);
   assert.match(html, /onclick="startGoldenRound\(\)"/);
+  assert.match(html, /PROCEED TO GOLDEN ROUND \(ROUND 4\)/);
+  assert.match(html, /onclick="backFromTieDecision\(\)"/);
+  assert.match(html, /DECLARE "HONG" WINNER/);
+  assert.match(html, /DECLARE "CHUNG" WINNER/);
   assert.match(html, /id="matchDecisionModal"/);
   assert.match(html, /id="screensaver"/);
   assert.match(html, /src="\/assets\/sfts-logo\.png"/);
@@ -986,6 +990,7 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(jsText, /reconnectDelay/);
   assert.match(jsText, /renderRemoteStatuses/);
   assert.match(jsText, /renderTieDecision\(match\)/);
+  assert.match(jsText, /function backFromTieDecision\(\)/);
   assert.match(jsText, /decideGoldenRoundSuperiority/);
   assert.match(jsText, /v\?\.button \|\| "—"/);
   assert.match(jsText, /match\.phase === "ROUND" && match\.running === true/);

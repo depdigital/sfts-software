@@ -531,6 +531,10 @@ function showTieMethods() {
   tieDecisionView = "METHOD";
   renderTieDecision(lastState);
 }
+function backFromTieDecision() {
+  $("tieDecisionModal")?.classList.add("hidden");
+  openSettings();
+}
 async function decideTieWinner(player) {
   if (!lastState) return;
   const action = lastState.tieDecision?.mode === "GOLDEN_SUPERIORITY"
@@ -572,8 +576,8 @@ function renderTieDecision(match) {
   const wooAvailable = tieOptions.includes("WOO_SE_GIROK") && scoringRules?.tieBreak?.wooSeGirok?.enabled;
   $("goldenRoundChoice")?.classList.toggle("hidden", !goldenAvailable);
   $("wooSeGirokChoice")?.classList.toggle("hidden", !wooAvailable);
-  $("tieDecisionRedButton").textContent = `${redName} WIN`;
-  $("tieDecisionBlueButton").textContent = `${blueName} WIN`;
+  $("tieDecisionRedButton").textContent = `DECLARE "${redName}" WINNER`;
+  $("tieDecisionBlueButton").textContent = `DECLARE "${blueName}" WINNER`;
 
   const choosingGoldenSuperiority = mode === "GOLDEN_SUPERIORITY";
   const showingWinners = choosingGoldenSuperiority || tieDecisionView === "WOO";
@@ -2214,6 +2218,7 @@ window.endKyeShi = endKyeShi;
 window.declareWinner = declareWinner;
 window.startGoldenRound = startGoldenRound;
 window.showWooSeGirokChoices = showWooSeGirokChoices;
+window.backFromTieDecision = backFromTieDecision;
 window.showTieMethods = showTieMethods;
 window.decideTieWinner = decideTieWinner;
 window.manualPoint = manualPoint;
