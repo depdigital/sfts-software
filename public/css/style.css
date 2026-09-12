@@ -462,6 +462,7 @@ button {
 .gamRibbon b {
   display: block;
   font-size: 64px;
+  line-height: 1;
 }
 .nameInput {
   width: 82%;
@@ -474,7 +475,7 @@ button {
   font-weight: 900;
   text-transform: uppercase;
   outline: none;
-  padding: 4px 8px 10px;
+  padding: 4px 8px clamp(24px, 3vh, 42px);
 }
 .redSide .nameInput {
   text-shadow:
@@ -1755,7 +1756,7 @@ button {
   }
   .nameInput {
     font-size: clamp(72px, 5vw, 124px);
-    padding-bottom: clamp(10px, 1.2vh, 18px);
+    padding-bottom: clamp(24px, 3vh, 42px);
   }
   .playerMeta {
     min-height: clamp(28px, 3vh, 42px);
