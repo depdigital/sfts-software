@@ -153,7 +153,7 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   const playerAnnouncement = await waitForMessage(host, message => message.type === 'announcement');
   assert.equal(
     playerAnnouncement.text,
-    'Manual Red, HONG, red chest guard, versus Manual Blue, CHUNG, blue chest guard. Contestants, get ready.'
+    'Manual Red, HONG, red chest guard, versus Manual Blue, CHUNG, blue chest guard. Contestants, prepare for the match.'
   );
 
   host.send(JSON.stringify({ type: 'host', action: 'systemPower', powerAction: 'reboot' }));
@@ -261,7 +261,7 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   const announcement = await waitForMessage(host, message => message.type === 'announcement' && message.boutNo === 1);
   assert.equal(
     announcement.text,
-    `${firstBout.redPlayerName}, HONG, red chest guard, versus ${firstBout.bluePlayerName}, CHUNG, blue chest guard. Contestants, get ready.`
+    `${firstBout.redPlayerName}, HONG, red chest guard, versus ${firstBout.bluePlayerName}, CHUNG, blue chest guard. Contestants, prepare for the match.`
   );
 
   host.send(JSON.stringify({

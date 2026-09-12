@@ -102,7 +102,7 @@ Choose one of these buttons:
 
 The announcement follows this format:
 
-> "Player name, HONG, red chest guard, versus Player name, CHUNG, blue chest guard. Contestants, get ready."
+> "Player name, HONG, red chest guard, versus Player name, CHUNG, blue chest guard. Contestants, prepare for the match."
 
 The weight category is not included in the announcement.
 
