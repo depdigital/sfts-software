@@ -571,9 +571,11 @@ function renderTieDecision(match) {
   }
   const redName = displayPlayerName(match, "RED");
   const blueName = displayPlayerName(match, "BLUE");
-  const tieOptions = scoringRules?.tieBreak?.afterRegulation?.options || [];
-  const goldenAvailable = tieOptions.includes("GOLDEN_ROUND") && scoringRules?.tieBreak?.goldenRound?.enabled;
-  const wooAvailable = tieOptions.includes("WOO_SE_GIROK") && scoringRules?.tieBreak?.wooSeGirok?.enabled;
+  const tieOptions = Array.isArray(match.tieDecision?.options)
+    ? match.tieDecision.options
+    : scoringRules?.tieBreak?.afterRegulation?.options || [];
+  const goldenAvailable = tieOptions.includes("GOLDEN_ROUND");
+  const wooAvailable = tieOptions.includes("WOO_SE_GIROK");
   $("goldenRoundChoice")?.classList.toggle("hidden", !goldenAvailable);
   $("wooSeGirokChoice")?.classList.toggle("hidden", !wooAvailable);
   $("tieDecisionRedButton").textContent = `DECLARE "${redName}" WINNER`;

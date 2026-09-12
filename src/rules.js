@@ -28,6 +28,7 @@ const SUPPORTED_WINNER_METHODS = new Set([
 ]);
 const SUPPORTED_MANUAL_DECISIONS = new Set(['RSC', 'WDR', 'DSQ', 'PUN', 'DQB']);
 const SUPPORTED_TIE_OPTIONS = new Set(['GOLDEN_ROUND', 'WOO_SE_GIROK']);
+const REQUIRED_TIE_OPTIONS = Object.freeze(['GOLDEN_ROUND', 'WOO_SE_GIROK']);
 const SUPPORTED_SUPERIORITY_CRITERIA = new Set([
   'GOLDEN_ROUND_PUNCH', 'GOLDEN_ROUND_HIT_COUNT', 'REGULATION_ROUNDS_WON',
   'FEWER_TOTAL_GAMJEOMS', 'REFEREE_DECISION'
@@ -224,10 +225,6 @@ export function parseRulesText(text) {
 
 function migrateV1ToV2(v1) {
   const rules = structuredClone(v1);
-  const oldTie = rules.decisions?.unresolvedMatchTie?.type;
-  const oldWinnerMethods = new Set(rules.decisions?.winnerMethods || []);
-  const oldGoldenEnabled = oldWinnerMethods.has('GOLDEN_POINTS');
-  const oldWooEnabled = oldTie !== 'MANUAL_TOURNAMENT_RESOLUTION';
   rules.schemaVersion = SUPPORTED_RULE_SCHEMA_VERSION;
   rules.match ||= {};
   rules.match.breakDurationPolicy = {
@@ -239,28 +236,85 @@ function migrateV1ToV2(v1) {
   rules.penalties.gamJeom.accumulateAcrossRounds ??= false;
   rules.decisions ||= {};
   rules.decisions.manualMatchDecisions ??= ['RSC', 'WDR', 'DSQ', 'PUN', 'DQB'];
+  if (Array.isArray(rules.decisions.winnerMethods)) {
+    rules.decisions.winnerMethods = [...new Set([
+      ...rules.decisions.winnerMethods,
+      'GOLDEN_POINTS',
+      'SUPERIORITY'
+    ])];
+  }
+  if (Array.isArray(rules.compatibility?.requiredCapabilities)) {
+    rules.compatibility.requiredCapabilities = [...new Set([
+      ...rules.compatibility.requiredCapabilities,
+      'GOLDEN_ROUND',
+      'SUPERIORITY_DECISION'
+    ])];
+  }
   rules.tieBreak = {
     afterRegulation: {
-      type: oldTie === 'MANUAL_TOURNAMENT_RESOLUTION' ? 'MANUAL_TOURNAMENT_RESOLUTION' : 'GOLDEN_OR_WOO_SE_GIROK',
-      options: oldTie === 'MANUAL_TOURNAMENT_RESOLUTION' ? [] : [
-        ...(oldGoldenEnabled ? ['GOLDEN_ROUND'] : []),
-        ...(oldWooEnabled ? ['WOO_SE_GIROK'] : [])
-      ]
+      type: 'GOLDEN_OR_WOO_SE_GIROK',
+      options: [...REQUIRED_TIE_OPTIONS]
     },
     goldenRound: {
-      enabled: oldGoldenEnabled, durationSeconds: 60, allowTimerEdit: true, resetRegularScores: true,
+      enabled: true, durationSeconds: 60, allowTimerEdit: true, resetRegularScores: true,
       scoreToWin: 2, opponentGamJeomsToWin: 2, onTimeExpiry: 'SUPERIORITY',
       superiorityCriteria: ['GOLDEN_ROUND_PUNCH', 'GOLDEN_ROUND_HIT_COUNT', 'REGULATION_ROUNDS_WON', 'FEWER_TOTAL_GAMJEOMS', 'REFEREE_DECISION']
     },
-    wooSeGirok: { enabled: oldWooEnabled, reasonCode: 'SUP' }
+    wooSeGirok: { enabled: true, reasonCode: 'SUP' }
   };
   rules.tournament ||= {};
   rules.tournament.placements ??= structuredClone(DEFAULT_TOURNAMENT_PLACEMENTS);
   return rules;
 }
+
+function upgradeManualTournamentTieBreak(rules) {
+  if (rules.tieBreak?.afterRegulation?.type !== 'MANUAL_TOURNAMENT_RESOLUTION') return;
+
+  rules.tieBreak.afterRegulation = {
+    ...rules.tieBreak.afterRegulation,
+    type: 'GOLDEN_OR_WOO_SE_GIROK',
+    options: [...REQUIRED_TIE_OPTIONS]
+  };
+  rules.tieBreak.goldenRound = {
+    durationSeconds: 60,
+    allowTimerEdit: true,
+    resetRegularScores: true,
+    scoreToWin: 2,
+    opponentGamJeomsToWin: 2,
+    onTimeExpiry: 'SUPERIORITY',
+    superiorityCriteria: ['GOLDEN_ROUND_PUNCH', 'GOLDEN_ROUND_HIT_COUNT', 'REGULATION_ROUNDS_WON', 'FEWER_TOTAL_GAMJEOMS', 'REFEREE_DECISION'],
+    ...(rules.tieBreak.goldenRound && typeof rules.tieBreak.goldenRound === 'object' && !Array.isArray(rules.tieBreak.goldenRound)
+      ? rules.tieBreak.goldenRound
+      : {}),
+    enabled: true
+  };
+  rules.tieBreak.wooSeGirok = {
+    reasonCode: 'SUP',
+    ...(rules.tieBreak.wooSeGirok && typeof rules.tieBreak.wooSeGirok === 'object' && !Array.isArray(rules.tieBreak.wooSeGirok)
+      ? rules.tieBreak.wooSeGirok
+      : {}),
+    enabled: true
+  };
+  if (Array.isArray(rules.decisions?.winnerMethods)) {
+    rules.decisions.winnerMethods = [...new Set([
+      ...rules.decisions.winnerMethods,
+      'GOLDEN_POINTS',
+      'SUPERIORITY'
+    ])];
+  }
+  if (Array.isArray(rules.compatibility?.requiredCapabilities)) {
+    rules.compatibility.requiredCapabilities = [...new Set([
+      ...rules.compatibility.requiredCapabilities,
+      'GOLDEN_ROUND',
+      'SUPERIORITY_DECISION'
+    ])];
+  }
+}
+
 function normalizeRules(input) {
   requireObject(input, 'root');
   const rules = input.schemaVersion === LEGACY_RULE_SCHEMA_VERSION ? migrateV1ToV2(input) : structuredClone(input);
+  upgradeManualTournamentTieBreak(rules);
   rules.tournament ||= {};
   rules.tournament.placements ??= structuredClone(DEFAULT_TOURNAMENT_PLACEMENTS);
   if (!rules.tournament.divisions) {
@@ -387,9 +441,9 @@ export function validateRules(input) {
   if (gamJeom.matchLossAt !== null && !winnerMethods.includes('MATCH_GAMJEOM_LIMIT')) fail('MATCH_GAMJEOM_LIMIT is required when penalties.gamJeom.matchLossAt is set');
 
   const tieBreak = requireObject(rules.tieBreak, 'tieBreak'); const afterRegulation = requireObject(tieBreak.afterRegulation, 'tieBreak.afterRegulation');
-  if (!['GOLDEN_OR_WOO_SE_GIROK', 'MANUAL_TOURNAMENT_RESOLUTION'].includes(afterRegulation.type)) fail('tieBreak.afterRegulation.type is not supported');
+  if (afterRegulation.type !== 'GOLDEN_OR_WOO_SE_GIROK') fail('tieBreak.afterRegulation.type is not supported');
   if (!Array.isArray(afterRegulation.options) || afterRegulation.options.some(option => !SUPPORTED_TIE_OPTIONS.has(option)) || new Set(afterRegulation.options).size !== afterRegulation.options.length) fail('tieBreak.afterRegulation.options contains an unsupported option');
-  if (afterRegulation.type === 'GOLDEN_OR_WOO_SE_GIROK' && afterRegulation.options.length === 0) fail('tieBreak.afterRegulation.options cannot be empty');
+  if (afterRegulation.options.length !== REQUIRED_TIE_OPTIONS.length || REQUIRED_TIE_OPTIONS.some(option => !afterRegulation.options.includes(option))) fail('tieBreak.afterRegulation.options must include GOLDEN_ROUND and WOO_SE_GIROK');
   const goldenRound = requireObject(tieBreak.goldenRound, 'tieBreak.goldenRound');
   requireBoolean(goldenRound.enabled, 'tieBreak.goldenRound.enabled'); requireInteger(goldenRound.durationSeconds, 'tieBreak.goldenRound.durationSeconds', { minimum: 1 }); requireBoolean(goldenRound.allowTimerEdit, 'tieBreak.goldenRound.allowTimerEdit'); requireBoolean(goldenRound.resetRegularScores, 'tieBreak.goldenRound.resetRegularScores');
   requireInteger(goldenRound.scoreToWin, 'tieBreak.goldenRound.scoreToWin', { minimum: 1 }); requireInteger(goldenRound.opponentGamJeomsToWin, 'tieBreak.goldenRound.opponentGamJeomsToWin', { minimum: 1 });

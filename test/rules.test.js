@@ -77,10 +77,67 @@ test('commented v2 packs and legacy v1 packs are accepted safely', async () => {
   const legacy = JSON.parse(await (await import('node:fs/promises')).readFile(path.join(process.cwd(), 'test', 'fixtures', 'scoring-test-pack.json'), 'utf8'));
   const migrated = validateRules(legacy);
   assert.equal(migrated.schemaVersion, 2);
+  assert.equal(migrated.tieBreak.afterRegulation.type, 'GOLDEN_OR_WOO_SE_GIROK');
+  assert.deepEqual(migrated.tieBreak.afterRegulation.options, ['GOLDEN_ROUND', 'WOO_SE_GIROK']);
+  assert.equal(migrated.tieBreak.goldenRound.enabled, true);
+  assert.equal(migrated.tieBreak.wooSeGirok.enabled, true);
+  assert.ok(migrated.decisions.winnerMethods.includes('GOLDEN_POINTS'));
+  assert.ok(migrated.decisions.winnerMethods.includes('SUPERIORITY'));
   assert.equal(migrated.tieBreak.goldenRound.scoreToWin, 2);
   assert.equal(migrated.match.breakDurationPolicy.defaultDurationSeconds, 35);
   assert.equal(migrated.tournament.placements.enabled, true);
   assert.equal(migrated.tournament.placements.thirdPlacePolicy, 'BOTH_SEMIFINAL_LOSERS');
+});
+
+test('previously saved v2 manual tie packs are upgraded to both supported tie choices', async () => {
+  const oldRules = await defaultRules();
+  oldRules.tieBreak.afterRegulation = { type: 'MANUAL_TOURNAMENT_RESOLUTION', options: [] };
+  oldRules.tieBreak.goldenRound.enabled = false;
+  oldRules.tieBreak.wooSeGirok.enabled = false;
+  oldRules.decisions.winnerMethods = oldRules.decisions.winnerMethods
+    .filter(method => method !== 'GOLDEN_POINTS' && method !== 'SUPERIORITY');
+  oldRules.compatibility.requiredCapabilities = oldRules.compatibility.requiredCapabilities
+    .filter(capability => capability !== 'GOLDEN_ROUND' && capability !== 'SUPERIORITY_DECISION');
+
+  const upgraded = validateRules(oldRules);
+
+  assert.equal(upgraded.tieBreak.afterRegulation.type, 'GOLDEN_OR_WOO_SE_GIROK');
+  assert.deepEqual(upgraded.tieBreak.afterRegulation.options, ['GOLDEN_ROUND', 'WOO_SE_GIROK']);
+  assert.equal(upgraded.tieBreak.goldenRound.enabled, true);
+  assert.equal(upgraded.tieBreak.wooSeGirok.enabled, true);
+  assert.ok(upgraded.decisions.winnerMethods.includes('GOLDEN_POINTS'));
+  assert.ok(upgraded.decisions.winnerMethods.includes('SUPERIORITY'));
+  assert.ok(upgraded.compatibility.requiredCapabilities.includes('GOLDEN_ROUND'));
+  assert.ok(upgraded.compatibility.requiredCapabilities.includes('SUPERIORITY_DECISION'));
+});
+
+test('loadRules upgrades a persisted v2 manual tie pack during server startup', async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), 'sfts-rules-manual-tie-'));
+  const activePath = path.join(tempDir, 'active-rules.json');
+  try {
+    const oldRules = await defaultRules();
+    oldRules.tieBreak.afterRegulation = { type: 'MANUAL_TOURNAMENT_RESOLUTION', options: [] };
+    oldRules.tieBreak.goldenRound.enabled = false;
+    oldRules.tieBreak.wooSeGirok.enabled = false;
+    oldRules.decisions.winnerMethods = oldRules.decisions.winnerMethods
+      .filter(method => method !== 'GOLDEN_POINTS' && method !== 'SUPERIORITY');
+    await writeFile(activePath, JSON.stringify(oldRules));
+
+    const loaded = await loadRules({ activePath });
+
+    assert.deepEqual(loaded.tieBreak.afterRegulation.options, ['GOLDEN_ROUND', 'WOO_SE_GIROK']);
+    assert.equal(loaded.tieBreak.goldenRound.enabled, true);
+    assert.equal(loaded.tieBreak.wooSeGirok.enabled, true);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('v2 rule packs cannot hide either mandatory regulation tie choice', async () => {
+  const rules = await defaultRules();
+  rules.tieBreak.afterRegulation.options = ['GOLDEN_ROUND'];
+
+  assert.throws(() => validateRules(rules), /must include GOLDEN_ROUND and WOO_SE_GIROK/);
 });
 
 test('unsupported tournament placement policies are rejected safely', async () => {

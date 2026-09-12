@@ -719,6 +719,7 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
     message.type === 'state' && message.match.phase === 'TIE_DECISION' &&
     message.match.tieDecision?.mode === 'CHOOSE_METHOD'
   ));
+  assert.deepEqual(tied.match.tieDecision.options, ['GOLDEN_ROUND', 'WOO_SE_GIROK']);
   assert.equal(tied.tournament.schedule.find(bout => bout.boutNo === 2).status, 'IN_PROGRESS');
   assert.equal(tied.tournament.schedule.find(bout => bout.boutNo === 4).status, 'PENDING');
   host.send(JSON.stringify({ type: 'host', action: 'decideWooSeGirok', player: 'BLUE' }));

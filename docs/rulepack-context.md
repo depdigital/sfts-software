@@ -26,7 +26,7 @@ An imported pack is written to the active data folder as strict JSON, so its com
 
 ## Golden Round and superiority
 
-`tieBreak.afterRegulation.options` decides which choices appear after a tied regulation match. It may contain `GOLDEN_ROUND`, `WOO_SE_GIROK`, or both. An option must also be enabled in its own section.
+`tieBreak.afterRegulation.options` must contain both `GOLDEN_ROUND` and `WOO_SE_GIROK`, and both options must be enabled in their own sections. This guarantees that a tied regulation match always offers Golden Round and Woo-se-girok alongside the operator's Back action.
 
 `tieBreak.goldenRound.superiorityCriteria` is evaluated top to bottom at expiry. The supported criteria are:
 
@@ -46,7 +46,7 @@ The installed referee remotes have three physical base-score controls, so `scori
 
 ## Legacy packs
 
-Schema v1 packs remain readable. SFTS migrates them in memory to v2 defaults for the new break and tie-break fields, then validates the result. Save a legacy pack again through SFTS only after reviewing its v2 equivalent; the built-in v2 pack is the recommended template for future editing.
+Schema v1 packs remain readable. SFTS migrates them in memory to v2 defaults for the new break and tie-break fields, then validates the result. Legacy packs that used manual tournament tie resolution are upgraded to offer both Golden Round and Woo-se-girok. Previously saved schema-v2 packs using that legacy manual setting receive the same compatibility upgrade. Save a legacy pack again through SFTS only after reviewing its v2 equivalent; the built-in v2 pack is the recommended template for future editing.
 
 ## Important operational note
 

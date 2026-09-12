@@ -126,8 +126,7 @@
   "tieBreak": {
     "afterRegulation": {
       "type": "GOLDEN_OR_WOO_SE_GIROK",
-      // Keep one or both choices. An empty list is allowed only for
-      // MANUAL_TOURNAMENT_RESOLUTION.
+      // Both choices are required after a tied regulation match.
       "options": ["GOLDEN_ROUND", "WOO_SE_GIROK"]
     },
     "goldenRound": {

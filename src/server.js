@@ -154,10 +154,19 @@ function makeGoldenRound() {
   };
 }
 
+function configuredTieOptions() {
+  const configured = rules.tieBreak.afterRegulation.options;
+  return configured.filter(option => (
+    (option === 'GOLDEN_ROUND' && rules.tieBreak.goldenRound.enabled) ||
+    (option === 'WOO_SE_GIROK' && rules.tieBreak.wooSeGirok.enabled)
+  ));
+}
+
 function makeTieDecision() {
   return {
     pending: false,
-    mode: null
+    mode: null,
+    options: configuredTieOptions()
   };
 }
 
@@ -834,6 +843,7 @@ function restorePersistedState(snapshot) {
     match.tieDecision.mode = null;
   }
   match.tieDecision.pending = match.phase === 'TIE_DECISION';
+  match.tieDecision.options = configuredTieOptions();
   match.breakTarget = match.breakTarget === 'GOLDEN' ? 'GOLDEN' : 'REGULAR';
   match.breakMs = breakDurationForRound(match.configuredRoundMs);
   match.kyeShi.limitMs = KYESHI_LIMIT_MS;
@@ -2929,12 +2939,12 @@ function beginTieDecision(mode) {
   clearAllRemoteCombinations();
   clearLastRemoteButtons();
   clearVoteSettleGuard();
-  match.tieDecision = { pending: true, mode };
+  match.tieDecision = { pending: true, mode, options: configuredTieOptions() };
   state(true);
 }
 
 function startGoldenRoundBreak() {
-  if (!rules.tieBreak.goldenRound.enabled || !rules.tieBreak.afterRegulation.options.includes('GOLDEN_ROUND')) {
+  if (!configuredTieOptions().includes('GOLDEN_ROUND')) {
     return { ok: false, code: 'GOLDEN_ROUND_DISABLED', message: 'Golden Round is disabled by the active rule pack' };
   }
   if (match.phase !== 'TIE_DECISION' || match.tieDecision?.mode !== 'CHOOSE_METHOD') {
@@ -3109,7 +3119,7 @@ function decideWooSeGirok(winner) {
   if (!validPlayer(winner)) {
     return { ok: false, code: 'INVALID_WINNER', message: 'Winner must be RED or BLUE' };
   }
-  if (!rules.tieBreak.wooSeGirok.enabled || !rules.tieBreak.afterRegulation.options.includes('WOO_SE_GIROK')) {
+  if (!configuredTieOptions().includes('WOO_SE_GIROK')) {
     return { ok: false, code: 'WOO_SE_GIROK_DISABLED', message: 'Woo-se-girok is disabled by the active rule pack' };
   }
   if (match.phase !== 'TIE_DECISION' || match.tieDecision?.mode !== 'CHOOSE_METHOD') {
