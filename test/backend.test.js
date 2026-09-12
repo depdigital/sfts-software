@@ -951,6 +951,8 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(cssText, /\.screensaver[\s\S]*background-position: right center/);
   assert.doesNotMatch(cssText, /\.screensaver\s*\{[^}]*transition:/);
   assert.match(cssText, /\.screensaverContent img[\s\S]*animation: screensaverLogoCycle 5s ease-in-out infinite/);
+  assert.match(cssText, /\.homeBtn[\s\S]*animation: homeLaunchGlow 2s ease-in-out infinite/);
+  assert.match(cssText, /@keyframes homeLaunchGlow/);
   assert.match(cssText, /screensaverLogoCycle[\s\S]*transform: scale\(2\.5\)/);
   assert.match(cssText, /\.controlGrid button[\s\S]*cursor: pointer/);
   assert.match(html, /id="redChestButton"[\s\S]*src="\/assets\/chestguard\.png"/);
@@ -968,6 +970,7 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.ok(html.indexOf('id="blueHeadButton"') < html.indexOf('id="blueChestButton"'));
   assert.ok(html.indexOf('id="blueChestButton"') < html.indexOf('id="bluePunchButton"'));
   assert.match(cssText, /\.scoreActionIcon[\s\S]*drop-shadow/);
+  assert.match(cssText, /\.roundText\s*\{[^}]*width:\s*100%[^}]*text-align:\s*center/);
   assert.match(cssText, /\.cornerRefereeIcon\.active[\s\S]*drop-shadow/);
   assert.equal(js.status, 200);
   const jsText = await js.text();
