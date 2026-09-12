@@ -341,7 +341,7 @@ function shuffled(items, random) {
 }
 
 function contestantReadyAnnouncement(hongName, chungName) {
-  return `${hongName}, HONG, red chest guard, versus ${chungName}, CHUNG, blue chest guard. Contestants, prepare for the match.`;
+  return `${hongName}, HONG, red chest guard, versus ${chungName}, CHUNG, blue chest guard; contestants, prepare for the match.`;
 }
 
 function scheduleAnnouncement(bout) {

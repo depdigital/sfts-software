@@ -187,7 +187,7 @@ test('manual categories are rulepack validated and preserve official bout eviden
   const practiceAnnouncement = await waitFor(host, message => message.type === 'announcement');
   assert.equal(
     practiceAnnouncement.text,
-    'Practice Hong, HONG, red chest guard, versus Practice Chung, CHUNG, blue chest guard. Contestants, prepare for the match.'
+    'Practice Hong, HONG, red chest guard, versus Practice Chung, CHUNG, blue chest guard; contestants, prepare for the match.'
   );
 
   host.send(JSON.stringify({ type: 'host', action: 'loadPractice', details: practiceDetails }));
