@@ -1,159 +1,315 @@
-# SFTS remote hardware integration context
+# SFTS ESP32-C6-MINI-1 remote — hardware and backend context
 
-This folder contains the first ESP32 remote firmware prototype for the SFTS
-Taekwondo Scoring System. The remote is a Wi-Fi WebSocket client. It does not
-calculate scores and it does not decide a winner; it reports referee button
-presses to the SFTS backend, which performs authentication, voting, scoring,
-match-state validation, persistence, and scoreboard updates.
+This README is the hardware-project handoff for an SFTS-compatible wireless
+taekwondo referee remote. The objective is a stable, battery-powered remote
+based on the **ESP32-C6-MINI-1**, with USB-C firmware programming, USB-C
+charging, a physical ON/OFF switch, eight scoring buttons, and local status
+indicators.
 
-The folder name is retained as `firware/` for compatibility with the existing
-project. The sketch file is `firware/firware.ino`.
+The remote is an input and telemetry device. It does not calculate scores or
+decide a winner. The SFTS software backend in `src/server.js` is authoritative
+for authentication, vote counting, technical-score combinations, match-state
+validation, scoring, persistence, and scoreboard updates.
 
-## Compatibility verdict for the planned ESP32-C6-MINI-1
+The repository directory is named `firware/` and contains the Arduino sketch
+at [`firware.ino`](firware.ino).
 
-The application protocol is compatible in principle, but the checked-in sketch
-is **not hardware-compatible with an ESP32-C6-MINI-1 as-is**. The sketch was
-written for an Adafruit ESP32 Feather V2 and its GPIO map must be replaced
-before the C6 schematic or PCB is signed off.
+## Design summary
 
-| Firmware signal | Current sketch GPIO | C6-MINI-1 result |
-|---|---:|---|
-| RED +1 | 26 | Not a usable C6-MINI-1 module GPIO; in the C6 family this range is associated with SPI0/1/flash. |
-| RED +2 | 25 | Same issue. |
-| RED +3 | 27 | Same issue. |
-| RED TECHNICAL | 33 | ESP32-C6 has GPIO0–GPIO30; GPIO33 does not exist. |
-| BLUE +1 | 32 | Does not exist on ESP32-C6. |
-| BLUE +2 | 14 | Exposed on the C6-MINI-1 and generally usable. |
-| BLUE +3 | 21 | Exposed and generally usable. |
-| BLUE TECHNICAL | 22 | Exposed and generally usable. |
+- MCU/module: ESP32-C6-MINI-1, selected for its current Wi-Fi stack and
+  integrated USB Serial/JTAG capability.
+- Development environment: Arduino IDE with the ESP32-C6 board package and
+  the `WebSockets` library by Markus Sattler / Links2004.
+- Power: single-cell Li-Po battery, MCP73831T-2ACI/OT charger at a fixed
+  500 mA charge current, TPS62821DLC buck converter, and regulated `+3V3`
+  for the ESP32-C6-MINI-1.
+- USB-C: one USB-C connector provides firmware programming and charging. It
+  can also provide development power through the optional `VBUS_BYPASS`
+  jumper.
+- User input: eight momentary push buttons, four for RED/HONG and four for
+  BLUE/CHUNG scoring.
+- Status output: four active-low LEDs for RED input, BLUE input, Wi-Fi
+  heartbeat, and low battery.
+- Battery telemetry: switched 100 kΩ/100 kΩ divider, sampled only when needed
+  through an N-channel MOSFET to reduce idle battery drain.
 
-The C6-MINI-1 is a module, not a Feather-style development board. It has no
-universal `LED_BUILTIN` pin or Feather labels. The sketch’s
-`pinMode(LED_BUILTIN, ...)` therefore needs a board/schematic-specific LED
-definition, or the LED indication must be removed/replaced with a named GPIO.
-The firmware identification string should also be changed from
-`sfts-demo-esp32-feather-v2` to a C6 hardware revision string.
-
-The C6-MINI-1 module exposes the GPIOs needed for an eight-button remote,
-but the final assignment belongs to the hardware schematic. A provisional
-button-only candidate is `GPIO0, GPIO1, GPIO2, GPIO3, GPIO6, GPIO7, GPIO14,
-GPIO18`. This is only a starting point for schematic review; do not copy it
-blindly if those pins are allocated to another peripheral.
-
-For the C6 design, review these constraints before assigning pins:
-
-- Avoid `GPIO8` and `GPIO9` for buttons unless their reset-time levels are
-  explicitly controlled. They select C6 boot mode; GPIO9 should normally be
-  high or floating for SPI boot.
-- Treat `GPIO4`/MTMS, `GPIO5`/MTDI, and `GPIO15` as boot/JTAG-related pins.
-  Avoid them for buttons where possible, especially if a button can hold them
-  low during reset.
-- `GPIO12` and `GPIO13` are the default USB Serial/JTAG D-/D+ pins. Do not use
-  them for buttons if USB programming or USB logs are required.
-- `GPIO16`/TXD0 and `GPIO17`/RXD0 are the default UART0 pins. Reserve them if
-  the hardware needs a UART programming/debug header.
-- The module runs from a 3.0–3.6 V supply. All button pull-ups and external
-  signals must be 3.3 V logic; never connect a 5 V pull-up to a GPIO.
-- Keep the external pull-up arrangement used by the sketch: one momentary
-  switch from each button GPIO to GND and one external pull-up from that GPIO
-  to 3.3 V. The firmware uses `INPUT`, not `INPUT_PULLUP`.
-- The current sketch reports `battery: 100` as a dummy value. It does not
-  measure a battery. If the hardware includes a battery, provide a protected
-  resistor-divider/ADC design and update the firmware’s percentage conversion
-  and calibration; never feed the ADC above 3.3 V.
-- A bare module needs the normal Espressif power, EN/reset, flash/module,
-  antenna keep-out, and programming provisions. In particular, provide a
-  stable 3.3 V rail with adequate transient current, an EN pull-up/RC reset
-  network, and access to USB Serial/JTAG or UART download as selected by the
-  schematic.
-
-Authoritative C6 references: [ESP32-C6-MINI-1 datasheet](https://documentation.espressif.com/esp32-c6-mini-1_mini-1u_datasheet_en.html),
-[ESP32-C6 GPIO reference](https://docs.espressif.com/projects/esp-idf/en/latest/esp32c6/api-reference/peripherals/gpio.html),
-and [Espressif ESP32-C6 hardware design guidelines](https://docs.espressif.com/projects/esp-hardware-design-guidelines/en/latest/esp32c6/schematic-checklist.html).
-
-## SFTS system and network role
+## System and network role
 
 ```text
-ESP32-C6 remote --2.4 GHz Wi-Fi--> event remote router --LAN--> SFTS server
+ESP32-C6 remote --2.4 GHz Wi-Fi--> event router --LAN--> SFTS server
                                                                |
-                                                        host scoreboard browser
+                                                        scoreboard browser
 ```
 
-The SFTS server is the Node.js application in `src/server.js`. It listens on
-all interfaces at port `8080` by default. The server accepts the remote
-WebSocket on the root path:
+The SFTS server is a Node.js application that listens on all interfaces at
+port `8080` by default. A remote connects to the root WebSocket path:
 
 ```text
 ws://<SFTS-server-LAN-IP>:8080/
 ```
 
-The ESP32 must use the server’s LAN IP, never `localhost` or `127.0.0.1`.
-The server and remotes are intended for a closed event LAN; this protocol is
-plain WebSocket (`ws://`), not TLS (`wss://`). The Raspberry Pi deployment
-normally uses the Pi Ethernet address on the dedicated remote network, often
-`192.168.50.102`.
+The ESP32 must use the server’s LAN IP, never `localhost` or `127.0.0.1`. The
+system is intended for a closed event LAN and currently uses plain WebSocket
+(`ws://`), not TLS (`wss://`).
 
-The browser scoreboard is also connected to the same backend. When a remote
-event is accepted, the backend updates the authoritative match state, applies
-the majority-vote rules, broadcasts the new state to the scoreboard, records
-corner-referee history, and emits the score sound/visual feedback. The remote
-does not need to know player names, tournament fixtures, round winner logic, or
-the display layout.
+When a remote event is accepted, the backend records the corner-referee input,
+updates the pending vote state, applies the majority rule, updates the match
+score when appropriate, broadcasts the authoritative state to the scoreboard,
+and emits the score feedback. The remote does not need player names, fixture
+data, timer logic, or winner logic.
 
-Relevant backend files:
+Backend source of truth:
 
 - `src/server.js` — WebSocket protocol, authentication, remote sessions,
-  liveness, majority voting, technical combinations, scoring, and state
-  broadcasts.
-- `public/js/app.js` — scoreboard rendering for remote status, button flashes,
-  vote strip, test mode, and score highlights.
-- `config/remote-config.json` — C1–C4 remote tokens and default port. Treat
-  this file and tokens flashed into hardware as private event credentials.
-- `config/rules.default.json` — active scoring and voting constraints. A
-  validated `data/active-rules.json` may override the default at runtime.
-- `tools/remote-simulator.js` — protocol simulator for testing without a
-  physical remote.
-- `docs/remote-reliability-fix-context.md` — reliability history and failure
-  modes relevant to hardware testing.
+  liveness, majority voting, technical combinations, scoring, and broadcasts.
+- `public/js/app.js` — remote status cards, button feedback, vote strip, test
+  mode, and scoreboard score highlights.
+- `config/remote-config.json` — server port and C1–C4 remote tokens. Keep
+  these tokens private and flash a different pair to each physical remote.
+- `config/rules.default.json` — installed base points, technical scoring,
+  voting limits, and match behavior.
+- `tools/remote-simulator.js` — protocol-only testing without hardware.
+- `docs/remote-reliability-fix-context.md` — reliability and failure-mode
+  context for hardware testing.
 
-## Remote identities and operating modes
+## Power architecture
 
-There are four fixed logical remotes:
+### USB-C input and programming
 
-| Device ID | Physical corner | Enabled when mode is |
+J1 is a 16-pin USB-C receptacle. USB-C sink configuration is provided by R5
+and R6, both `5K1`, on the CC pins. C5, `1 µF`, filters the VBUS input.
+
+The USB data connections are:
+
+```text
+J1 A7/B7 (USB D-) -- USBLC6-2SC6 -- ESP32-C6-MINI-1 IO12 / USB-
+J1 A6/B6 (USB D+) -- USBLC6-2SC6 -- ESP32-C6-MINI-1 IO13 / USB+
+```
+
+On the ESP32-C6-MINI-1 these are module pads 17 and 18, and Arduino GPIO12
+and GPIO13 respectively. They are the default USB Serial/JTAG D- and D+
+signals. Preserve the ESD device, USB routing, return path, and connector
+shield/ground treatment in the PCB layout.
+
+J3 is the `VBUS_BYPASS` jumper. When J3 is shorted, USB VBUS bypasses the
+charger and appears at the input of SW9, allowing development power when no
+battery is connected. This bypass path is not the charging path. Confirm that
+J3 cannot create an unsafe USB-to-battery backfeed or bypass a required power
+protection function when a battery is installed.
+
+### Li-Po charger
+
+When `VBUS_BYPASS` is not shorted, USB VBUS enters the MCP73831T-2ACI/OT
+single-cell Li-Po charger:
+
+- R12, `2 kΩ`, programs the charge current to approximately `500 mA` using
+  the MCP73831 programming relationship.
+- C6, `4.7 µF`, is the charger input capacitor.
+- C11, `4.7 µF`, is the charger output/battery-side capacitor.
+- D1, `LED_R`, indicates charger status from the charger status output.
+- `V_BATT` is the battery node.
+
+The battery, cell protection, connector polarity, charge-temperature limits,
+and whether the selected Li-Po cell is suitable for a 500 mA charge rate must
+be verified as part of the hardware review. The MCP73831 is a charger, not a
+complete system power-path manager.
+
+### ON/OFF and 3.3 V regulator
+
+`V_BATT` enters SW9, the physical ON/OFF switch. The switched node is `V_IN`.
+When SW9 is ON, `V_IN` feeds U2, the TPS62821DLC synchronous buck converter,
+which generates `+3V3` for the ESP32-C6-MINI-1.
+
+The planned regulator network is:
+
+- C13, `4.7 µF`, at the converter input.
+- L1, `470 nH`, as the switching inductor.
+- R20, `435 kΩ`, and R21, `100 kΩ`, as the feedback divider.
+- C18, `47 µF`, and C19, `100 nF`, on the converter output.
+- ESP32 local decoupling: C14 `10 µF` parallel with C15 `1 µF` parallel
+  with C16 `100 nF`.
+
+**Feedback value sign-off is required:** assuming R20 is the upper resistor
+from `VOUT` to FB and R21 is the lower resistor from FB to AGND, the TI
+feedback equation with a `0.6 V` reference gives approximately
+`0.6 × (1 + 435/100) = 3.21 V`, not 3.3 V. For 3.3 V with a 100 kΩ lower
+resistor, the upper resistor is approximately 450 kΩ; select the final value
+from the exact datasheet equation and tolerance requirements before PCB
+fabrication.
+
+The TPS62821 input range supports both the single-cell battery operating
+range and USB bypass input, but confirm startup, maximum current, thermal
+margin, inductor rating, layout, and output-voltage tolerance in the final
+design.
+
+### Switched battery measurement
+
+After SW9, the battery monitor is:
+
+```text
+V_IN -- R17 100 kΩ -- V_SNS / ESP32 IO2 -- C12 100 nF -- switched lower leg
+                                                        |
+                                                   R18 100 kΩ
+                                                        |
+                                               Q1 BSS138 N-MOSFET
+                                                        |
+                                                       GND
+```
+
+Q1’s gate is `V_SNS_EN` on ESP32 IO3. The firmware should:
+
+1. Set `V_SNS_EN` active to turn Q1 on.
+2. Wait for the divider and C12 to settle.
+3. Read the ADC on `V_SNS`.
+4. Convert the measured battery voltage to a calibrated percentage.
+5. Disable `V_SNS_EN` immediately after the measurement.
+
+The final schematic must ensure that `V_SNS` cannot exceed the ESP32 ADC
+input limits while Q1 is off, during reset, or while the battery is connected.
+A low-side disconnect can leave the ADC node floating or allow it to charge
+through R17, so this behavior must be checked with transient analysis and
+bench measurements. The firmware must not assume that an unpowered divider
+node reads zero.
+
+The backend accepts `battery` as an integer percentage from 0 to 100. Battery
+percentage is not inherently equal to a Li-Po voltage percentage; define the
+cell-specific voltage-to-SOC curve, load conditions, hysteresis, and the low
+battery threshold before enabling the production battery indicator.
+
+## User buttons
+
+There are eight momentary push buttons with external `10 kΩ` pull-ups to
+`+3V3` and `10 nF` debounce capacitors. Each button is active-low: pressing the
+button connects its GPIO to GND. The firmware should configure these pins as
+inputs and use falling-edge or change interrupts with software debounce.
+
+The ESP32-C6 GPIO peripheral supports configurable GPIO interrupt trigger
+types, including rising edge, falling edge, and both-edge triggering. The
+selected input GPIOs below are digital I/O pins and are suitable for this
+interrupt-based button scanner after reset configuration is complete.
+
+| Physical side | Reference | Function | Protocol button | ESP32-C6 module pad | Arduino GPIO |
+|---|---|---|---|---:|---:|
+| RED / HONG | SW1 `SW_R_TECH` | Technical modifier | `RED_TECHNICAL` | 12 / IO0 | **0** |
+| RED / HONG | SW2 `SW_R_HEAD` | Head point | `RED_3` | 13 / IO1 | **1** |
+| RED / HONG | SW3 `SW_R_CHEST` | Chest point | `RED_2` | 19 / IO14 | **14** |
+| RED / HONG | SW4 `SW_R_FIST` | Fist point | `RED_1` | 20 / IO15 | **15** |
+| BLUE / CHUNG | SW5 `SW_B_TECH` | Technical modifier | `BLUE_TECHNICAL` | 15 / IO6 | **6** |
+| BLUE / CHUNG | SW6 `SW_B_HEAD` | Head point | `BLUE_3` | 16 / IO7 | **7** |
+| BLUE / CHUNG | SW7 `SW_B_CHEST` | Chest point | `BLUE_2` | 22 / IO8 | **8** |
+| BLUE / CHUNG | SW8 `SW_B_FIST` | Fist point | `BLUE_1` | 25 / IO19 | **19** |
+
+### Module pad number is not the Arduino GPIO number
+
+The schematic mapping above contains module pad numbers. Arduino GPIO APIs
+must receive the GPIO number in the final column, not the module pad number.
+For example:
+
+```cpp
+// Correct: module pad 12 is IO0, so Arduino uses GPIO 0.
+constexpr uint8_t PIN_RED_TECHNICAL = 0;
+```
+
+Do not write `12` as the Arduino GPIO constant for the RED technical button.
+The same distinction applies to every module pad in the table.
+
+### Boot and peripheral constraints on selected button GPIOs
+
+GPIO8 is a C6 boot-mode strapping pin and is used here for `SW7`. GPIO15 is a
+JTAG-source strapping pin and is used here for `SW4`. They are valid GPIOs and
+can be used after reset, but the button pull-up/pull-down network must not
+prevent the required reset-time strap levels. Test every boot condition with
+each button pressed and released.
+
+GPIO0, GPIO1, GPIO6, GPIO7, GPIO14, and GPIO19 do not have the same boot-mode
+selection role, but still require normal GPIO electrical review. Keep USB
+GPIO12/13 free for programming and keep UART0 GPIO16/17 free if the UART
+programming/debug header is populated.
+
+There is no physical CANCEL button in the eight-button allocation. The SFTS
+backend supports the `CANCEL` protocol button, but it is currently available
+only through software/referee controls unless another hardware input is added.
+
+## Status LEDs
+
+All four status outputs are active-low. The LED anodes are intended to be
+powered from `V_IN`, while the ESP32 GPIOs sink the LED current so the buck
+converter output is not used for LED load.
+
+| Reference | Label | Function | ESP32-C6 module pad | Arduino GPIO |
+|---|---|---|---:|---:|
+| D2 | `LED_HONG` | Blink once for a RED/HONG button press | 9 / IO4 | **4** |
+| D3 | `LED_CHUNG` | Blink once for a BLUE/CHUNG button press | 10 / IO5 | **5** |
+| D4 | `LED_WIFI` | Wi-Fi/application heartbeat indication | 26 / IO20 | **20** |
+| D5 | `LED_BATT` | Blink when calibrated battery percentage is below 20% | 27 / IO21 | **21** |
+
+The firmware should drive D2/D3 from accepted local button events, D4 from a
+successful application heartbeat/acknowledgement, and D5 from the calibrated
+battery result. A merely open TCP socket should not be treated as proof that
+the backend is accepting events.
+
+**LED electrical sign-off is required:** because `V_IN` can be higher than
+`+3V3`, a directly connected LED from `V_IN` to a push-pull ESP32 GPIO may
+still conduct when the GPIO is driven HIGH and can inject current into the
+GPIO. Verify the exact LED/resistor topology. If needed, use open-drain
+operation with suitable protection or a transistor/MOSFET low-side driver for
+each LED.
+
+GPIO4 and GPIO5 are the C6 MTMS/MTDI-related pins. Since they drive status
+LEDs, verify their reset-time loading and ensure the LED networks do not alter
+boot/debug behavior.
+
+## Complete ESP32-C6-MINI-1 mapping
+
+The following table separates the schematic’s module pad number from the
+Arduino GPIO number used by firmware.
+
+| Purpose | Schematic signal | Module pad / label | Arduino GPIO | Notes |
+|---|---|---:|---:|---|
+| Battery ADC | `V_SNS` | 5 / IO2 | **2** | ADC1_CH2; enable Q1 first. |
+| Divider enable | `V_SNS_EN` | 6 / IO3 | **3** | Drives BSS138 gate. |
+| RED technical | `SW_R_TECH` | 12 / IO0 | **0** | Interrupt input. |
+| RED head | `SW_R_HEAD` | 13 / IO1 | **1** | Interrupt input. |
+| RED chest | `SW_R_CHEST` | 19 / IO14 | **14** | Interrupt input. |
+| RED fist | `SW_R_FIST` | 20 / IO15 | **15** | Interrupt input; strap-related. |
+| BLUE technical | `SW_B_TECH` | 15 / IO6 | **6** | Interrupt input. |
+| BLUE head | `SW_B_HEAD` | 16 / IO7 | **7** | Interrupt input. |
+| BLUE chest | `SW_B_CHEST` | 22 / IO8 | **8** | Interrupt input; boot strap. |
+| BLUE fist | `SW_B_FIST` | 25 / IO19 | **19** | Interrupt input. |
+| RED LED | `LED_HONG` | 9 / IO4 | **4** | Active-low sink; strap-related. |
+| BLUE LED | `LED_CHUNG` | 10 / IO5 | **5** | Active-low sink; strap-related. |
+| Wi-Fi LED | `LED_WIFI` | 26 / IO20 | **20** | Active-low sink. |
+| Battery LED | `LED_BATT` | 27 / IO21 | **21** | Active-low sink. |
+| USB D- | `USB-` | 17 / IO12 | **12** | USB Serial/JTAG D-. |
+| USB D+ | `USB+` | 18 / IO13 | **13** | USB Serial/JTAG D+. |
+| Boot strap reference | `PIN_BOOT_STRAP` | 23 / IO9 | **9** | Keep floating/high for SPI boot. |
+| UART RX | `U0RXD` | 30 / RXD0 / IO17 | **17** | Factory UART receive. |
+| UART TX | `U0TXD` | 31 / TXD0 / IO16 | **16** | Factory UART transmit. |
+
+## SFTS backend protocol
+
+### Remote identity and mode
+
+The backend supports four fixed logical remote IDs:
+
+| Device ID | Physical corner | Enabled in remote mode |
 |---|---:|---|
-| `C1` | Corner 1 | 1, 2, 3, or 4 |
-| `C2` | Corner 2 | 2, 3, or 4 |
-| `C3` | Corner 3 | 3 or 4 |
-| `C4` | Corner 4 | 4 |
+| `C1` | Corner 1 | 1, 2, 3, or 4 remotes |
+| `C2` | Corner 2 | 2, 3, or 4 remotes |
+| `C3` | Corner 3 | 3 or 4 remotes |
+| `C4` | Corner 4 | 4 remotes |
 
-The host chooses **1 REMOTE**, **2 REMOTES**, **3 REMOTES**, or **4 REMOTES**
-under SETTINGS → REMOTE SETTINGS. A connected remote whose corner is above
-the selected count remains authenticated but its events are acknowledged as
-`REMOTE_DISABLED` and cannot score.
+The host selects the active count in SETTINGS → REMOTE SETTINGS. The strict
+majority requirement is 1 vote for 1 remote, 2 votes for 2 remotes, 2 votes
+for 3 remotes, and 3 votes for 4 remotes. Votes are keyed by corner, so one
+remote cannot count twice.
 
-The required strict-majority vote count is:
+An authenticated remote above the selected active count remains connected but
+its event is acknowledged as `REMOTE_DISABLED` and cannot score.
 
-| Active remotes | Required matching votes |
-|---:|---:|
-| 1 | 1 |
-| 2 | 2 |
-| 3 | 2 |
-| 4 | 3 |
+### Authentication handshake
 
-Votes are keyed by corner, so one remote cannot count twice toward a majority.
-When a majority is reached, the backend awards the point, clears the pending
-votes, updates the scoreboard, and acknowledges the event that completed the
-majority.
-
-## Authentication and message lifecycle
-
-Every remote opens one WebSocket and must authenticate on that connection
-before sending status or scoring events.
-
-### 1. Remote hello
-
-Send immediately after WebSocket connection:
+Send this JSON text message after the WebSocket connects:
 
 ```json
 {
@@ -166,17 +322,12 @@ Send immediately after WebSocket connection:
 }
 ```
 
-Required backend rules:
+The backend requires protocol version `1`, a device ID of `C1`–`C4`, and a
+session ID of 1–64 characters matching `[A-Za-z0-9._:-]+`. The token must
+match the device entry in `config/remote-config.json`, unless the development
+override `SFTS_ALLOW_UNPAIRED_REMOTES=true` is explicitly enabled.
 
-- `protocolVersion` must be `1`.
-- `deviceId` must be exactly one of `C1`, `C2`, `C3`, `C4`.
-- `sessionId` must be 1–64 characters matching
-  `[A-Za-z0-9._:-]+`.
-- The token must match the configured token for that device, unless the
-  development-only `SFTS_ALLOW_UNPAIRED_REMOTES=true` override is enabled.
-- Only one live WebSocket may use a device ID at a time.
-
-The server replies with `remote_ready` and then `remote_state`:
+The server replies with:
 
 ```json
 {
@@ -188,12 +339,13 @@ The server replies with `remote_ready` and then `remote_state`:
 }
 ```
 
-The firmware must treat `remote_ready` as the application-ready state. A TCP
-or WebSocket connection alone is not enough to send events.
+The firmware must not send scoring events until `remote_ready` has been
+validated. A transport-connected WebSocket is not the same as an
+application-ready remote.
 
-### 2. Remote event
+### Session and sequence rules
 
-Send one JSON text message per debounced button press:
+Every event has a positive integer sequence:
 
 ```json
 {
@@ -205,56 +357,42 @@ Send one JSON text message per debounced button press:
 }
 ```
 
-`sequence` is a positive integer and must never be reused within the same
-session. The backend remembers the session’s sequence/replies in memory for up
-to 24 hours. A new firmware boot must generate a new session ID; a Wi-Fi
-reconnect during the same boot should retain the existing session ID and
-sequence counter. The current sketch generates a random session ID from
-`esp_random()` during `setup()` and uses a 32-bit sequence counter.
+The sequence must never be reused within one session. A new device boot must
+create a new session ID. A Wi-Fi reconnect during the same boot must retain
+the session ID and sequence counter. The backend retains same-session replay
+protection and acknowledgement data for up to 24 hours.
 
-The backend replies to every valid event with `remote_event_ack`. Examples:
+### Acknowledgements and reliability
 
-```json
-{
-  "type": "remote_event_ack",
-  "deviceId": "C1",
-  "sessionId": "sfts-0123456789abcdef",
-  "sequence": 42,
-  "accepted": true,
-  "reason": "POINT_AWARDED",
-  "awarded": true,
-  "points": 2,
-  "basePoints": 2,
-  "technical": false,
-  "voteCount": 3
-}
-```
+The backend returns `remote_event_ack` for every accepted or rejected event.
+Typical reasons are:
 
-Important acknowledgement reasons include:
-
-| Reason | Meaning for firmware |
+| Reason | Meaning |
 |---|---|
-| `POINT_AWARDED` | Event completed a majority and was scored. |
-| `VOTE_RECORDED` | Event was accepted as a vote; wait for other corners. |
-| `TECHNICAL_PENDING` | Technical modifier is waiting for the matching base point. |
-| `TEST_PRESS_RECORDED` | Test mode registered the button; no score changed. |
-| `VOTE_CANCELLED` | The corner’s pending vote/technical combination was cleared. |
-| `MATCH_NOT_RUNNING` | Match is paused or has not started; no score changed. |
+| `POINT_AWARDED` | This event completed the required majority and was scored. |
+| `VOTE_RECORDED` | This event was recorded; other corners are still required. |
+| `TECHNICAL_PENDING` | A technical modifier is waiting for its matching base point. |
+| `TEST_PRESS_RECORDED` | Test mode registered the control; score unchanged. |
+| `VOTE_CANCELLED` | This corner’s pending vote/combination was cleared. |
+| `MATCH_NOT_RUNNING` | The match is paused or has not started. |
 | `ROUND_NOT_ACTIVE` | The scoreboard is between rounds or at match end. |
-| `REMOTE_DISABLED` | This corner is above the selected remote count. |
-| `INVALID_BUTTON` | Button name is not part of the installed protocol. |
-| `SEQUENCE_REPLAY` | A new sequence was not greater than the session’s last sequence. |
+| `REMOTE_DISABLED` | This corner is above the configured active count. |
+| `INVALID_BUTTON` | The button name is not part of the protocol. |
+| `SEQUENCE_REPLAY` | The sequence was already used or is not newer. |
 
-The current firmware uses a FIFO outbox of 16 events and retries the oldest
-unacknowledged event every 1 second. This is the intended reliability model:
-do not delete an event from the outbox merely because `sendTXT()` returned
-success; remove it only after a matching `remote_event_ack` is received.
-Retransmission of the same sequence is safe because the backend caches and
-replays the acknowledgement without scoring the event twice.
+The firmware must retain an event until an acknowledgement with the matching
+device/session/sequence is received. A successful WebSocket `send` only means
+the message entered the transport. Retrying the same sequence is safe because
+the backend caches/replays the acknowledgement without scoring twice.
 
-### 3. Status and liveness
+The firmware implementation should use a FIFO outbox, retry the oldest
+unacknowledged event, and keep input scanning independent from network timing.
+The backend also rate-limits WebSocket messages, so avoid high-frequency retry
+loops.
 
-After `remote_ready`, the remote should periodically send:
+### Telemetry and liveness
+
+After authentication, send status approximately every 10 seconds:
 
 ```json
 {
@@ -262,113 +400,96 @@ After `remote_ready`, the remote should periodically send:
   "deviceId": "C1",
   "sessionId": "sfts-0123456789abcdef",
   "rssi": -61,
-  "battery": 100
+  "battery": 78
 }
 ```
 
-`rssi` must be an integer from `-127` to `0`. `battery` is a percentage from
-`0` to `100`, or `null` if no measurement exists. The backend returns
-`remote_status_ack` and updates the dashboard’s RSSI/battery fields.
+`rssi` must be an integer from `-127` to `0`. `battery` must be an integer
+percentage from `0` to `100`, or `null` if not measured. The backend returns
+`remote_status_ack` and updates the dashboard telemetry card.
 
-The server’s application liveness threshold is three 10-second heartbeat
-intervals: approximately 30 seconds without a valid hello, status, event, or
-ping causes the dashboard status to become disconnected. The WebSocket
-transport also has server-side ping/pong checks. Hardware acceptance testing
-must therefore verify both event delivery and status/heartbeat delivery.
+The backend’s application liveness timeout is three 10-second intervals,
+approximately 30 seconds without a valid hello, status, event, or ping. The
+WebSocket transport also uses ping/pong heartbeat checks. D4 should indicate
+successful application heartbeat/acknowledgement, not only Wi-Fi association.
 
-The firmware may also use:
+An authenticated remote may also send `remote_ping`; the backend replies with
+`remote_pong`.
 
-```json
-{"type":"remote_ping","deviceId":"C1","rssi":-61,"battery":100}
-```
+## Scoring behavior expected by the backend
 
-after authentication; the backend returns `remote_pong`. The checked-in sketch
-currently uses `remote_status` every 10 seconds and the WebSockets library
-heartbeat, which is sufficient for the current backend liveness path.
-
-## Button protocol and scoring behavior
-
-The installed default rules use three base buttons per side and one technical
-modifier per side:
-
-| Physical control | Message button | Normal award |
+| Physical button | Protocol button | Base result |
 |---|---|---:|
-| RED +1 / punch | `RED_1` | +1 RED |
-| RED +2 / chest | `RED_2` | +2 RED |
-| RED +3 / head | `RED_3` | +3 RED |
+| RED fist | `RED_1` | +1 RED |
+| RED chest | `RED_2` | +2 RED |
+| RED head | `RED_3` | +3 RED |
 | RED technical | `RED_TECHNICAL` | Modifier only |
-| BLUE +1 / punch | `BLUE_1` | +1 BLUE |
-| BLUE +2 / chest | `BLUE_2` | +2 BLUE |
-| BLUE +3 / head | `BLUE_3` | +3 BLUE |
+| BLUE fist | `BLUE_1` | +1 BLUE |
+| BLUE chest | `BLUE_2` | +2 BLUE |
+| BLUE head | `BLUE_3` | +3 BLUE |
 | BLUE technical | `BLUE_TECHNICAL` | Modifier only |
-| Cancel | `CANCEL` | Clear this corner’s pending vote |
 
-Technical input is a same-corner modifier inside a 1,000 ms window:
+Technical input is a same-corner modifier within the configured 1,000 ms
+window:
 
-- `RED_TECHNICAL` + `RED_2` in either order awards +4 RED.
-- `RED_TECHNICAL` + `RED_3` in either order awards +6 RED.
-- The same combinations work for BLUE.
-- Technical +1 is not eligible.
-- A technical button by itself does not award points.
-- A side mismatch, an expired combination, or `CANCEL` clears the pending
-  combination as applicable.
+- technical + chest, in either order, awards +4 for that side;
+- technical + head, in either order, awards +6 for that side;
+- technical + fist is not eligible;
+- technical alone does not award a point;
+- a side mismatch or expired combination does not award the technical value.
 
-The backend only allows normal remote scoring when the match is in a started,
-running `ROUND`, outside test mode and outside Kye-shi. Timer expiry, pause,
-round breaks, match end, and Kye-shi suspend remote scoring and produce an
-acknowledgement explaining why no point was awarded.
+Normal remote scoring is accepted only during a started, running `ROUND`,
+outside test mode and Kye-shi. Pause, timer expiry, breaks, match end, and
+Kye-shi prevent normal scoring and produce a non-awarding acknowledgement.
 
-## What the current prototype already does
+## Firmware behavior required for this hardware
 
-`firware/firware.ino` currently implements the important protocol behaviors:
+The Arduino sketch at `firware/firware.ino` should implement:
 
-- eight active-low button inputs with external pull-ups;
-- GPIO change interrupts that only set pending flags;
-- loop-based stateful debounce, currently 45 ms;
-- one event per press and re-arm only after a stable release;
-- random session ID per boot;
-- monotonically increasing 32-bit event sequence;
-- FIFO outbox with 16-event capacity;
-- retry every 1 second until a matching acknowledgement;
-- `remote_ready` gating before events/status are sent;
-- RSSI and dummy battery telemetry every 10 seconds;
-- reconnect on WebSocket loss and on backend application errors.
+- the Arduino GPIO numbers in the mapping table, not the module pad numbers;
+- active-low button inputs with 10 kΩ external pull-ups;
+- falling/change-edge interrupts plus software debounce;
+- exactly one event per press and re-arm only after stable release;
+- `V_SNS_EN` control, ADC settling delay, battery calibration, and shutdown
+  of the divider after measurement;
+- a new valid session ID on every boot and a monotonically increasing sequence
+  within that session;
+- matching acknowledgement validation before removing an event from the
+  outbox;
+- local RED/BLUE LED blink feedback;
+- application heartbeat feedback on D4;
+- calibrated low-battery blink on D5 below 20%;
+- clean reconnect after Wi-Fi loss or backend application error;
+- USB Serial/JTAG programming through IO12/IO13 without using those pins for
+  buttons or LEDs.
 
-These behaviors should be retained when porting the sketch to the C6. The
-button pin table, LED implementation, board name, and any battery measurement
-code must be changed for the custom hardware.
+The firmware should parse the JSON response type and validate device ID,
+session ID, and sequence. It must not treat an arbitrary message containing
+the text `remote_ready` as a valid handshake response.
 
-The prototype’s response parser is intentionally small and should be hardened
-for the production C6 firmware: validate JSON `type`, device ID, session ID,
-and sequence before acknowledging/removing an outbox item. In particular, do
-not treat any message that merely contains the text `remote_ready` as a valid
-ready response. Keep application-ready state separate from transport-connected
-state, and force a clean reconnect after an authenticated application error.
+## Hardware sign-off checklist
 
-## Hardware-to-firmware sign-off checklist
+1. Use Arduino GPIO numbers from the mapping table in the final sketch.
+2. Confirm all eight button nets are active-low and have 3.3 V pull-ups.
+3. Verify GPIO8/GPIO15 button reset behavior and GPIO4/GPIO5 LED reset loading.
+4. Verify J3 bypass behavior, USB-to-battery isolation, and no unsafe
+   backfeed when a battery is fitted.
+5. Verify the MCP73831 charge current, Li-Po cell rating, thermal behavior,
+   termination behavior, and charge indication.
+6. Recalculate the TPS62821 feedback divider for the intended `+3V3` output;
+   the stated 435 kΩ/100 kΩ values require confirmation.
+7. Confirm the BSS138 divider switch leaves `V_SNS` within ADC limits in all
+   power, reset, and switch states.
+8. Confirm every LED has a safe current-limited off state when powered from
+   `V_IN` and sunk by a 3.3 V GPIO.
+9. Confirm the regulator, decoupling, EN/reset, antenna keep-out, module
+   ground, and USB/UART programming provisions against the module guidance.
+10. Confirm the final firmware reports real calibrated battery percentage and
+    does not retain the dummy value `100`.
 
-Before reviewing the final hardware project, confirm:
+## Backend bring-up test
 
-1. The schematic’s eight button nets exactly match the final C6 GPIO constants
-   in `firware.ino`.
-2. None of the button nets can force an unsafe C6 strapping level during reset.
-3. Every button is wired GPIO → switch → GND, with a 3.3 V external pull-up.
-4. The selected C6 Arduino board/core is supported and the sketch compiles
-   with the WebSockets library by Markus Sattler / Links2004.
-5. `LED_BUILTIN` is replaced by the actual status LED GPIO or a safe no-LED
-   implementation.
-6. The USB/JTAG or UART programming path remains available after all GPIO
-   assignments are made.
-7. The 3.3 V regulator, decoupling, EN/reset circuit, antenna keep-out, and
-   module ground/thermal connection follow the Espressif module guidance.
-8. Battery ADC hardware, if present, is protected and the firmware reports a
-   real calibrated percentage instead of `100`.
-9. Each physical unit has a unique `REMOTE_DEVICE_ID` and matching token.
-10. Each boot creates a new valid `sessionId`; Wi-Fi reconnects do not reset it.
-
-## Bring-up and backend test sequence
-
-Run the backend from the project root:
+From the software project root:
 
 ```bash
 npm install
@@ -376,44 +497,39 @@ npm test
 npm start
 ```
 
-For a physical C6 remote, set the server LAN IP, Wi-Fi credentials, device ID,
-and matching token in the sketch. Then:
+For a physical remote:
 
-1. Start the server and confirm it prints the LAN address and configured C1–C4
-   remote IDs.
-2. Open the scoreboard and select the matching remote mode in REMOTE SETTINGS.
-3. Confirm the remote serial log reaches WebSocket connected → remote hello →
-   remote accepted/ready.
-4. Use REMOTE SETTINGS test mode to press all eight controls. Confirm each
-   control appears for the correct corner and does not change the score.
-5. Start a round and connect one, two, three, and four remotes in separate
-   tests. Confirm the required vote counts 1/2/2/3.
-6. Test normal +1/+2/+3, both technical press orders, technical +1 rejection,
-   `CANCEL`, pause, round end, and remote-disabled behavior.
-7. Drop Wi-Fi or power-cycle the remote after sequence numbers have advanced.
-   A reboot must use a new session ID and score immediately after re-handshake.
-8. Reconnect Wi-Fi without rebooting. The same session may resume, queued
-   events must be retried, and duplicate delivery must not double-score.
-9. Leave the remote silent for at least 30 seconds and verify the dashboard
-   eventually shows it disconnected.
+1. Set the SFTS server LAN IP, Wi-Fi credentials, C1–C4 identity, and matching
+   token in the firmware.
+2. Start the server and confirm it prints port `8080` and configured remote
+   IDs.
+3. Open the scoreboard and select the matching remote count.
+4. Confirm WebSocket connected → validated `remote_ready` → `remote_state`.
+5. Use REMOTE SETTINGS test mode to press all eight buttons; confirm the
+   correct corner/button feedback and no score change.
+6. Test 1/2/3/4-remote majority behavior: required votes are 1/2/2/3.
+7. Test normal points, both technical press orders, technical +1 rejection,
+   pause, timer expiry, and remote-disabled behavior.
+8. Verify D2/D3 button blink, D4 application heartbeat, and D5 below-20%
+   battery indication.
+9. Power-cycle the remote after advancing its sequence. Confirm the new boot
+   session can score immediately after a new handshake.
+10. Reconnect Wi-Fi without rebooting. Confirm the same session resumes and a
+    retried event cannot double-score.
+11. Leave the remote silent for approximately 30 seconds and confirm the
+    scoreboard shows it disconnected.
 
-For protocol-only tests, use the simulator:
+For protocol-only testing without hardware:
 
 ```bash
 npm run simulate:remote -- C1 RED_2 1 ws://127.0.0.1:8080
 ```
 
-## Configuration examples
+## Component references
 
-The C1 values in the prototype sketch must correspond to the server’s
-`config/remote-config.json` entry:
-
-```cpp
-const char* REMOTE_DEVICE_ID = "C1";
-const char* REMOTE_TOKEN = "the-token-configured-for-C1";
-const uint16_t SERVER_PORT = 8080;
-const char* SERVER_PATH = "/";
-```
-
-For an event, flash each physical remote with its own ID/token pair. Do not
-use `SFTS_ALLOW_UNPAIRED_REMOTES=true` outside local development.
+- [ESP32-C6-MINI-1 datasheet](https://documentation.espressif.com/esp32-c6-mini-1_mini-1u_datasheet_en.html)
+- [ESP32-C6-MINI-1 datasheet copy provided with the hardware context](https://robu-prod-media.s3.ap-south-1.amazonaws.com/products/attachments/skN0ZLBl6zGuNZ3S3A5eiM3ADkTIXfNHUQ8hrQ1l.pdf)
+- [ESP32-C6 GPIO and interrupt reference](https://docs.espressif.com/projects/esp-idf/en/latest/esp32c6/api-reference/peripherals/gpio.html)
+- [Espressif ESP32-C6 hardware design guidelines](https://docs.espressif.com/projects/esp-hardware-design-guidelines/en/latest/esp32c6/schematic-checklist.html)
+- [MCP73831T-2ACI/OT datasheet](https://ww1.microchip.com/downloads/aemDocuments/documents/APID/ProductDocuments/DataSheets/MCP73831-Family-Data-Sheet-DS20001984H.pdf)
+- [TPS62821/TPS6282x datasheet](https://www.ti.com/lit/ds/symlink/tps62823.pdf)
