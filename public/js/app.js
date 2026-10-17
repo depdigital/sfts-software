@@ -537,11 +537,12 @@ function backFromTieDecision() {
 }
 async function decideTieWinner(player) {
   if (!lastState) return;
+  const roundOnly = lastState.tieDecision?.mode === "ROUND_WOO_SE_GIROK";
   const action = lastState.tieDecision?.mode === "GOLDEN_SUPERIORITY"
     ? "decideGoldenRoundSuperiority"
     : "decideWooSeGirok";
   const name = displayPlayerName(lastState, player);
-  if (await requestUserPermission(`Declare ${name} the match winner?`)) {
+  if (await requestUserPermission(`Declare ${name} the ${roundOnly ? `Round ${lastState.round} ` : "match "}winner?`)) {
     send({ type: "host", action, player });
   }
 }
@@ -582,18 +583,29 @@ function renderTieDecision(match) {
   $("tieDecisionBlueButton").textContent = `DECLARE "${blueName}" WINNER`;
 
   const choosingGoldenSuperiority = mode === "GOLDEN_SUPERIORITY";
-  const showingWinners = choosingGoldenSuperiority || tieDecisionView === "WOO";
+  const choosingRoundWoo = mode === "ROUND_WOO_SE_GIROK";
+  const choosingMatchWoo = mode === "MATCH_WOO_SE_GIROK";
+  const directWooDecision = choosingRoundWoo || choosingMatchWoo;
+  const showingWinners = choosingGoldenSuperiority || directWooDecision || tieDecisionView === "WOO";
   $("tieDecisionMethodActions").classList.toggle("hidden", showingWinners);
   $("tieDecisionWinnerActions").classList.toggle("hidden", !showingWinners);
-  $("tieDecisionBackButton").classList.toggle("hidden", choosingGoldenSuperiority);
+  $("tieDecisionBackButton").classList.toggle("hidden", choosingGoldenSuperiority || directWooDecision);
   const finalRound = scoringRules?.match?.rounds || 3;
   $("tieDecisionTitle").textContent = choosingGoldenSuperiority
     ? "GOLDEN ROUND SUPERIORITY"
+    : choosingRoundWoo
+      ? `ROUND ${match.tieDecision?.round || match.round} WOO-SE-GIROK`
+      : choosingMatchWoo
+        ? `ROUND ${finalRound} TIED — WOO-SE-GIROK`
     : tieDecisionView === "WOO"
       ? "WOO-SE-GIROK"
       : `ROUND ${finalRound} TIED`;
   $("tieDecisionMessage").textContent = choosingGoldenSuperiority
     ? "REFEREE DECISION REQUIRED"
+    : choosingRoundWoo
+      ? "SELECT THE ROUND WINNER"
+      : choosingMatchWoo
+        ? "SELECT THE MATCH WINNER"
     : tieDecisionView === "WOO"
       ? "SELECT THE MATCH WINNER"
       : goldenAvailable && wooAvailable
@@ -639,6 +651,32 @@ async function editGam(player) {
   const value = await requestUserInput(`Set ${player} gam-jeom`, current);
   if (value !== null)
     send({ type: "host", action: "editGamjeom", player, value: Number(value) });
+}
+
+async function editKickCounts(player) {
+  if (!lastState || lastState.phase !== "ROUND" || !lastState.roundStarted || lastState.timerMs <= 0) {
+    toast("KICK COUNTS CAN ONLY BE EDITED BEFORE THE ROUND TIMER EXPIRES");
+    return;
+  }
+  const side = player === "RED" ? lastState.red : lastState.blue;
+  const fields = [
+    ["technicalHead", "technical head kicks"],
+    ["technicalChest", "technical chest kicks"],
+    ["normalHead", "normal head kicks"]
+  ];
+  const stats = {};
+  for (const [key, label] of fields) {
+    const currentKey = key === "normalHead" ? "plus3" : key;
+    const value = await requestUserInput(`Set ${player} ${label}`, Number(side.stats?.[currentKey] || 0));
+    if (value === null) return;
+    const parsed = Number(value);
+    if (!Number.isSafeInteger(parsed) || parsed < 0) {
+      toast("KICK COUNTS MUST BE NON-NEGATIVE WHOLE NUMBERS");
+      return;
+    }
+    stats[key] = parsed;
+  }
+  send({ type: "host", action: "editRoundTieStats", player, stats });
 }
 
 function openSettings() {
@@ -2229,6 +2267,7 @@ window.manualHeadPoint = manualHeadPoint;
 window.manualGam = manualGam;
 window.editScore = editScore;
 window.editGam = editGam;
+window.editKickCounts = editKickCounts;
 window.openSettings = openSettings;
 window.closeSettings = closeSettings;
 window.resolveUserPermission = resolveUserPermission;

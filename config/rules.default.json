@@ -36,7 +36,8 @@
       "SINGLE_ELIMINATION",
       "TOURNAMENT_PLACEMENTS",
       "TOURNAMENT_DIVISIONS",
-      "RULE_PACK_V2"
+      "RULE_PACK_V2",
+      "ROUND_TIE_SUPERIORITY"
     ]
   },
 
@@ -103,7 +104,18 @@
       "difference": 15,
       "appliesToRounds": [1, 2, 3]
     },
-    "roundTie": { "type": "DRAW" },
+    // A tied round is decided by the first unequal kick count in this order.
+    // If all counts remain equal, Woo-se-girok decides only Rounds 1/2 and
+    // decides the match in the final regulation round.
+    "roundTie": {
+      "type": "SUPERIORITY",
+      "criteria": [
+        "TECHNICAL_HEAD_KICKS",
+        "TECHNICAL_CHEST_KICKS",
+        "NORMAL_HEAD_KICKS"
+      ],
+      "unresolved": "WOO_SE_GIROK"
+    },
     // The engine allows only these decision codes. Remove a code to hide it
     // from future referees; do not add a new code without engine support.
     "manualMatchDecisions": ["RSC", "WDR", "DSQ", "PUN", "DQB"],

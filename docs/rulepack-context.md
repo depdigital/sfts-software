@@ -24,6 +24,14 @@ An imported pack is written to the active data folder as strict JSON, so its com
 | `medical` | Kye-shi availability and limit. |
 | `tournament` | Supported tournament grouping and bracket behavior. |
 
+`decisions.roundTie` supports the legacy `{ "type": "DRAW" }` policy and a
+rule-pack-controlled `SUPERIORITY` policy. Superiority criteria are evaluated
+top to bottom, and the first unequal count decides the round. The supported
+criteria are `TECHNICAL_HEAD_KICKS`, `TECHNICAL_CHEST_KICKS`, and
+`NORMAL_HEAD_KICKS`. With `unresolved: "WOO_SE_GIROK"`, an unresolved tie in a
+non-final regulation round opens a round-only Woo-se-girok decision; an
+unresolved final regulation round opens a match Woo-se-girok decision.
+
 ## Golden Round and superiority
 
 `tieBreak.afterRegulation.options` must contain both `GOLDEN_ROUND` and `WOO_SE_GIROK`, and both options must be enabled in their own sections. This guarantees that a tied regulation match always offers Golden Round and Woo-se-girok alongside the operator's Back action.

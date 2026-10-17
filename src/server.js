@@ -12,6 +12,7 @@ import * as XLSX from "xlsx";
 import { createTts } from "./tts.js";
 import { createPersistence } from "./persistence.js";
 import { createManualArchive } from "./manualArchive.js";
+import { roundTieSuperiority } from "./roundTie.js";
 import {
   loadRules,
   readRulesFile,
@@ -67,7 +68,9 @@ const REMOTE_ACK_CACHE_SIZE = 100;
 const WS_MESSAGE_LIMIT = 120;
 const WS_MESSAGE_WINDOW_MS = 1000;
 const VOTE_SETTLE_MS = 750;
-const COALESCED_HOST_ACTIONS = new Set(['point', 'headPoint', 'technicalPoint', 'gamjeom', 'editScore', 'editGamjeom']);
+const COALESCED_HOST_ACTIONS = new Set([
+  'point', 'headPoint', 'technicalPoint', 'gamjeom', 'editScore', 'editGamjeom', 'editRoundTieStats'
+]);
 let TECHNICAL_COMBO_WINDOW_MS = rules.scoring.technicalInput.windowMilliseconds;
 let MIN_ACTIVE_REMOTES = rules.voting.minimumActiveRemotes;
 let MAX_ACTIVE_REMOTES = rules.voting.maximumActiveRemotes;
@@ -162,11 +165,18 @@ function configuredTieOptions() {
   ));
 }
 
+function tieDecisionOptions(mode) {
+  return ['ROUND_WOO_SE_GIROK', 'MATCH_WOO_SE_GIROK'].includes(mode)
+    ? ['WOO_SE_GIROK']
+    : configuredTieOptions();
+}
+
 function makeTieDecision() {
   return {
     pending: false,
     mode: null,
-    options: configuredTieOptions()
+    options: configuredTieOptions(),
+    round: null
   };
 }
 
@@ -748,6 +758,7 @@ function scoringRulesState() {
     technicalInput: deep(rules.scoring.technicalInput),
     gamJeomPointValue: rules.scoring.gamJeomPointValue,
     manualMatchDecisions: [...rules.decisions.manualMatchDecisions],
+    roundTie: deep(rules.decisions.roundTie),
     tieBreak: deep(rules.tieBreak),
     match: {
       rounds: rules.match.rounds,
@@ -839,11 +850,12 @@ function restorePersistedState(snapshot) {
     ...makeTieDecision(),
     ...(match.tieDecision && typeof match.tieDecision === 'object' ? match.tieDecision : {})
   };
-  if (!['CHOOSE_METHOD', 'GOLDEN_SUPERIORITY'].includes(match.tieDecision.mode)) {
+  if (!['CHOOSE_METHOD', 'GOLDEN_SUPERIORITY', 'ROUND_WOO_SE_GIROK', 'MATCH_WOO_SE_GIROK'].includes(match.tieDecision.mode)) {
     match.tieDecision.mode = null;
   }
   match.tieDecision.pending = match.phase === 'TIE_DECISION';
-  match.tieDecision.options = configuredTieOptions();
+  match.tieDecision.options = tieDecisionOptions(match.tieDecision.mode);
+  match.tieDecision.round = match.tieDecision.pending ? match.round : null;
   match.breakTarget = match.breakTarget === 'GOLDEN' ? 'GOLDEN' : 'REGULAR';
   match.breakMs = breakDurationForRound(match.configuredRoundMs);
   match.kyeShi.limitMs = KYESHI_LIMIT_MS;
@@ -2049,6 +2061,7 @@ function rulesSummary(rulePack) {
     gamJeomRoundLossAt: rulePack.penalties.gamJeom.roundLossAt,
     gamJeomMatchLossAt: rulePack.penalties.gamJeom.matchLossAt,
     pointGap: rulePack.decisions.pointGap,
+    roundTie: rulePack.decisions.roundTie,
     tieBreak: rulePack.tieBreak,
     winnerMethods: rulePack.decisions.winnerMethods,
     maximumActiveRemotes: rulePack.voting.maximumActiveRemotes,
@@ -2861,6 +2874,35 @@ function addTechnicalPoint(player, basePoints) {
   return { ok: true, points, basePoints, technical: true };
 }
 
+function editRoundTieStats(player, input) {
+  if (!validPlayer(player) || !operatorScoringIsAllowed()) {
+    return { ok: false, code: 'ROUND_NOT_ACTIVE', message: 'Kick counts can only be edited before the active round timer expires' };
+  }
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    return { ok: false, code: 'INVALID_KICK_COUNTS', message: 'Kick counts are required' };
+  }
+  const next = {
+    technicalHead: Number(input.technicalHead),
+    technicalChest: Number(input.technicalChest),
+    plus3: Number(input.normalHead)
+  };
+  if (Object.values(next).some(value => !Number.isSafeInteger(value) || value < 0)) {
+    return { ok: false, code: 'INVALID_KICK_COUNTS', message: 'Kick counts must be non-negative whole numbers' };
+  }
+
+  const stats = side(player).stats;
+  const labels = {
+    technicalHead: 'TECHNICAL HEAD KICKS EDIT',
+    technicalChest: 'TECHNICAL CHEST KICKS EDIT',
+    plus3: 'NORMAL HEAD KICKS EDIT'
+  };
+  for (const key of Object.keys(next)) {
+    if (stats[key] !== next[key]) recordOperatorCorrection(labels[key], player, stats[key], next[key]);
+    stats[key] = next[key];
+  }
+  return { ok: true };
+}
+
 function addGamjeom(player, allowPaused = false) {
   const canScore = allowPaused ? operatorScoringIsAllowed() : scoringIsAllowed();
   if (!validPlayer(player) || !canScore) return false;
@@ -2939,7 +2981,7 @@ function beginTieDecision(mode) {
   clearAllRemoteCombinations();
   clearLastRemoteButtons();
   clearVoteSettleGuard();
-  match.tieDecision = { pending: true, mode, options: configuredTieOptions() };
+  match.tieDecision = { pending: true, mode, options: tieDecisionOptions(mode), round: match.round };
   state(true);
 }
 
@@ -3010,24 +3052,20 @@ function endGoldenRound(winner = null, reason = 'TIME 0:00') {
   beginTieDecision('GOLDEN_SUPERIORITY');
 }
 
-function endRound(winner = null, reason = 'TIME 0:00') {
-  if (match.phase !== 'ROUND') return;
-  if (isGoldenRound()) {
-    endGoldenRound(winner, reason);
-    return;
-  }
-  match.running = false;
-  timerLastAt = null;
-  match.timerMs = 0;
-  const actualWinner = winner || winnerByScore();
-  const record = roundRecord(actualWinner, reason);
+function finishRegulationRound(winner, reason, { emitSound = true, forceMatchEnd = false } = {}) {
+  const record = roundRecord(winner, reason);
   clearAllRemoteCombinations();
   match.roundHistory.push(record);
   match.votes = {};
   clearRemoteScoreHighlights();
 
-  emit({ type: 'roundEndSound' });
+  if (emitSound) emit({ type: 'roundEndSound' });
   emit({ type: 'roundEnd', record });
+
+  if (forceMatchEnd) {
+    finishMatch(winner, reason);
+    return;
+  }
 
   const wins = countRoundWins();
   if (wins.RED >= rules.match.roundsRequiredToWin) {
@@ -3049,6 +3087,36 @@ function endRound(winner = null, reason = 'TIME 0:00') {
   match.timerMs = match.breakMs;
   setRunning(true);
   state(true);
+}
+
+function endRound(winner = null, reason = 'TIME 0:00') {
+  if (match.phase !== 'ROUND') return;
+  if (isGoldenRound()) {
+    endGoldenRound(winner, reason);
+    return;
+  }
+  match.running = false;
+  timerLastAt = null;
+  match.timerMs = 0;
+
+  let actualWinner = winner || winnerByScore();
+  let actualReason = reason;
+  if (!actualWinner && rules.decisions.roundTie.type === 'SUPERIORITY') {
+    const superiority = roundTieSuperiority(match.red, match.blue, rules.decisions.roundTie.criteria);
+    if (superiority) {
+      actualWinner = superiority.winner;
+      actualReason = superiority.reason;
+    } else if (rules.decisions.roundTie.unresolved === 'WOO_SE_GIROK') {
+      clearAllRemoteCombinations();
+      match.votes = {};
+      clearRemoteScoreHighlights();
+      emit({ type: 'roundEndSound' });
+      beginTieDecision(match.round < rules.match.rounds ? 'ROUND_WOO_SE_GIROK' : 'MATCH_WOO_SE_GIROK');
+      return;
+    }
+  }
+
+  finishRegulationRound(actualWinner, actualReason);
 }
 
 function finishMatch(winner, reason) {
@@ -3122,10 +3190,25 @@ function decideWooSeGirok(winner) {
   if (!configuredTieOptions().includes('WOO_SE_GIROK')) {
     return { ok: false, code: 'WOO_SE_GIROK_DISABLED', message: 'Woo-se-girok is disabled by the active rule pack' };
   }
-  if (match.phase !== 'TIE_DECISION' || match.tieDecision?.mode !== 'CHOOSE_METHOD') {
-    return { ok: false, code: 'WOO_SE_GIROK_UNAVAILABLE', message: `Woo-se-girok is available only for a tied match after Round ${rules.match.rounds}` };
+  if (match.phase !== 'TIE_DECISION') {
+    return { ok: false, code: 'WOO_SE_GIROK_UNAVAILABLE', message: 'Woo-se-girok is not currently required' };
   }
-  finishMatch(winner, `${rules.tieBreak.wooSeGirok.reasonCode} - WOO-SE-GIROK`);
+  const mode = match.tieDecision?.mode;
+  const reason = `${rules.tieBreak.wooSeGirok.reasonCode} - WOO-SE-GIROK`;
+  if (mode === 'ROUND_WOO_SE_GIROK') {
+    match.tieDecision = makeTieDecision();
+    finishRegulationRound(winner, reason, { emitSound: false });
+    return { ok: true };
+  }
+  if (mode === 'MATCH_WOO_SE_GIROK') {
+    match.tieDecision = makeTieDecision();
+    finishRegulationRound(winner, reason, { emitSound: false, forceMatchEnd: true });
+    return { ok: true };
+  }
+  if (mode !== 'CHOOSE_METHOD') {
+    return { ok: false, code: 'WOO_SE_GIROK_UNAVAILABLE', message: 'Woo-se-girok is not currently required' };
+  }
+  finishMatch(winner, reason);
   return { ok: true };
 }
 
@@ -3923,6 +4006,13 @@ wss.on('connection', ws => {
           finishMatch(other(msg.player), `PUN - ${rules.penalties.gamJeom.matchLossAt} TOTAL GAM-JEOMS`);
         } else if (value >= rules.penalties.gamJeom.roundLossAt) {
           endRound(other(msg.player), `ROUND GAM-JEOM LIMIT - ${rules.penalties.gamJeom.roundLossAt} GAM-JEOM`);
+        }
+      }
+      if (msg.action === 'editRoundTieStats') {
+        const result = editRoundTieStats(String(msg.player || '').toUpperCase(), msg.stats);
+        if (!result.ok) {
+          sendError(ws, result.code, result.message);
+          return;
         }
       }
       if (msg.action === 'point' && !addPoint(msg.player, Number(msg.points), 'manual', true, true)) {

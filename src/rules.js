@@ -1,6 +1,7 @@
 import { copyFile, lstat, mkdir, open, readFile, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ROUND_TIE_SUPERIORITY_CRITERIA } from './roundTie.js';
 
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_RULES_PATH = path.join(PROJECT_ROOT, 'config', 'rules.default.json');
@@ -18,7 +19,8 @@ const SUPPORTED_CAPABILITIES = new Set([
   'ROUND_GAMJEOM_LIMIT', 'MATCH_GAMJEOM_LIMIT', 'MAJORITY_VOTE',
   'TECHNICAL_COMBINATION', 'KYESHI_MANUAL_DECISION', 'GOLDEN_ROUND',
   'SUPERIORITY_DECISION', 'MANUAL_MATCH_DECISIONS', 'DYNAMIC_BREAK_DURATION',
-  'SINGLE_ELIMINATION', 'TOURNAMENT_PLACEMENTS', 'TOURNAMENT_DIVISIONS', 'RULE_PACK_V2'
+  'SINGLE_ELIMINATION', 'TOURNAMENT_PLACEMENTS', 'TOURNAMENT_DIVISIONS', 'RULE_PACK_V2',
+  'ROUND_TIE_SUPERIORITY'
 ]);
 const SUPPORTED_WINNER_METHODS = new Set([
   'FINAL_SCORE', 'POINT_GAP', 'ROUND_GAMJEOM_LIMIT', 'MATCH_GAMJEOM_LIMIT',
@@ -33,6 +35,7 @@ const SUPPORTED_SUPERIORITY_CRITERIA = new Set([
   'GOLDEN_ROUND_PUNCH', 'GOLDEN_ROUND_HIT_COUNT', 'REGULATION_ROUNDS_WON',
   'FEWER_TOTAL_GAMJEOMS', 'REFEREE_DECISION'
 ]);
+const SUPPORTED_ROUND_TIE_CRITERIA = new Set(ROUND_TIE_SUPERIORITY_CRITERIA);
 const DEFAULT_TOURNAMENT_PLACEMENTS = Object.freeze({
   enabled: true,
   thirdPlacePolicy: 'BOTH_SEMIFINAL_LOSERS',
@@ -431,7 +434,20 @@ export function validateRules(input) {
   requireBoolean(pointGap.enabled, 'decisions.pointGap.enabled'); requireInteger(pointGap.difference, 'decisions.pointGap.difference', { minimum: 1 });
   const pointGapRounds = requireNumberArray(pointGap.appliesToRounds, 'decisions.pointGap.appliesToRounds', { minimum: 1 });
   if (pointGapRounds.some(round => round > match.rounds)) fail('decisions.pointGap.appliesToRounds contains a round outside match.rounds');
-  if (decisions.roundTie?.type !== 'DRAW') fail('decisions.roundTie.type must be DRAW');
+  const roundTie = requireObject(decisions.roundTie, 'decisions.roundTie');
+  if (!['DRAW', 'SUPERIORITY'].includes(roundTie.type)) fail('decisions.roundTie.type must be DRAW or SUPERIORITY');
+  if (roundTie.type === 'SUPERIORITY') {
+    const roundCriteria = requireStringArray(roundTie.criteria, 'decisions.roundTie.criteria');
+    if (roundCriteria.some(item => !SUPPORTED_ROUND_TIE_CRITERIA.has(item))) {
+      fail('decisions.roundTie.criteria contains an unsupported criterion');
+    }
+    if (roundTie.unresolved !== 'WOO_SE_GIROK') {
+      fail('decisions.roundTie.unresolved must be WOO_SE_GIROK');
+    }
+    if (!capabilities.includes('ROUND_TIE_SUPERIORITY')) {
+      fail('ROUND_TIE_SUPERIORITY capability is required when decisions.roundTie.type is SUPERIORITY');
+    }
+  }
   const winnerMethods = requireStringArray(decisions.winnerMethods, 'decisions.winnerMethods');
   if (!winnerMethods.includes('FINAL_SCORE') || winnerMethods.some(method => !SUPPORTED_WINNER_METHODS.has(method))) fail('decisions.winnerMethods contains an unsupported or missing winner method');
   const manualDecisions = requireStringArray(decisions.manualMatchDecisions, 'decisions.manualMatchDecisions');
@@ -454,6 +470,8 @@ export function validateRules(input) {
   const wooSeGirok = requireObject(tieBreak.wooSeGirok, 'tieBreak.wooSeGirok'); requireBoolean(wooSeGirok.enabled, 'tieBreak.wooSeGirok.enabled'); requireString(wooSeGirok.reasonCode, 'tieBreak.wooSeGirok.reasonCode');
   if (afterRegulation.options.includes('GOLDEN_ROUND') && !goldenRound.enabled) fail('Golden Round is selected but disabled');
   if (afterRegulation.options.includes('WOO_SE_GIROK') && !wooSeGirok.enabled) fail('Woo-se-girok is selected but disabled');
+  if (roundTie.type === 'SUPERIORITY' && !wooSeGirok.enabled) fail('Round-tie superiority requires Woo-se-girok');
+  if (roundTie.type === 'SUPERIORITY' && !winnerMethods.includes('SUPERIORITY')) fail('SUPERIORITY is required for round-tie superiority');
   if (afterRegulation.options.includes('GOLDEN_ROUND') && !winnerMethods.includes('GOLDEN_POINTS')) fail('GOLDEN_POINTS is required when Golden Round is selected');
   if (goldenRound.enabled && goldenRound.onTimeExpiry === 'SUPERIORITY' && !winnerMethods.includes('SUPERIORITY')) fail('SUPERIORITY is required for the configured Golden Round expiry rule');
 

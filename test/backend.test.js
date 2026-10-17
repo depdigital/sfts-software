@@ -1,11 +1,12 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { readFile, rm } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import WebSocket from 'ws';
 import * as XLSX from 'xlsx';
+import { readRulesFile } from '../src/rules.js';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const testDataDir = path.join(projectRoot, 'data', `backend-test-${process.pid}`);
@@ -59,6 +60,11 @@ async function assign(ws, role, corner, accessToken = 'test-host-token') {
 }
 
 before(async () => {
+  await mkdir(testDataDir, { recursive: true });
+  const legacyDrawRules = await readRulesFile(path.join(projectRoot, 'config', 'rules.default.json'));
+  legacyDrawRules.decisions.roundTie = { type: 'DRAW' };
+  const testRulesPath = path.join(testDataDir, 'backend-test-rules.json');
+  await writeFile(testRulesPath, JSON.stringify(legacyDrawRules));
   serverProcess = spawn(process.execPath, ['src/server.js'], {
     cwd: projectRoot,
     env: {
@@ -66,6 +72,7 @@ before(async () => {
       PORT: String(port),
       SFTS_ALLOW_UNPAIRED_REMOTES: 'true',
       SFTS_DATA_DIR: testDataDir,
+      SFTS_RULES_FILE: testRulesPath,
       SFTS_BREAK_MS: '50',
       SFTS_KYESHI_LIMIT_MS: '1000',
       SFTS_HOST_TOKEN: 'test-host-token',
@@ -96,7 +103,11 @@ after(async () => {
   for (const ws of clients) {
     if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) ws.close();
   }
-  if (serverProcess && !serverProcess.killed) serverProcess.kill();
+  if (serverProcess && serverProcess.exitCode === null) {
+    const exited = new Promise(resolve => serverProcess.once('exit', resolve));
+    serverProcess.kill();
+    await exited;
+  }
   await rm(testDataDir, { recursive: true, force: true });
 });
 
@@ -119,15 +130,6 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   });
   assert.equal(rulesStatus.status, 200);
   assert.equal((await rulesStatus.json()).activeRuleset.id, 'sfts-current');
-  const defaultRulesResponse = await fetch(`http://127.0.0.1:${port}/api/rules/default`, {
-    method: 'POST',
-    headers: { 'X-SFTS-Host-Token': hostRole.hostToken }
-  });
-  assert.equal(defaultRulesResponse.status, 200);
-  const defaultRulesBody = await defaultRulesResponse.json();
-  assert.equal(defaultRulesBody.message, 'DEFAULT RULESET LOADED');
-  assert.equal(defaultRulesBody.summary.basePointLabels['2'], 'CHEST');
-
   host.send(JSON.stringify({ type: 'host', action: 'setArenaNumber', value: '12' }));
   const arenaState = await waitForMessage(host, message => message.type === 'state' && message.arenaNumber === '12');
   assert.equal(arenaState.arenaNumber, '12');
@@ -792,6 +794,16 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   ));
   assert.equal(goldenWinner.match.roundHistory.at(-1).goldenRound, true);
 
+  const defaultRulesResponse = await fetch(`http://127.0.0.1:${port}/api/rules/default`, {
+    method: 'POST',
+    headers: { 'X-SFTS-Host-Token': hostRole.hostToken }
+  });
+  assert.equal(defaultRulesResponse.status, 200);
+  const defaultRulesBody = await defaultRulesResponse.json();
+  assert.equal(defaultRulesBody.message, 'DEFAULT RULESET LOADED');
+  assert.equal(defaultRulesBody.summary.basePointLabels['2'], 'CHEST');
+  assert.equal(defaultRulesBody.summary.roundTie.type, 'SUPERIORITY');
+
   host.send(JSON.stringify({ type: 'host', action: 'resetMatch' }));
   await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'ROUND' && message.match.round === 1);
   host.send(JSON.stringify({ type: 'host', action: 'manualMatchDecision', player: 'BLUE', decision: 'RSC' }));
@@ -929,6 +941,8 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(html, /id="summaryBlueTechnicalChest"/);
   assert.match(html, /id="summaryBlueTechnicalHead"/);
   assert.match(html, /id="tieDecisionModal"/);
+  assert.match(html, /onclick="editKickCounts\('RED'\)"/);
+  assert.match(html, /onclick="editKickCounts\('BLUE'\)"/);
   assert.match(html, /onclick="startGoldenRound\(\)"/);
   assert.match(html, /PROCEED TO GOLDEN ROUND \(ROUND 4\)/);
   assert.match(html, /onclick="backFromTieDecision\(\)"/);
@@ -1000,6 +1014,9 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(jsText, /renderTieDecision\(match\)/);
   assert.match(jsText, /function backFromTieDecision\(\)/);
   assert.match(jsText, /decideGoldenRoundSuperiority/);
+  assert.match(jsText, /ROUND_WOO_SE_GIROK/);
+  assert.match(jsText, /MATCH_WOO_SE_GIROK/);
+  assert.match(jsText, /function editKickCounts\(player\)/);
   assert.match(jsText, /v\?\.button \|\| "—"/);
   assert.match(jsText, /match\.phase === "ROUND" && match\.running === true/);
   assert.match(jsText, /matchClockRunning/);

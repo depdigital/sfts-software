@@ -24,6 +24,11 @@ test('the built-in ruleset is valid and describes the current behavior', async (
   assert.equal(rules.scoring.basePointLabels['1'], 'PUNCH');
   assert.equal(rules.scoring.technicalInput.pointsByBasePoints['3'], 6);
   assert.equal(rules.decisions.pointGap.difference, 15);
+  assert.deepEqual(rules.decisions.roundTie, {
+    type: 'SUPERIORITY',
+    criteria: ['TECHNICAL_HEAD_KICKS', 'TECHNICAL_CHEST_KICKS', 'NORMAL_HEAD_KICKS'],
+    unresolved: 'WOO_SE_GIROK'
+  });
   assert.equal(rules.penalties.gamJeom.roundLossAt, 5);
   assert.equal(rules.tieBreak.goldenRound.scoreToWin, 2);
   assert.equal(rules.match.breakDurationPolicy.tiers[0].breakDurationSeconds, 60);
@@ -49,6 +54,22 @@ test('the built-in ruleset is valid and describes the current behavior', async (
     source: 'Built-in SFTS rules',
     schemaVersion: 2
   });
+});
+
+test('round-tie superiority is rule-pack controlled while legacy draws remain valid', async () => {
+  const rules = await defaultRules();
+  rules.decisions.roundTie.criteria = ['NORMAL_HEAD_KICKS', 'TECHNICAL_HEAD_KICKS'];
+  assert.deepEqual(validateRules(rules).decisions.roundTie.criteria, ['NORMAL_HEAD_KICKS', 'TECHNICAL_HEAD_KICKS']);
+
+  rules.decisions.roundTie = { type: 'DRAW' };
+  assert.deepEqual(validateRules(rules).decisions.roundTie, { type: 'DRAW' });
+
+  rules.decisions.roundTie = {
+    type: 'SUPERIORITY',
+    criteria: ['TECHNICAL_HEAD_KICKS', 'UNKNOWN_KICKS'],
+    unresolved: 'WOO_SE_GIROK'
+  };
+  assert.throws(() => validateRules(rules), /unsupported criterion/);
 });
 
 test('unsupported rule capabilities are rejected instead of being silently ignored', async () => {
