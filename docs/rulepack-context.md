@@ -29,8 +29,9 @@ rule-pack-controlled `SUPERIORITY` policy. Superiority criteria are evaluated
 top to bottom, and the first unequal count decides the round. The supported
 criteria are `TECHNICAL_HEAD_KICKS`, `TECHNICAL_CHEST_KICKS`, and
 `NORMAL_HEAD_KICKS`. With `unresolved: "WOO_SE_GIROK"`, an unresolved tie in a
-non-final regulation round opens a round-only Woo-se-girok decision; an
-unresolved final regulation round opens a match Woo-se-girok decision.
+non-final regulation round opens a round-only Woo-se-girok decision. An
+unresolved final regulation round is recorded as tied and follows
+`tieBreak.afterRegulation`, offering Golden Round or match-level Woo-se-girok.
 
 ## Golden Round and superiority
 

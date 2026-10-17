@@ -3110,9 +3110,11 @@ function endRound(winner = null, reason = 'TIME 0:00') {
       clearAllRemoteCombinations();
       match.votes = {};
       clearRemoteScoreHighlights();
-      emit({ type: 'roundEndSound' });
-      beginTieDecision(match.round < rules.match.rounds ? 'ROUND_WOO_SE_GIROK' : 'MATCH_WOO_SE_GIROK');
-      return;
+      if (match.round < rules.match.rounds) {
+        emit({ type: 'roundEndSound' });
+        beginTieDecision('ROUND_WOO_SE_GIROK');
+        return;
+      }
     }
   }
 

@@ -75,7 +75,7 @@ async function setTiedRound(host, score, redStats, blueStats) {
   ));
 }
 
-test('round superiority, round Woo-se-girok, final Woo-se-girok, and expiry locking work end to end', async t => {
+test('round superiority, round Woo-se-girok, final tie choices, and expiry locking work end to end', async t => {
   const server = spawn(process.execPath, ['src/server.js'], {
     cwd: projectRoot,
     env: {
@@ -173,15 +173,17 @@ test('round superiority, round Woo-se-girok, final Woo-se-girok, and expiry lock
   await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'ROUND' && message.match.round === 3);
 
   await startRound(host, 3);
-  const matchWoo = await waitForMessage(host, message => (
-    message.type === 'state' && message.match.phase === 'TIE_DECISION' &&
-    message.match.tieDecision?.mode === 'MATCH_WOO_SE_GIROK'
+  const finalRound = await waitForMessage(host, message => (
+    message.type === 'roundEnd' && message.record.round === 3
   ));
-  assert.deepEqual(matchWoo.match.tieDecision.options, ['WOO_SE_GIROK']);
+  assert.equal(finalRound.record.winner, null);
+  assert.equal(finalRound.record.reason, 'TIME 0:00');
+  const finalTieChoices = await waitForMessage(host, message => (
+    message.type === 'state' && message.match.phase === 'TIE_DECISION' &&
+    message.match.tieDecision?.mode === 'CHOOSE_METHOD'
+  ));
+  assert.deepEqual(finalTieChoices.match.tieDecision.options, ['GOLDEN_ROUND', 'WOO_SE_GIROK']);
   hostAction(host, 'decideWooSeGirok', { player: 'BLUE' });
-  const finalRound = await waitForMessage(host, message => message.type === 'roundEnd' && message.record.round === 3);
-  assert.equal(finalRound.record.winner, 'BLUE');
-  assert.equal(finalRound.record.reason, 'SUP - WOO-SE-GIROK');
   const matchEnd = await waitForMessage(host, message => message.type === 'matchEnd');
   assert.equal(matchEnd.winner, 'BLUE');
   assert.equal(matchEnd.reason, 'SUP - WOO-SE-GIROK');
