@@ -137,12 +137,6 @@ button {
   padding: clamp(14px, 2.5vh, 24px);
   overflow: hidden;
 }
-.homeSportsLogo {
-  width: min(300px, 52vw);
-  max-height: 13vh;
-  object-fit: contain;
-  margin-bottom: clamp(-28px, -3vh, -16px);
-}
 .homeLogo {
   width: min(1500px, 100%);
   max-height: min(50vh, 600px);
@@ -156,6 +150,35 @@ button {
   font-weight: 800;
   letter-spacing: 0.12em;
   text-align: center;
+}
+.homeSportsBy {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: clamp(58px, 7.5vh, 68px);
+  gap: 8px;
+  color: rgba(217, 224, 238, 0.68);
+  font-size: clamp(10px, 0.85vw, 13px);
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  transform: translateX(6px);
+}
+.homeSportsLogoWindow {
+  position: relative;
+  display: block;
+  flex: 0 0 102px;
+  width: 102px;
+  height: 100%;
+  overflow: hidden;
+}
+.homeSportsLogo {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 170px;
+  height: auto;
+  object-fit: contain;
+  transform: translate(-50%, -50%);
 }
 .homeBtn {
   width: min(400px, 86vw);
