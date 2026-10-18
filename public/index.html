@@ -570,9 +570,13 @@
 
     <section id="manualDeleteCategoryModal" class="overlay hidden">
       <div class="modalCard smallModal manualDeleteCategoryModal">
-        <h2>DELETE CATEGORY?</h2>
+        <h2 id="manualDeleteCategoryTitle">DELETE CATEGORY?</h2>
         <p id="manualDeleteCategoryMessage"></p>
         <div id="manualDeleteCategorySummary" class="manualDeleteCategorySummary"></div>
+        <label id="manualDeleteCategoryConfirmationField" class="manualDeleteCategoryConfirmation hidden">
+          <span id="manualDeleteCategoryConfirmationLabel"></span>
+          <input id="manualDeleteCategoryConfirmation" autocomplete="off" spellcheck="false" oninput="updateManualCategoryDeleteConfirmation()" />
+        </label>
         <p id="manualDeleteCategoryError" class="manualEntryError hidden" role="alert"></p>
         <div class="manualDeleteCategoryActions">
           <button onclick="closeManualCategoryDelete()">CANCEL</button>

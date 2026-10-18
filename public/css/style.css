@@ -1430,6 +1430,25 @@ button {
   font-size: 13px;
   font-weight: 800;
 }
+.manualDeleteCategoryConfirmation {
+  display: grid;
+  gap: 7px;
+  margin: 14px 0;
+  color: #ffbdc8;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+}
+.manualDeleteCategoryConfirmation input {
+  width: 100%;
+  box-sizing: border-box;
+  border-color: rgba(255, 70, 92, 0.72);
+  text-transform: uppercase;
+}
+.manualDeleteCategoryModal.advancedDelete {
+  border-color: rgba(255, 70, 92, 0.75);
+  box-shadow: 0 20px 70px rgba(111, 0, 18, 0.46);
+}
 .manualDeleteCategoryActions {
   justify-content: flex-end;
 }

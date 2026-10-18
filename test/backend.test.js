@@ -979,6 +979,7 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(html, /id="manualWizardReview"/);
   assert.match(html, /id="manualDeleteCategoryButton"/);
   assert.match(html, /id="manualDeleteCategoryModal"/);
+  assert.match(html, /id="manualDeleteCategoryConfirmation"/);
   assert.match(html, /id="dataImportModal"/);
   assert.match(html, /id="manualCategoryResultsModal"/);
   assert.match(html, /id="practiceModeModal"/);
@@ -1112,8 +1113,11 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(jsText, /action: "advancedScoreCorrection"/);
   assert.match(jsText, /function manualWizardValidation\(step\)/);
   assert.match(jsText, /action: "deleteManualCategory"/);
+  assert.match(jsText, /function manualCategoryDeleteConfirmationPhrase\(category\)/);
+  assert.match(jsText, /deleteRecords: Boolean\(confirmation\)/);
   assert.match(serverSource, /function correctScoringAction\(player, direction, actionKey\)/);
-  assert.match(serverSource, /function deleteManualCategory\(categoryId\)/);
+  assert.match(serverSource, /function deleteManualCategory\(categoryId, \{ deleteRecords = false, confirmation = '' \} = \{\}\)/);
+  assert.match(serverSource, /MANUAL_CATEGORY_DELETE_CONFIRMATION_REQUIRED/);
   assert.match(serverSource, /SCORING_ACTION_CORRECTION/);
   assert.match(serverSource, /CORRECTION_REASON_REQUIRED/);
   assert.match(jsText, /v\?\.button \|\| "—"/);

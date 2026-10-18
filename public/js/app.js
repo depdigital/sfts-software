@@ -122,8 +122,8 @@ function connectSocket() {
       }
       if (manualDeletePendingCategoryId) {
         manualDeletePendingCategoryId = "";
-        $("manualConfirmDeleteCategoryButton").disabled = false;
         showManualDeleteError(msg.message || "COULD NOT DELETE THE CATEGORY");
+        updateManualCategoryDeleteConfirmation();
       }
       if (manualNextBoutPending) {
         manualNextBoutPending = false;
@@ -1263,10 +1263,14 @@ function manualCategorySummary(category = manualSelectedCategory()) {
 
 function manualCategoryDeleteReason(category) {
   if (!category) return "";
-  const completedBouts = manualCategoryBoutCount(category);
   if (lastState?.manualBout?.categoryId === category.id) return "THIS CATEGORY IS CURRENTLY LOADED ON THE SCOREBOARD";
-  if (completedBouts > 0) return `${completedBouts} COMPLETED BOUT${completedBouts === 1 ? "" : "S"} · OFFICIAL RECORDS CANNOT BE DELETED`;
-  if (category.status === "FINALIZED") return "FINALIZED CATEGORIES CANNOT BE DELETED";
+  return "";
+}
+
+function manualCategoryDeleteConfirmationPhrase(category) {
+  const completedBouts = manualCategoryBoutCount(category);
+  if (completedBouts > 0) return `DELETE ${completedBouts} BOUT${completedBouts === 1 ? "" : "S"}`;
+  if (category?.status === "FINALIZED") return "DELETE FINALIZED CATEGORY";
   return "";
 }
 
@@ -1283,7 +1287,16 @@ function renderManualCategoryState() {
   const reason = manualCategoryDeleteReason(category);
   const completedBouts = manualCategoryBoutCount(category);
   button.disabled = Boolean(reason);
-  status.textContent = reason || `OPEN · ${completedBouts} COMPLETED BOUTS · SAFE TO DELETE`;
+  button.textContent = completedBouts > 0
+    ? `DELETE CATEGORY + ${completedBouts} BOUT${completedBouts === 1 ? "" : "S"}`
+    : category.status === "FINALIZED"
+      ? "DELETE FINALIZED CATEGORY"
+      : "DELETE CATEGORY";
+  status.textContent = reason || (completedBouts > 0
+    ? `${completedBouts} COMPLETED BOUT${completedBouts === 1 ? "" : "S"} · ADVANCED PERMANENT DELETE AVAILABLE`
+    : category.status === "FINALIZED"
+      ? "FINALIZED · ADVANCED PERMANENT DELETE AVAILABLE"
+      : "OPEN · 0 COMPLETED BOUTS · SAFE TO DELETE");
 }
 
 function manualReviewRow(label, value) {
@@ -1531,16 +1544,44 @@ function openManualCategoryDelete() {
     showManualEntryError(reason);
     return;
   }
-  $("manualDeleteCategoryMessage").textContent = "This category has no completed bouts. Deletion is permanent and cannot be undone.";
+  const completedBouts = manualCategoryBoutCount(category);
+  const confirmation = manualCategoryDeleteConfirmationPhrase(category);
+  const advanced = Boolean(confirmation);
+  $("manualDeleteCategoryTitle").textContent = advanced ? "ADVANCED PERMANENT DELETE" : "DELETE CATEGORY?";
+  $("manualDeleteCategoryMessage").textContent = completedBouts > 0
+    ? `This will permanently delete this category, all ${completedBouts} official bout record${completedBouts === 1 ? "" : "s"}, and their entries in match history. This cannot be undone.`
+    : category.status === "FINALIZED"
+      ? "This will permanently delete the finalized category. This cannot be undone."
+      : "This category has no completed bouts. Deletion is permanent and cannot be undone.";
   $("manualDeleteCategorySummary").textContent = manualCategoryLabel(category);
+  $("manualDeleteCategoryModal").classList.toggle("advancedDelete", advanced);
+  $("manualDeleteCategoryConfirmationField").classList.toggle("hidden", !advanced);
+  $("manualDeleteCategoryConfirmationLabel").textContent = advanced ? `TYPE ${confirmation} TO CONFIRM` : "";
+  $("manualDeleteCategoryConfirmation").value = "";
+  $("manualConfirmDeleteCategoryButton").textContent = completedBouts > 0
+    ? `DELETE CATEGORY + ${completedBouts} BOUT${completedBouts === 1 ? "" : "S"}`
+    : "DELETE PERMANENTLY";
   showManualDeleteError("");
-  $("manualConfirmDeleteCategoryButton").disabled = false;
   $("manualDeleteCategoryModal").classList.remove("hidden");
+  updateManualCategoryDeleteConfirmation();
+  if (advanced) $("manualDeleteCategoryConfirmation").focus();
 }
 
 function closeManualCategoryDelete() {
   if (manualDeletePendingCategoryId) return;
   $("manualDeleteCategoryModal").classList.add("hidden");
+  $("manualDeleteCategoryConfirmation").value = "";
+  showManualDeleteError("");
+}
+
+function updateManualCategoryDeleteConfirmation() {
+  const category = manualSelectedCategory();
+  const confirmation = category ? manualCategoryDeleteConfirmationPhrase(category) : "";
+  const typed = $("manualDeleteCategoryConfirmation")?.value.trim().toUpperCase() || "";
+  const confirmed = !confirmation || typed === confirmation;
+  if ($("manualConfirmDeleteCategoryButton")) {
+    $("manualConfirmDeleteCategoryButton").disabled = Boolean(manualDeletePendingCategoryId) || !confirmed;
+  }
 }
 
 function confirmManualCategoryDelete() {
@@ -1551,10 +1592,23 @@ function confirmManualCategoryDelete() {
     showManualDeleteError(reason);
     return;
   }
+  const confirmation = manualCategoryDeleteConfirmationPhrase(category);
+  const typed = $("manualDeleteCategoryConfirmation")?.value.trim().toUpperCase() || "";
+  if (confirmation && typed !== confirmation) {
+    showManualDeleteError(`TYPE ${confirmation} EXACTLY TO CONTINUE`);
+    updateManualCategoryDeleteConfirmation();
+    return;
+  }
   manualDeletePendingCategoryId = category.id;
   $("manualConfirmDeleteCategoryButton").disabled = true;
   showManualDeleteError("");
-  send({ type: "host", action: "deleteManualCategory", categoryId: category.id });
+  send({
+    type: "host",
+    action: "deleteManualCategory",
+    categoryId: category.id,
+    deleteRecords: Boolean(confirmation),
+    confirmation,
+  });
 }
 
 function handleManualEntryState(match) {

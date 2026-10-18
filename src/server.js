@@ -1624,7 +1624,28 @@ function saveManualBout(input) {
   return { ok: true, categoryId: category.id };
 }
 
-function deleteManualCategory(categoryId) {
+function manualCategoryCompletedRecordIds(category) {
+  const ids = new Set(
+    Array.isArray(category?.matchRecordIds)
+      ? category.matchRecordIds.map(id => String(id || '').trim()).filter(Boolean)
+      : []
+  );
+  for (const record of manualMatchRecords) {
+    if (record.manualBout?.categoryId === category?.id && record.id) ids.add(String(record.id));
+  }
+  for (const record of matchHistory) {
+    if (record.manualBout?.categoryId === category?.id && record.id) ids.add(String(record.id));
+  }
+  return ids;
+}
+
+function manualCategoryDeleteConfirmation(category, completedBoutCount) {
+  if (completedBoutCount > 0) return `DELETE ${completedBoutCount} BOUT${completedBoutCount === 1 ? '' : 'S'}`;
+  if (category.status === 'FINALIZED') return 'DELETE FINALIZED CATEGORY';
+  return '';
+}
+
+function deleteManualCategory(categoryId, { deleteRecords = false, confirmation = '' } = {}) {
   const id = String(categoryId || '').trim();
   const index = manualCompetition.categories.findIndex(category => category.id === id);
   if (index < 0) {
@@ -1634,18 +1655,33 @@ function deleteManualCategory(categoryId) {
   if (match.manualBout?.categoryId === id) {
     return { ok: false, code: 'MANUAL_CATEGORY_IN_USE', message: 'This category is currently loaded on the scoreboard' };
   }
-  const hasCompletedBouts = category.matchRecordIds.length > 0 || manualMatchRecords.some(record => (
-    record.manualBout?.categoryId === id
-  ));
-  if (hasCompletedBouts) {
+  const completedRecordIds = manualCategoryCompletedRecordIds(category);
+  const completedBoutCount = completedRecordIds.size;
+  const expectedConfirmation = manualCategoryDeleteConfirmation(category, completedBoutCount);
+  if (completedBoutCount > 0 && deleteRecords !== true) {
     return { ok: false, code: 'MANUAL_CATEGORY_NOT_EMPTY', message: 'Categories with completed bouts cannot be deleted because their official records must be preserved' };
   }
-  if (category.status === 'FINALIZED') {
+  if (category.status === 'FINALIZED' && deleteRecords !== true) {
     return { ok: false, code: 'MANUAL_CATEGORY_FINALIZED', message: 'Finalized categories cannot be deleted' };
   }
+  if (expectedConfirmation && String(confirmation || '').trim().toUpperCase() !== expectedConfirmation) {
+    return {
+      ok: false,
+      code: 'MANUAL_CATEGORY_DELETE_CONFIRMATION_REQUIRED',
+      message: `Type ${expectedConfirmation} exactly to permanently delete this category${completedBoutCount ? ' and its official bout records' : ''}`
+    };
+  }
+  const manualRecordCountBefore = manualMatchRecords.length;
+  const historyCountBefore = matchHistory.length;
+  manualMatchRecords = manualMatchRecords.filter(record => record.manualBout?.categoryId !== id);
+  matchHistory = matchHistory.filter(record => record.manualBout?.categoryId !== id);
   manualCompetition.categories.splice(index, 1);
   persistManualArchive();
-  return { ok: true };
+  return {
+    ok: true,
+    deletedManualRecords: manualRecordCountBefore - manualMatchRecords.length,
+    deletedHistoryRecords: historyCountBefore - matchHistory.length
+  };
 }
 
 function manualCategoryParticipants(categoryId) {
@@ -4109,7 +4145,10 @@ wss.on('connection', ws => {
         }
       }
       if (msg.action === 'deleteManualCategory') {
-        const result = deleteManualCategory(msg.categoryId);
+        const result = deleteManualCategory(msg.categoryId, {
+          deleteRecords: msg.deleteRecords === true,
+          confirmation: msg.confirmation
+        });
         if (!result.ok) {
           sendError(ws, result.code, result.message);
           return;

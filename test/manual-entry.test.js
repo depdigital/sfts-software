@@ -125,6 +125,14 @@ test('manual categories are rulepack validated and preserve official bout eviden
 
   host.send(JSON.stringify({ type: 'host', action: 'deleteManualCategory', categoryId: category.id }));
   assert.equal((await waitFor(host, message => message.type === 'error')).code, 'MANUAL_CATEGORY_IN_USE');
+  host.send(JSON.stringify({
+    type: 'host',
+    action: 'deleteManualCategory',
+    categoryId: category.id,
+    deleteRecords: true,
+    confirmation: 'DELETE 1 BOUT'
+  }));
+  assert.equal((await waitFor(host, message => message.type === 'error')).code, 'MANUAL_CATEGORY_IN_USE');
 
   host.send(JSON.stringify({
     type: 'host',
@@ -249,4 +257,39 @@ test('manual categories are rulepack validated and preserve official bout eviden
   assert.equal(officialAfterPractice.match.practiceMatchNo, null);
   assert.equal(officialAfterPractice.match.red.playerName, '');
   assert.equal(officialAfterPractice.matchHistory.length, 1);
+
+  host.send(JSON.stringify({
+    type: 'host',
+    action: 'deleteManualCategory',
+    categoryId: category.id,
+    deleteRecords: true,
+    confirmation: 'DELETE 99 BOUTS'
+  }));
+  const wrongDeleteConfirmation = await waitFor(host, message => message.type === 'error');
+  assert.equal(wrongDeleteConfirmation.code, 'MANUAL_CATEGORY_DELETE_CONFIRMATION_REQUIRED');
+  assert.match(wrongDeleteConfirmation.message, /DELETE 1 BOUT/);
+
+  host.send(JSON.stringify({
+    type: 'host',
+    action: 'deleteManualCategory',
+    categoryId: category.id,
+    deleteRecords: true,
+    confirmation: 'DELETE 1 BOUT'
+  }));
+  const afterAdvancedDelete = await waitFor(host, message => (
+    message.type === 'state' && !message.manualCompetition.categories.some(item => item.id === category.id)
+  ));
+  assert.equal(afterAdvancedDelete.matchHistory.length, 0);
+
+  const deletedArchiveResponse = await fetch(`http://127.0.0.1:${port}/api/manual/categories?categoryId=${encodeURIComponent(category.id)}`, {
+    headers: { 'X-SFTS-Host-Token': role.hostToken }
+  });
+  assert.equal(deletedArchiveResponse.status, 404);
+
+  await new Promise(resolve => setTimeout(resolve, 300));
+  const liveSnapshotAfterDelete = JSON.parse(await readFile(path.join(dataDir, 'sfts-state.json'), 'utf8'));
+  const officialArchiveAfterDelete = JSON.parse(await readFile(path.join(dataDir, 'manual-results.json'), 'utf8'));
+  assert.equal(liveSnapshotAfterDelete.matchHistory.length, 0);
+  assert.equal(officialArchiveAfterDelete.manualCompetition.categories.length, 0);
+  assert.equal(officialArchiveAfterDelete.records.length, 0);
 });
