@@ -1054,11 +1054,12 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(cssText, /\.screensaver[\s\S]*background-image: url\("\/assets\/tkd_cover\.png"\)/);
   assert.match(cssText, /\.screensaver[\s\S]*background-position: right center/);
   assert.match(cssText, /\.homeScreen\s*\{[^}]*height:\s*100vh[^}]*overflow:\s*hidden/);
-  assert.match(cssText, /\.homeSportsBackdrop\s*\{[^}]*right:\s*-10vw[^}]*opacity:\s*0\.09/);
+  assert.match(cssText, /\.homeSportsBackdrop\s*\{[^}]*top:\s*11%[^}]*left:\s*50%[^}]*width:\s*min\(92vw, 1450px\)/);
   assert.match(cssText, /\.homeLogo\s*\{[^}]*width:\s*min\(1500px, 100%\)/);
   assert.doesNotMatch(cssText, /\.screensaver\s*\{[^}]*transition:/);
   assert.match(cssText, /\.screensaverContent img[\s\S]*animation: screensaverLogoCycle 5s ease-in-out infinite/);
-  assert.match(cssText, /\.homeBtn[\s\S]*animation: homeLaunchGlow 2s ease-in-out infinite/);
+  assert.match(cssText, /\.homeBtn[\s\S]*animation: homeLaunchGlow 1\.45s ease-in-out infinite/);
+  assert.match(cssText, /\.homeBtn:active[\s\S]*scale\(0\.985\)/);
   assert.match(cssText, /@keyframes homeLaunchGlow/);
   assert.match(cssText, /screensaverLogoCycle[\s\S]*transform: scale\(2\.5\)/);
   assert.match(cssText, /\.controlGrid button[\s\S]*cursor: pointer/);
