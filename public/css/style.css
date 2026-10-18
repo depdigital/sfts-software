@@ -145,14 +145,14 @@ button {
 }
 .homeSportsBackdrop {
   position: absolute;
-  top: 11%;
+  top: 22%;
   left: 50%;
   z-index: 0;
-  width: min(92vw, 1450px);
+  width: min(34vw, 480px);
   height: auto;
-  opacity: 0.085;
+  opacity: 0.14;
   pointer-events: none;
-  filter: drop-shadow(0 0 36px rgba(156, 178, 230, 0.52));
+  filter: drop-shadow(0 0 24px rgba(225, 233, 255, 0.62));
   transform: translate(-50%, -50%);
   user-select: none;
 }

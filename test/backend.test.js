@@ -1054,7 +1054,7 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(cssText, /\.screensaver[\s\S]*background-image: url\("\/assets\/tkd_cover\.png"\)/);
   assert.match(cssText, /\.screensaver[\s\S]*background-position: right center/);
   assert.match(cssText, /\.homeScreen\s*\{[^}]*height:\s*100vh[^}]*overflow:\s*hidden/);
-  assert.match(cssText, /\.homeSportsBackdrop\s*\{[^}]*top:\s*11%[^}]*left:\s*50%[^}]*width:\s*min\(92vw, 1450px\)/);
+  assert.match(cssText, /\.homeSportsBackdrop\s*\{[^}]*top:\s*22%[^}]*left:\s*50%[^}]*width:\s*min\(34vw, 480px\)/);
   assert.match(cssText, /\.homeLogo\s*\{[^}]*width:\s*min\(1500px, 100%\)/);
   assert.doesNotMatch(cssText, /\.screensaver\s*\{[^}]*transition:/);
   assert.match(cssText, /\.screensaverContent img[\s\S]*animation: screensaverLogoCycle 5s ease-in-out infinite/);
