@@ -123,6 +123,29 @@ test('manual categories are rulepack validated and preserve official bout eviden
   assert.equal(loaded.match.red.club, 'Nadia TKD Academy');
   assert.equal(loaded.match.red.weightCategory, 'UNDER 16 KG');
 
+  host.send(JSON.stringify({ type: 'host', action: 'deleteManualCategory', categoryId: category.id }));
+  assert.equal((await waitFor(host, message => message.type === 'error')).code, 'MANUAL_CATEGORY_IN_USE');
+
+  host.send(JSON.stringify({
+    type: 'host',
+    action: 'saveManualBout',
+    details: { ...details, eventName: 'Disposable Test Category', officialBoutNo: 'TEMP-01' }
+  }));
+  const withDisposable = await waitFor(host, message => (
+    message.type === 'state' && message.manualCompetition.categories.length === 2 &&
+    message.match.manualBout?.officialBoutNo === 'TEMP-01'
+  ));
+  const disposable = withDisposable.manualCompetition.categories.find(item => item.id !== category.id);
+  assert.ok(disposable);
+
+  host.send(JSON.stringify({ type: 'host', action: 'saveManualBout', details: { ...details, categoryId: category.id } }));
+  await waitFor(host, message => message.type === 'state' && message.match.manualBout?.categoryId === category.id);
+  host.send(JSON.stringify({ type: 'host', action: 'deleteManualCategory', categoryId: disposable.id }));
+  const afterDelete = await waitFor(host, message => (
+    message.type === 'state' && !message.manualCompetition.categories.some(item => item.id === disposable.id)
+  ));
+  assert.equal(afterDelete.manualCompetition.categories.length, 1);
+
   host.send(JSON.stringify({ type: 'host', action: 'setRemoteMode', count: 1 }));
   await waitFor(host, message => message.type === 'state' && message.match.remoteCount === 1);
   const remote = await connect();
@@ -198,6 +221,8 @@ test('manual categories are rulepack validated and preserve official bout eviden
   assert.equal(practiceLoaded.match.red.playerName, 'Practice Hong');
   assert.equal(practiceLoaded.match.red.division, '');
   assert.equal(practiceLoaded.matchHistory.length, 1);
+  host.send(JSON.stringify({ type: 'host', action: 'deleteManualCategory', categoryId: category.id }));
+  assert.equal((await waitFor(host, message => message.type === 'error')).code, 'MANUAL_CATEGORY_NOT_EMPTY');
 
   host.send(JSON.stringify({ type: 'host', action: 'playPause' }));
   await waitFor(host, message => message.type === 'state' && message.match.mode === 'PRACTICE' && message.match.running);

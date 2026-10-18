@@ -37,6 +37,10 @@ let displayedTieDecisionMode = null;
 let tieDecisionView = "METHOD";
 let manualDecisionCode = "";
 let practiceLoadPending = false;
+let manualWizardStep = 0;
+let manualBoutSavePending = null;
+let manualDeletePendingCategoryId = "";
+let manualNextBoutPending = false;
 let userPermissionResolver = null;
 let userPermissionInputMode = false;
 let cornerEditPlayer = "";
@@ -101,12 +105,31 @@ function connectSocket() {
       renderRemoteStatuses(msg.remotes, msg.match?.remoteCount);
       renderTournament(msg.tournament);
       renderManualCategoryOptions();
+      handleManualEntryState(msg.match);
       if (!$('manualCategoryResultsModal')?.classList.contains('hidden')) renderManualCategoryReport();
       if (!$("scheduleModal").classList.contains("hidden"))
         renderSchedule(msg.tournament);
     }
     if (msg.type === "error") {
       if (["MATCH_IN_PROGRESS", "INVALID_PRACTICE_PLAYER"].includes(msg.code)) practiceLoadPending = false;
+      if (manualBoutSavePending) {
+        manualBoutSavePending = null;
+        if (["INVALID_MANUAL_CATEGORY", "MANUAL_CATEGORY_NOT_FOUND", "MANUAL_CATEGORY_FINALIZED"].includes(msg.code)) manualWizardStep = 0;
+        if (["INVALID_MANUAL_BOUT", "DUPLICATE_OFFICIAL_BOUT"].includes(msg.code)) manualWizardStep = 1;
+        if (msg.code === "INVALID_MANUAL_PLAYER") manualWizardStep = 2;
+        showManualEntryError(msg.message || "COULD NOT LOAD THE MANUAL BOUT");
+        renderManualWizard();
+      }
+      if (manualDeletePendingCategoryId) {
+        manualDeletePendingCategoryId = "";
+        $("manualConfirmDeleteCategoryButton").disabled = false;
+        showManualDeleteError(msg.message || "COULD NOT DELETE THE CATEGORY");
+      }
+      if (manualNextBoutPending) {
+        manualNextBoutPending = false;
+        showManualEntryError(msg.message || "COULD NOT PREPARE THE NEXT BOUT");
+        renderManualWizard();
+      }
       if (msg.code === "HOST_UNAUTHORIZED") {
         requestedRole = null;
         role = "unknown";
@@ -1090,6 +1113,15 @@ function manualCategoryLabel(category) {
   return `${category.eventName} · ${category.divisionLabel || category.division} · ${category.gender} · ${category.categoryGroup || category.weightCategory} · ARENA ${category.arenaNumber} · ${competition}`;
 }
 
+function manualSelectedCategory() {
+  const categoryId = $("manualCategoryId")?.value || "";
+  return (lastManualCompetition?.categories || []).find(category => category.id === categoryId) || null;
+}
+
+function manualCategoryBoutCount(category) {
+  return Array.isArray(category?.matchRecordIds) ? category.matchRecordIds.length : 0;
+}
+
 function renderManualCategoryOptions() {
   const categories = lastManualCompetition?.categories || [];
   for (const id of ["manualCategoryId", "manualResultsCategoryId"]) {
@@ -1158,20 +1190,35 @@ function setManualCategoryFieldsDisabled(disabled) {
   }
 }
 
-function loadManualCategorySelection() {
-  const category = (lastManualCompetition?.categories || []).find(item => item.id === $("manualCategoryId")?.value);
+function resetManualCategoryFields() {
+  $("manualEventName").value = "";
+  $("manualEventDate").value = new Date().toISOString().slice(0, 10);
+  $("manualVenue").value = "";
+  $("manualArenaNumber").value = currentArenaNumber || "";
+  $("manualCompetition").value = "KYORUGI";
+  $("manualGender").value = "MALE";
+  populateManualDivisions();
+}
+
+function loadManualCategorySelection(resetNewCategory = false) {
+  const category = manualSelectedCategory();
   setManualCategoryFieldsDisabled(Boolean(category));
-  if (!category) return;
-  $("manualEventName").value = category.eventName || "";
-  $("manualEventDate").value = category.eventDate || "";
-  $("manualVenue").value = category.venue || "";
-  $("manualArenaNumber").value = category.arenaNumber || "";
-  $("manualCompetition").value = category.competition || "KYORUGI";
-  $("manualDivision").value = category.division || "";
-  $("manualGender").value = category.gender || "MALE";
-  renderManualCategories();
-  if (category.categoryGroup) $("manualCategoryGroup").value = category.categoryGroup;
-  if (category.weightCategory) $("manualWeightCategory").value = category.weightCategory;
+  if (category) {
+    $("manualEventName").value = category.eventName || "";
+    $("manualEventDate").value = category.eventDate || "";
+    $("manualVenue").value = category.venue || "";
+    $("manualArenaNumber").value = category.arenaNumber || "";
+    $("manualCompetition").value = category.competition || "KYORUGI";
+    $("manualDivision").value = category.division || "";
+    $("manualGender").value = category.gender || "MALE";
+    renderManualCategories();
+    if (category.categoryGroup) $("manualCategoryGroup").value = category.categoryGroup;
+    if (category.weightCategory) $("manualWeightCategory").value = category.weightCategory;
+  } else if (resetNewCategory) {
+    resetManualCategoryFields();
+  }
+  renderManualCategoryState();
+  renderManualWizard();
 }
 
 function fillManualPlayer(corner, player) {
@@ -1182,6 +1229,181 @@ function fillManualPlayer(corner, player) {
   $(`${prefix}District`).value = player?.district || "";
 }
 
+function showManualEntryError(message) {
+  const error = $("manualEntryError");
+  if (!error) return;
+  error.textContent = message;
+  error.classList.toggle("hidden", !message);
+  if (message) $("manualEntrySuccess")?.classList.add("hidden");
+}
+
+function showManualEntrySuccess(message) {
+  const success = $("manualEntrySuccess");
+  if (!success) return;
+  success.textContent = message;
+  success.classList.toggle("hidden", !message);
+  if (message) $("manualEntryError")?.classList.add("hidden");
+}
+
+function clearManualEntryMessages() {
+  showManualEntryError("");
+  showManualEntrySuccess("");
+}
+
+function manualCategorySummary(category = manualSelectedCategory()) {
+  if (category) {
+    return `${category.divisionLabel || category.division} · ${category.gender} · ${category.categoryGroup || category.weightCategory} · ARENA ${category.arenaNumber}`;
+  }
+  const division = rulepackDivisions().find(item => item.id === $("manualDivision")?.value);
+  const categoryName = division?.categoryType === "GROUP"
+    ? $("manualCategoryGroup")?.value
+    : $("manualWeightCategory")?.value;
+  return `${division?.label || "DIVISION"} · ${$("manualGender")?.value || "GENDER"} · ${categoryName || "CATEGORY"} · ARENA ${$("manualArenaNumber")?.value || "—"}`;
+}
+
+function manualCategoryDeleteReason(category) {
+  if (!category) return "";
+  const completedBouts = manualCategoryBoutCount(category);
+  if (lastState?.manualBout?.categoryId === category.id) return "THIS CATEGORY IS CURRENTLY LOADED ON THE SCOREBOARD";
+  if (completedBouts > 0) return `${completedBouts} COMPLETED BOUT${completedBouts === 1 ? "" : "S"} · OFFICIAL RECORDS CANNOT BE DELETED`;
+  if (category.status === "FINALIZED") return "FINALIZED CATEGORIES CANNOT BE DELETED";
+  return "";
+}
+
+function renderManualCategoryState() {
+  const category = manualSelectedCategory();
+  const button = $("manualDeleteCategoryButton");
+  const status = $("manualCategoryStatus");
+  if (!button || !status) return;
+  button.classList.toggle("hidden", !category);
+  if (!category) {
+    status.textContent = "A NEW CATEGORY WILL BE CREATED WHEN THIS BOUT IS LOADED.";
+    return;
+  }
+  const reason = manualCategoryDeleteReason(category);
+  const completedBouts = manualCategoryBoutCount(category);
+  button.disabled = Boolean(reason);
+  status.textContent = reason || `OPEN · ${completedBouts} COMPLETED BOUTS · SAFE TO DELETE`;
+}
+
+function manualReviewRow(label, value) {
+  return `<p><span>${escapeHtml(label)}</span><b>${escapeHtml(value || "—")}</b></p>`;
+}
+
+function renderManualReview() {
+  const details = manualBoutPayload();
+  const category = manualSelectedCategory();
+  const division = category?.divisionLabel || rulepackDivisions().find(item => item.id === details.division)?.label || details.division;
+  const categoryName = category?.categoryGroup || category?.weightCategory || details.categoryGroup || details.weightCategory;
+  $("manualReviewCategory").innerHTML =
+    manualReviewRow("DIVISION", division) +
+    manualReviewRow("GENDER", category?.gender || details.gender) +
+    manualReviewRow("CATEGORY", categoryName) +
+    manualReviewRow("ARENA", category?.arenaNumber || details.arenaNumber);
+  $("manualReviewBout").innerHTML =
+    manualReviewRow("REFERENCE", details.officialBoutNo) +
+    manualReviewRow("STAGE", details.stage) +
+    manualReviewRow("RULESET", `${activeRuleset?.name || "RULESET"} ${activeRuleset?.version || ""}`.trim());
+  $("manualReviewCompetitors").innerHTML =
+    manualReviewRow("HONG", details.RED.playerName) +
+    manualReviewRow("CHUNG", details.BLUE.playerName);
+}
+
+function renderLoadedManualBout(match = lastState) {
+  if (!match?.manualBout) return;
+  const category = (lastManualCompetition?.categories || []).find(item => item.id === match.manualBout.categoryId);
+  const redName = match.red?.playerName || "HONG";
+  const blueName = match.blue?.playerName || "CHUNG";
+  $("manualLoadedTitle").textContent = `BOUT ${match.manualBout.officialBoutNo} LOADED`;
+  $("manualLoadedSummary").textContent = `${redName}, HONG, versus ${blueName}, CHUNG · ${category ? manualCategorySummary(category) : "MANUAL BOUT"} · ${match.manualBout.stage}`;
+  const editable = match.phase === "ROUND" && !match.roundStarted && !match.running;
+  $("manualEditLoadedBoutButton").classList.toggle("hidden", !editable);
+}
+
+function renderManualWizard() {
+  if (!$("manualEntryModal")) return;
+  const panelIds = ["manualWizardCategory", "manualWizardBout", "manualWizardCompetitors", "manualWizardReview"];
+  panelIds.forEach((id, index) => $(id).classList.toggle("hidden", manualWizardStep !== index));
+  $("manualWizardLoaded").classList.toggle("hidden", manualWizardStep !== 4);
+  [...$("manualWizardSteps").children].forEach((item, index) => {
+    item.classList.toggle("active", manualWizardStep === index);
+    item.classList.toggle("complete", manualWizardStep > index);
+  });
+
+  const loaded = manualWizardStep === 4;
+  $("manualWizardFooter").classList.toggle("hidden", loaded);
+  $("manualPrepareNextNotice").classList.toggle("hidden", lastState?.phase !== "MATCH_END");
+  $("manualWizardBackButton").disabled = manualWizardStep === 0 || Boolean(manualBoutSavePending);
+  $("manualWizardNextButton").disabled = Boolean(manualBoutSavePending) || lastState?.phase === "MATCH_END";
+  $("manualWizardNextButton").textContent = manualBoutSavePending
+    ? "LOADING..."
+    : manualWizardStep === 3
+      ? ($("manualAnnounceAfterLoad").checked ? "LOAD & ANNOUNCE" : "LOAD BOUT")
+      : "CONTINUE";
+  const labels = ["CATEGORY", "BOUT", "COMPETITORS", "REVIEW & LOAD"];
+  $("manualWizardStatus").textContent = `STEP ${Math.min(manualWizardStep + 1, 4)} OF 4 · ${labels[Math.min(manualWizardStep, 3)]}`;
+  $("manualRulesetSummary").textContent = `ACTIVE RULESET: ${activeRuleset?.name || "RULESET"} ${activeRuleset?.version || ""}`;
+  $("manualBoutCategorySummary").textContent = manualCategorySummary();
+  renderManualCategoryState();
+  if (manualWizardStep === 3) renderManualReview();
+  if (loaded) renderLoadedManualBout();
+}
+
+function manualWizardValidation(step) {
+  if (lastState?.phase === "MATCH_END") return "PREPARE THE NEXT BOUT BEFORE ENTERING NEW DETAILS";
+  if (step === 0) {
+    const category = manualSelectedCategory();
+    if (category?.status === "FINALIZED") return "THE SELECTED CATEGORY IS FINALIZED. CHOOSE OR CREATE AN OPEN CATEGORY";
+    if (category) return "";
+    const required = [
+      ["manualEventName", "ENTER THE TOURNAMENT NAME"],
+      ["manualEventDate", "CHOOSE THE TOURNAMENT DATE"],
+      ["manualVenue", "ENTER THE VENUE"],
+      ["manualArenaNumber", "ENTER THE ARENA NUMBER"],
+      ["manualDivision", "CHOOSE A RULE-PACK DIVISION"],
+    ];
+    for (const [id, message] of required) if (!$(id).value.trim()) return message;
+    const arena = Number($("manualArenaNumber").value);
+    if (!Number.isInteger(arena) || arena < 1 || arena > 999) return "ARENA NUMBER MUST BE FROM 1 TO 999";
+    const division = rulepackDivisions().find(item => item.id === $("manualDivision").value);
+    const categoryValue = division?.categoryType === "GROUP" ? $("manualCategoryGroup").value : $("manualWeightCategory").value;
+    if (!categoryValue) return "CHOOSE A CATEGORY FROM THE ACTIVE RULE PACK";
+  }
+  if (step === 1 && !$("manualOfficialBoutNo").value.trim()) return "ENTER THE OFFICIAL BOUT OR REFERENCE NUMBER";
+  if (step === 2) {
+    if (!$("manualRedName").value.trim()) return "ENTER THE HONG PLAYER NAME";
+    if (!$("manualRedClub").value.trim()) return "ENTER THE HONG AFFILIATION OR CLUB";
+    if (!$("manualBlueName").value.trim()) return "ENTER THE CHUNG PLAYER NAME";
+    if (!$("manualBlueClub").value.trim()) return "ENTER THE CHUNG AFFILIATION OR CLUB";
+  }
+  return "";
+}
+
+function setManualWizardStep(step) {
+  manualWizardStep = Math.max(0, Math.min(4, step));
+  clearManualEntryMessages();
+  renderManualWizard();
+}
+
+function manualWizardNext() {
+  if (manualBoutSavePending || manualWizardStep === 4) return;
+  const error = manualWizardValidation(manualWizardStep);
+  if (error) {
+    showManualEntryError(error);
+    return;
+  }
+  if (manualWizardStep < 3) {
+    setManualWizardStep(manualWizardStep + 1);
+    return;
+  }
+  saveManualBout($("manualAnnounceAfterLoad").checked);
+}
+
+function manualWizardBack() {
+  if (manualBoutSavePending || manualWizardStep <= 0) return;
+  setManualWizardStep(manualWizardStep - 1);
+}
+
 function openManualEntry() {
   closePlayerSettings();
   populateManualDivisions();
@@ -1189,22 +1411,42 @@ function openManualEntry() {
   const activeCategoryId = lastState?.manualBout?.categoryId || "";
   if (activeCategoryId && [...$("manualCategoryId").options].some(option => option.value === activeCategoryId)) {
     $("manualCategoryId").value = activeCategoryId;
-    loadManualCategorySelection();
+    loadManualCategorySelection(false);
   } else {
-    setManualCategoryFieldsDisabled(false);
-    if (!$("manualEventDate").value) $("manualEventDate").value = new Date().toISOString().slice(0, 10);
-    if (!$("manualArenaNumber").value) $("manualArenaNumber").value = currentArenaNumber || "";
+    const selectedCategory = manualSelectedCategory();
+    if (selectedCategory) loadManualCategorySelection(false);
+    else {
+      setManualCategoryFieldsDisabled(false);
+      if (!$("manualEventDate").value) $("manualEventDate").value = new Date().toISOString().slice(0, 10);
+      if (!$("manualArenaNumber").value) $("manualArenaNumber").value = currentArenaNumber || "";
+    }
   }
   fillManualPlayer("RED", lastState?.red);
   fillManualPlayer("BLUE", lastState?.blue);
   $("manualOfficialBoutNo").value = lastState?.manualBout?.officialBoutNo || "";
   $("manualStage").value = lastState?.manualBout?.stage || "PRELIMINARY";
+  $("manualAnnounceAfterLoad").checked = false;
+  manualWizardStep = lastState?.manualBout && lastState?.phase === "ROUND" ? 4 : 0;
+  clearManualEntryMessages();
   $("manualEntryModal").classList.remove("hidden");
+  renderManualWizard();
 }
 
 function backFromManualEntry() {
   $("manualEntryModal").classList.add("hidden");
   $("playerSettingsModal").classList.remove("hidden");
+}
+
+function closeManualEntryToScoreboard() {
+  $("manualEntryModal").classList.add("hidden");
+}
+
+function editLoadedManualBout() {
+  if (!lastState || lastState.phase !== "ROUND" || lastState.roundStarted || lastState.running) {
+    showManualEntryError("BOUT DETAILS CANNOT BE CHANGED AFTER THE MATCH STARTS");
+    return;
+  }
+  setManualWizardStep(0);
 }
 
 function manualPlayerPayload(prefix) {
@@ -1236,8 +1478,20 @@ function manualBoutPayload() {
 }
 
 function saveManualBout(announce = false) {
-  send({ type: "host", action: "saveManualBout", details: manualBoutPayload(), announce });
-  $("manualEntryModal").classList.add("hidden");
+  for (const step of [0, 1, 2]) {
+    const error = manualWizardValidation(step);
+    if (error) {
+      manualWizardStep = step;
+      showManualEntryError(error);
+      renderManualWizard();
+      return;
+    }
+  }
+  const details = manualBoutPayload();
+  manualBoutSavePending = { officialBoutNo: details.officialBoutNo, playerName: details.RED.playerName };
+  clearManualEntryMessages();
+  renderManualWizard();
+  send({ type: "host", action: "saveManualBout", details, announce });
 }
 
 function swapManualPlayers() {
@@ -1257,10 +1511,85 @@ function nextManualBout() {
     toast("FINISH THE CURRENT MATCH BEFORE PREPARING THE NEXT BOUT");
     return;
   }
+  manualNextBoutPending = true;
+  clearManualEntryMessages();
+  renderManualWizard();
   send({ type: "host", action: "nextManualBout" });
-  clearManualPlayers();
-  $("manualOfficialBoutNo").value = "";
-  $("manualStage").value = "PRELIMINARY";
+}
+
+function showManualDeleteError(message) {
+  const error = $("manualDeleteCategoryError");
+  error.textContent = message;
+  error.classList.toggle("hidden", !message);
+}
+
+function openManualCategoryDelete() {
+  const category = manualSelectedCategory();
+  if (!category) return;
+  const reason = manualCategoryDeleteReason(category);
+  if (reason) {
+    showManualEntryError(reason);
+    return;
+  }
+  $("manualDeleteCategoryMessage").textContent = "This category has no completed bouts. Deletion is permanent and cannot be undone.";
+  $("manualDeleteCategorySummary").textContent = manualCategoryLabel(category);
+  showManualDeleteError("");
+  $("manualConfirmDeleteCategoryButton").disabled = false;
+  $("manualDeleteCategoryModal").classList.remove("hidden");
+}
+
+function closeManualCategoryDelete() {
+  if (manualDeletePendingCategoryId) return;
+  $("manualDeleteCategoryModal").classList.add("hidden");
+}
+
+function confirmManualCategoryDelete() {
+  const category = manualSelectedCategory();
+  if (!category || manualDeletePendingCategoryId) return;
+  const reason = manualCategoryDeleteReason(category);
+  if (reason) {
+    showManualDeleteError(reason);
+    return;
+  }
+  manualDeletePendingCategoryId = category.id;
+  $("manualConfirmDeleteCategoryButton").disabled = true;
+  showManualDeleteError("");
+  send({ type: "host", action: "deleteManualCategory", categoryId: category.id });
+}
+
+function handleManualEntryState(match) {
+  if (manualDeletePendingCategoryId) {
+    const deletedId = manualDeletePendingCategoryId;
+    const stillExists = (lastManualCompetition?.categories || []).some(category => category.id === deletedId);
+    if (!stillExists) {
+      manualDeletePendingCategoryId = "";
+      $("manualDeleteCategoryModal")?.classList.add("hidden");
+      if ($("manualCategoryId")?.value === deletedId) $("manualCategoryId").value = "";
+      loadManualCategorySelection(true);
+      showManualEntrySuccess("CATEGORY DELETED. CHOOSE ANOTHER CATEGORY OR CREATE A NEW ONE.");
+    }
+  }
+  if (manualNextBoutPending && match?.phase === "ROUND" && !match.manualBout) {
+    manualNextBoutPending = false;
+    clearManualPlayers();
+    $("manualOfficialBoutNo").value = "";
+    $("manualStage").value = "PRELIMINARY";
+    manualWizardStep = 0;
+    showManualEntrySuccess("READY TO ENTER THE NEXT MANUAL BOUT.");
+  }
+  if (manualBoutSavePending && match?.manualBout) {
+    const expected = manualBoutSavePending;
+    const officialBoutNo = String(match.manualBout.officialBoutNo || "").trim().toUpperCase();
+    const playerName = String(match.red?.playerName || "").trim().toUpperCase();
+    if (officialBoutNo === String(expected.officialBoutNo).trim().toUpperCase() && playerName === String(expected.playerName).trim().toUpperCase()) {
+      manualBoutSavePending = null;
+      if ($("manualCategoryId")) $("manualCategoryId").value = match.manualBout.categoryId;
+      loadManualCategorySelection(false);
+      manualWizardStep = 4;
+      showManualEntrySuccess("BOUT LOADED SUCCESSFULLY.");
+    }
+  }
+  if (!$("manualEntryModal")?.classList.contains("hidden")) renderManualWizard();
 }
 
 function manualCategoryRecords(categoryId) {
@@ -2478,10 +2807,18 @@ window.announcePracticePlayers = announcePracticePlayers;
 window.loadPracticeMatch = loadPracticeMatch;
 window.loadManualCategorySelection = loadManualCategorySelection;
 window.renderManualCategories = renderManualCategories;
+window.renderManualWizard = renderManualWizard;
+window.manualWizardNext = manualWizardNext;
+window.manualWizardBack = manualWizardBack;
 window.saveManualBout = saveManualBout;
 window.swapManualPlayers = swapManualPlayers;
 window.clearManualPlayers = clearManualPlayers;
 window.nextManualBout = nextManualBout;
+window.closeManualEntryToScoreboard = closeManualEntryToScoreboard;
+window.editLoadedManualBout = editLoadedManualBout;
+window.openManualCategoryDelete = openManualCategoryDelete;
+window.closeManualCategoryDelete = closeManualCategoryDelete;
+window.confirmManualCategoryDelete = confirmManualCategoryDelete;
 window.openManualCategoryResults = openManualCategoryResults;
 window.closeManualCategoryResults = closeManualCategoryResults;
 window.renderManualCategoryReport = renderManualCategoryReport;

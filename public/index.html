@@ -424,60 +424,159 @@
 
     <section id="manualEntryModal" class="overlay hidden">
       <div class="modalCard manualEntryModal">
-        <h2>MANUAL ENTRY</h2>
-        <div class="manualEntryToolbar">
-          <label>EXISTING CATEGORY
-            <select id="manualCategoryId" class="playerSettingsSelect" onchange="loadManualCategorySelection()">
-              <option value="">CREATE NEW CATEGORY</option>
-            </select>
-          </label>
-          <button onclick="openManualCategoryResults()">CATEGORY RESULTS</button>
-        </div>
-        <section class="manualSection">
-          <h3>EVENT &amp; CATEGORY</h3>
-          <div class="manualFieldGrid">
-            <label>TOURNAMENT NAME<input id="manualEventName" maxlength="96" autocomplete="off" /></label>
-            <label>DATE<input id="manualEventDate" type="date" /></label>
-            <label>VENUE<input id="manualVenue" maxlength="128" autocomplete="off" /></label>
-            <label>ARENA NO.<input id="manualArenaNumber" type="number" min="1" max="999" /></label>
-            <label>COMPETITION<select id="manualCompetition"><option>KYORUGI</option><option>FRESHER KYORUGI</option></select></label>
-            <label>DIVISION<select id="manualDivision" onchange="renderManualCategories()"></select></label>
-            <label>GENDER<select id="manualGender" onchange="renderManualCategories()"><option value="MALE">MALE</option><option value="FEMALE">FEMALE</option></select></label>
-            <label id="manualWeightField">WEIGHT CATEGORY<select id="manualWeightCategory"></select></label>
-            <label id="manualGroupField" class="hidden">CATEGORY GROUP<select id="manualCategoryGroup"></select></label>
+        <header class="manualWizardHeader">
+          <div>
+            <p>PLAYER SETTINGS</p>
+            <h2>MANUAL ENTRY</h2>
           </div>
-          <p id="manualRulepackHint" class="manualHint"></p>
+          <div class="manualWizardHeaderActions">
+            <button onclick="openManualCategoryResults()">CATEGORY RESULTS</button>
+            <button onclick="backFromManualEntry()">EXIT</button>
+          </div>
+        </header>
+
+        <ol id="manualWizardSteps" class="manualWizardSteps" aria-label="Manual bout setup progress">
+          <li class="active"><b>1</b><span>CATEGORY</span></li>
+          <li><b>2</b><span>BOUT</span></li>
+          <li><b>3</b><span>COMPETITORS</span></li>
+          <li><b>4</b><span>REVIEW &amp; LOAD</span></li>
+        </ol>
+
+        <p id="manualEntryError" class="manualEntryError hidden" role="alert"></p>
+        <p id="manualEntrySuccess" class="manualEntrySuccess hidden" aria-live="polite"></p>
+
+        <section id="manualPrepareNextNotice" class="manualPrepareNextNotice hidden">
+          <div>
+            <h3>THE PREVIOUS MATCH IS COMPLETE</h3>
+            <p>Prepare a clean scoreboard before entering the next manual bout.</p>
+          </div>
+          <button onclick="nextManualBout()">PREPARE NEXT BOUT</button>
         </section>
-        <section class="manualSection">
-          <h3>BOUT DETAILS</h3>
-          <div class="manualFieldGrid twoColumns">
-            <label>OFFICIAL BOUT / REFERENCE NO.<input id="manualOfficialBoutNo" maxlength="40" autocomplete="off" /></label>
-            <label>STAGE<select id="manualStage"><option value="PRELIMINARY">PRELIMINARY</option><option value="QUARTERFINAL">QUARTERFINAL</option><option value="SEMIFINAL">SEMIFINAL</option><option value="FINAL">FINAL</option></select></label>
+
+        <section id="manualWizardCategory" class="manualWizardPanel">
+          <div class="manualWizardPanelHeading">
+            <div>
+              <h3>CHOOSE THE CATEGORY</h3>
+              <p>Use an open category or create one from the active rule pack.</p>
+            </div>
+            <span id="manualRulesetSummary" class="manualWizardBadge"></span>
+          </div>
+          <div class="manualCategoryPicker">
+            <label>EXISTING CATEGORY
+              <select id="manualCategoryId" class="playerSettingsSelect" onchange="loadManualCategorySelection(true)">
+                <option value="">CREATE NEW CATEGORY</option>
+              </select>
+            </label>
+            <button id="manualDeleteCategoryButton" class="manualDangerButton hidden" onclick="openManualCategoryDelete()">DELETE CATEGORY</button>
+          </div>
+          <p id="manualCategoryStatus" class="manualCategoryStatus"></p>
+          <div id="manualCategoryFields" class="manualSection">
+            <h3>EVENT &amp; CATEGORY</h3>
+            <div class="manualFieldGrid">
+              <label>TOURNAMENT NAME<input id="manualEventName" maxlength="96" autocomplete="off" /></label>
+              <label>DATE<input id="manualEventDate" type="date" /></label>
+              <label>VENUE<input id="manualVenue" maxlength="128" autocomplete="off" /></label>
+              <label>ARENA NO.<input id="manualArenaNumber" type="number" min="1" max="999" /></label>
+              <label>COMPETITION<select id="manualCompetition"><option>KYORUGI</option><option>FRESHER KYORUGI</option></select></label>
+              <label>DIVISION<select id="manualDivision" onchange="renderManualCategories()"></select></label>
+              <label>GENDER<select id="manualGender" onchange="renderManualCategories()"><option value="MALE">MALE</option><option value="FEMALE">FEMALE</option></select></label>
+              <label id="manualWeightField">WEIGHT CATEGORY<select id="manualWeightCategory"></select></label>
+              <label id="manualGroupField" class="hidden">CATEGORY GROUP<select id="manualCategoryGroup"></select></label>
+            </div>
+            <p id="manualRulepackHint" class="manualHint"></p>
           </div>
         </section>
-        <div class="playerSettingsGrid">
-          <section class="playerSettingsPanel redPlayerPanel">
-            <h3>HONG</h3>
-            <label>PLAYER NAME<input id="manualRedName" maxlength="64" autocomplete="off" /></label>
-            <label>AFFILIATION / CLUB<input id="manualRedClub" maxlength="64" autocomplete="off" /></label>
-            <label>STATE CODE (OPTIONAL)<input id="manualRedStateCode" maxlength="2" autocomplete="off" /></label>
-            <label>DISTRICT (OPTIONAL)<input id="manualRedDistrict" maxlength="48" autocomplete="off" /></label>
-          </section>
-          <section class="playerSettingsPanel bluePlayerPanel">
-            <h3>CHUNG</h3>
-            <label>PLAYER NAME<input id="manualBlueName" maxlength="64" autocomplete="off" /></label>
-            <label>AFFILIATION / CLUB<input id="manualBlueClub" maxlength="64" autocomplete="off" /></label>
-            <label>STATE CODE (OPTIONAL)<input id="manualBlueStateCode" maxlength="2" autocomplete="off" /></label>
-            <label>DISTRICT (OPTIONAL)<input id="manualBlueDistrict" maxlength="48" autocomplete="off" /></label>
-          </section>
-        </div>
-        <div class="manualActions">
-          <button onclick="saveManualBout(false)">SAVE &amp; LOAD BOUT</button>
-          <button onclick="saveManualBout(true)">SAVE &amp; ANNOUNCE</button>
-          <button onclick="swapManualPlayers()">SWAP RED / BLUE</button>
-          <button onclick="clearManualPlayers()">CLEAR NAMES</button>
-          <button onclick="nextManualBout()">NEXT MANUAL BOUT</button>
-          <button onclick="backFromManualEntry()">BACK</button>
+
+        <section id="manualWizardBout" class="manualWizardPanel hidden">
+          <div class="manualWizardPanelHeading">
+            <div>
+              <h3>ENTER BOUT DETAILS</h3>
+              <p>The reference number and stage become part of the permanent match record.</p>
+            </div>
+            <span id="manualBoutCategorySummary" class="manualWizardBadge"></span>
+          </div>
+          <div class="manualSection">
+            <div class="manualFieldGrid twoColumns">
+              <label>OFFICIAL BOUT / REFERENCE NO.<input id="manualOfficialBoutNo" maxlength="40" autocomplete="off" /></label>
+              <label>STAGE<select id="manualStage"><option value="PRELIMINARY">PRELIMINARY</option><option value="QUARTERFINAL">QUARTERFINAL</option><option value="SEMIFINAL">SEMIFINAL</option><option value="FINAL">FINAL</option></select></label>
+            </div>
+          </div>
+        </section>
+
+        <section id="manualWizardCompetitors" class="manualWizardPanel hidden">
+          <div class="manualWizardPanelHeading">
+            <div>
+              <h3>ENTER HONG AND CHUNG</h3>
+              <p>Player name and affiliation are required. State and district are optional.</p>
+            </div>
+            <div class="manualCompetitorActions">
+              <button onclick="swapManualPlayers()">SWAP HONG / CHUNG</button>
+              <button onclick="clearManualPlayers()">CLEAR COMPETITORS</button>
+            </div>
+          </div>
+          <div class="playerSettingsGrid">
+            <section class="playerSettingsPanel redPlayerPanel">
+              <h3>HONG</h3>
+              <label>PLAYER NAME<input id="manualRedName" maxlength="64" autocomplete="off" /></label>
+              <label>AFFILIATION / CLUB<input id="manualRedClub" maxlength="64" autocomplete="off" /></label>
+              <label>STATE CODE (OPTIONAL)<input id="manualRedStateCode" maxlength="2" autocomplete="off" /></label>
+              <label>DISTRICT (OPTIONAL)<input id="manualRedDistrict" maxlength="48" autocomplete="off" /></label>
+            </section>
+            <section class="playerSettingsPanel bluePlayerPanel">
+              <h3>CHUNG</h3>
+              <label>PLAYER NAME<input id="manualBlueName" maxlength="64" autocomplete="off" /></label>
+              <label>AFFILIATION / CLUB<input id="manualBlueClub" maxlength="64" autocomplete="off" /></label>
+              <label>STATE CODE (OPTIONAL)<input id="manualBlueStateCode" maxlength="2" autocomplete="off" /></label>
+              <label>DISTRICT (OPTIONAL)<input id="manualBlueDistrict" maxlength="48" autocomplete="off" /></label>
+            </section>
+          </div>
+        </section>
+
+        <section id="manualWizardReview" class="manualWizardPanel hidden">
+          <div class="manualWizardPanelHeading">
+            <div>
+              <h3>REVIEW BEFORE LOADING</h3>
+              <p>Confirm the category, bout, and competitors before opening the scoreboard.</p>
+            </div>
+            <span class="manualWizardBadge">READY FOR REVIEW</span>
+          </div>
+          <div class="manualReviewGrid">
+            <section><h3>CATEGORY</h3><div id="manualReviewCategory"></div></section>
+            <section><h3>BOUT</h3><div id="manualReviewBout"></div></section>
+            <section><h3>COMPETITORS</h3><div id="manualReviewCompetitors"></div></section>
+          </div>
+          <label class="manualAnnounceChoice"><input id="manualAnnounceAfterLoad" type="checkbox" onchange="renderManualWizard()" /> ANNOUNCE COMPETITORS IMMEDIATELY AFTER LOADING</label>
+        </section>
+
+        <section id="manualWizardLoaded" class="manualWizardPanel manualLoadedPanel hidden">
+          <div class="manualLoadedCheck">&#10003;</div>
+          <h3 id="manualLoadedTitle">BOUT LOADED</h3>
+          <p id="manualLoadedSummary"></p>
+          <div class="manualLoadedActions">
+            <button class="manualPrimaryButton" onclick="closeManualEntryToScoreboard()">OPEN SCOREBOARD</button>
+            <button id="manualEditLoadedBoutButton" onclick="editLoadedManualBout()">EDIT BOUT DETAILS</button>
+          </div>
+        </section>
+
+        <footer id="manualWizardFooter" class="manualWizardFooter">
+          <span id="manualWizardStatus">STEP 1 OF 4 &middot; CATEGORY</span>
+          <div>
+            <button id="manualWizardBackButton" onclick="manualWizardBack()">BACK</button>
+            <button id="manualWizardNextButton" class="manualPrimaryButton" onclick="manualWizardNext()">CONTINUE</button>
+          </div>
+        </footer>
+      </div>
+    </section>
+
+    <section id="manualDeleteCategoryModal" class="overlay hidden">
+      <div class="modalCard smallModal manualDeleteCategoryModal">
+        <h2>DELETE CATEGORY?</h2>
+        <p id="manualDeleteCategoryMessage"></p>
+        <div id="manualDeleteCategorySummary" class="manualDeleteCategorySummary"></div>
+        <p id="manualDeleteCategoryError" class="manualEntryError hidden" role="alert"></p>
+        <div class="manualDeleteCategoryActions">
+          <button onclick="closeManualCategoryDelete()">CANCEL</button>
+          <button id="manualConfirmDeleteCategoryButton" class="manualDangerSolidButton" onclick="confirmManualCategoryDelete()">DELETE PERMANENTLY</button>
         </div>
       </div>
     </section>

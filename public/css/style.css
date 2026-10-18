@@ -1142,10 +1142,296 @@ button {
   width: min(1120px, 96vw);
   text-align: left;
 }
-.manualEntryModal > h2,
 .practiceModeModal > h2,
 .categoryResultsModal > h2 {
   text-align: center;
+}
+.manualWizardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+.manualWizardHeader p,
+.manualWizardHeader h2 {
+  margin: 0;
+}
+.manualWizardHeader p {
+  color: #91a0b7;
+  font-size: 11px;
+  font-weight: 800;
+}
+.manualWizardHeaderActions,
+.manualCompetitorActions,
+.manualLoadedActions,
+.manualDeleteCategoryActions {
+  display: flex;
+  gap: 8px;
+}
+.manualWizardHeaderActions button,
+.manualCompetitorActions button,
+.manualLoadedActions button,
+.manualDeleteCategoryActions button {
+  width: auto;
+  margin: 0;
+}
+.manualWizardSteps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin: 16px 0;
+  padding: 0;
+  list-style: none;
+}
+.manualWizardSteps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 7px 9px;
+  border-bottom: 3px solid #344157;
+  color: #91a0b7;
+  font-size: 12px;
+  font-weight: 900;
+}
+.manualWizardSteps b {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  border-radius: 50%;
+  background: #263247;
+  color: #cbd5e5;
+}
+.manualWizardSteps li.active {
+  border-bottom-color: #5f8fff;
+  color: #fff;
+}
+.manualWizardSteps li.active b,
+.manualWizardSteps li.complete b {
+  background: #5f8fff;
+  color: #07101d;
+}
+.manualWizardPanel {
+  min-height: 330px;
+}
+.manualWizardPanelHeading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.manualWizardPanelHeading h3,
+.manualWizardPanelHeading p {
+  margin: 0;
+}
+.manualWizardPanelHeading p {
+  margin-top: 5px;
+  color: #aebbd0;
+  font-size: 13px;
+}
+.manualWizardBadge {
+  max-width: 44%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #1b2739;
+  color: #b9c8de;
+  font-size: 11px;
+  font-weight: 800;
+  text-align: right;
+}
+.manualCategoryPicker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+}
+.manualCategoryPicker button {
+  width: auto;
+  margin: 0;
+}
+.manualCategoryStatus {
+  min-height: 18px;
+  margin: 8px 0 0;
+  color: #aebbd0;
+  font-size: 12px;
+  font-weight: 700;
+}
+.manualDangerButton {
+  border: 1px solid #ff5a72 !important;
+  background: transparent !important;
+  color: #ff7288 !important;
+}
+.manualDangerSolidButton {
+  background: #c52e48 !important;
+  color: #fff !important;
+}
+.manualDangerButton:disabled,
+.manualDangerSolidButton:disabled {
+  opacity: 0.45;
+}
+.manualPrimaryButton {
+  background: #5f8fff !important;
+  color: #07101d !important;
+}
+.manualEntryError,
+.manualEntrySuccess {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 800;
+}
+.manualEntryError {
+  background: #451623;
+  color: #ffbdc8;
+}
+.manualEntrySuccess {
+  background: #123724;
+  color: #9ce7ba;
+}
+.manualPrepareNextNotice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 10px 0 14px;
+  padding: 12px;
+  border-radius: 10px;
+  background: #312600;
+  color: #ffe89a;
+}
+.manualPrepareNextNotice h3,
+.manualPrepareNextNotice p {
+  margin: 0;
+}
+.manualPrepareNextNotice p {
+  margin-top: 4px;
+  font-size: 12px;
+}
+.manualPrepareNextNotice button {
+  width: auto;
+  margin: 0;
+  white-space: nowrap;
+}
+.manualReviewGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.manualReviewGrid section {
+  padding: 14px;
+  border-radius: 10px;
+  background: #0b1017;
+}
+.manualReviewGrid h3 {
+  margin: 0 0 8px;
+}
+.manualReviewGrid p {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0;
+  padding: 7px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 12px;
+}
+.manualReviewGrid p:last-child {
+  border-bottom: 0;
+}
+.manualReviewGrid span {
+  color: #91a0b7;
+}
+.manualAnnounceChoice {
+  display: flex !important;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #1b2739;
+}
+.manualAnnounceChoice input {
+  width: 18px !important;
+  height: 18px;
+  margin: 0 !important;
+}
+.manualLoadedPanel {
+  display: flex;
+  min-height: 360px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.manualLoadedPanel.hidden {
+  display: none;
+}
+.manualLoadedCheck {
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  margin-bottom: 12px;
+  border-radius: 50%;
+  background: #123724;
+  color: #75dfa0;
+  font-size: 30px;
+  font-weight: 900;
+}
+.manualLoadedPanel h3,
+.manualLoadedPanel p {
+  margin: 0;
+}
+.manualLoadedPanel p {
+  max-width: 720px;
+  margin: 8px 0 18px;
+  color: #aebbd0;
+}
+.manualWizardFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+.manualWizardFooter span {
+  color: #91a0b7;
+  font-size: 12px;
+  font-weight: 800;
+}
+.manualWizardFooter > div {
+  display: flex;
+  gap: 8px;
+}
+.manualWizardFooter button {
+  width: auto;
+  min-width: 120px;
+  margin: 0;
+}
+.manualDeleteCategoryModal p {
+  color: #aebbd0;
+}
+.manualDeleteCategoryModal .manualEntryError {
+  color: #ffbdc8;
+}
+.manualDeleteCategorySummary {
+  margin: 14px 0;
+  padding: 12px;
+  border-radius: 8px;
+  background: #0b1017;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+}
+.manualDeleteCategoryActions {
+  justify-content: flex-end;
 }
 .manualEntryToolbar {
   display: grid;
@@ -1998,12 +2284,45 @@ button {
   .manualFieldGrid.twoColumns,
   .manualActions,
   .practiceModeActions,
+  .manualReviewGrid,
   .categoryReportMeta,
   .categoryReportPlacements {
     grid-template-columns: 1fr;
   }
-  .manualEntryToolbar {
+  .manualEntryToolbar,
+  .manualCategoryPicker {
     grid-template-columns: 1fr;
+  }
+  .manualWizardHeader,
+  .manualWizardPanelHeading,
+  .manualPrepareNextNotice,
+  .manualWizardFooter {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .manualWizardSteps {
+    grid-template-columns: 1fr 1fr;
+  }
+  .manualWizardBadge {
+    max-width: none;
+    text-align: left;
+  }
+  .manualWizardHeaderActions,
+  .manualCompetitorActions,
+  .manualLoadedActions,
+  .manualDeleteCategoryActions,
+  .manualWizardFooter > div {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .manualWizardHeaderActions button,
+  .manualCompetitorActions button,
+  .manualLoadedActions button,
+  .manualDeleteCategoryActions button,
+  .manualWizardFooter button,
+  .manualCategoryPicker button,
+  .manualPrepareNextNotice button {
+    width: 100%;
   }
   .rulesActions {
     grid-template-columns: 1fr;

@@ -1,0 +1,507 @@
+<div id="sfts-manual-flow" aria-label="Proposed guided Manual Entry workflow">
+  <style>
+    #sfts-manual-flow {
+      --sfts-bg: light-dark(#eef2f7, #07101d);
+      --sfts-shell: light-dark(#ffffff, #0d1725);
+      --sfts-panel: light-dark(#f7f9fc, #142133);
+      --sfts-panel-strong: light-dark(#e8eef7, #1b2b40);
+      --sfts-text: light-dark(#162033, #f4f7fb);
+      --sfts-muted: light-dark(#5d6b80, #aebbd0);
+      --sfts-line: light-dark(#d5ddea, #2b3a50);
+      --sfts-accent: light-dark(#2258b5, #6ea1ff);
+      --sfts-accent-text: light-dark(#ffffff, #06101d);
+      --sfts-hong: light-dark(#c72648, #f04468);
+      --sfts-chung: light-dark(#1f5aa8, #4b8fe5);
+      --sfts-ok: light-dark(#217a4b, #57d18c);
+      --sfts-danger: light-dark(#b4233f, #ff6b84);
+      --sfts-danger-text: light-dark(#ffffff, #1d050a);
+      color: var(--sfts-text);
+      background: var(--sfts-bg);
+      font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+      padding: 18px;
+    }
+    #sfts-manual-flow * { box-sizing: border-box; }
+    #sfts-manual-flow .shell {
+      position: relative;
+      overflow: hidden;
+      background: var(--sfts-shell);
+      border: 1px solid var(--sfts-line);
+      border-radius: 14px;
+      box-shadow: 0 18px 50px color-mix(in srgb, var(--sfts-text) 12%, transparent);
+    }
+    #sfts-manual-flow .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 18px;
+      background: color-mix(in srgb, var(--sfts-shell) 92%, var(--sfts-accent));
+      border-bottom: 1px solid var(--sfts-line);
+    }
+    #sfts-manual-flow .brand { display: flex; align-items: center; gap: 12px; }
+    #sfts-manual-flow .brand-mark {
+      display: grid;
+      place-items: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 9px;
+      background: var(--sfts-accent);
+      color: var(--sfts-accent-text);
+      font-weight: 900;
+    }
+    #sfts-manual-flow h2,
+    #sfts-manual-flow h3,
+    #sfts-manual-flow p { margin: 0; }
+    #sfts-manual-flow h2 { font-size: 17px; }
+    #sfts-manual-flow h3 { font-size: 16px; }
+    #sfts-manual-flow .eyebrow,
+    #sfts-manual-flow .helper,
+    #sfts-manual-flow .status { color: var(--sfts-muted); font-size: 12px; }
+    #sfts-manual-flow .top-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    #sfts-manual-flow button {
+      min-height: 42px;
+      border: 1px solid var(--sfts-line);
+      border-radius: 8px;
+      background: var(--sfts-panel);
+      color: var(--sfts-text);
+      padding: 0 14px;
+      font: inherit;
+      font-weight: 750;
+    }
+    #sfts-manual-flow button.primary {
+      border-color: var(--sfts-accent);
+      background: var(--sfts-accent);
+      color: var(--sfts-accent-text);
+    }
+    #sfts-manual-flow button.ghost { background: transparent; }
+    #sfts-manual-flow button.danger {
+      border-color: var(--sfts-danger);
+      background: transparent;
+      color: var(--sfts-danger);
+    }
+    #sfts-manual-flow button.danger-solid {
+      border-color: var(--sfts-danger);
+      background: var(--sfts-danger);
+      color: var(--sfts-danger-text);
+    }
+    #sfts-manual-flow button:disabled { opacity: .45; }
+    #sfts-manual-flow .progress-wrap { padding: 18px 18px 0; }
+    #sfts-manual-flow .steps {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    #sfts-manual-flow .step {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 44px;
+      padding: 8px 10px;
+      border-bottom: 3px solid var(--sfts-line);
+      color: var(--sfts-muted);
+      font-size: 13px;
+      font-weight: 750;
+    }
+    #sfts-manual-flow .step .num {
+      display: grid;
+      place-items: center;
+      width: 24px;
+      height: 24px;
+      flex: 0 0 24px;
+      border-radius: 50%;
+      background: var(--sfts-panel-strong);
+    }
+    #sfts-manual-flow .step.active { color: var(--sfts-text); border-color: var(--sfts-accent); }
+    #sfts-manual-flow .step.active .num,
+    #sfts-manual-flow .step.done .num { background: var(--sfts-accent); color: var(--sfts-accent-text); }
+    #sfts-manual-flow .workspace { padding: 18px; }
+    #sfts-manual-flow.compact .workspace { padding: 12px 18px; }
+    #sfts-manual-flow.compact .choice,
+    #sfts-manual-flow.compact .review-panel,
+    #sfts-manual-flow.compact .corner { padding: 11px; }
+    #sfts-manual-flow .heading-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    #sfts-manual-flow .heading-row p { margin-top: 5px; color: var(--sfts-muted); }
+    #sfts-manual-flow .category-summary {
+      padding: 9px 12px;
+      border-radius: 8px;
+      background: var(--sfts-panel);
+      color: var(--sfts-muted);
+      font-size: 12px;
+      text-align: right;
+    }
+    #sfts-manual-flow .screen { display: none; }
+    #sfts-manual-flow .screen.active { display: block; }
+    #sfts-manual-flow .choice-grid,
+    #sfts-manual-flow .form-grid,
+    #sfts-manual-flow .review-grid { display: grid; gap: 12px; }
+    #sfts-manual-flow .choice-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #sfts-manual-flow .form-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    #sfts-manual-flow .review-grid { grid-template-columns: 1.05fr 1fr 1fr; }
+    #sfts-manual-flow .choice,
+    #sfts-manual-flow .review-panel {
+      padding: 16px;
+      border: 1px solid var(--sfts-line);
+      border-radius: 10px;
+      background: var(--sfts-panel);
+    }
+    #sfts-manual-flow .choice.selected {
+      border-color: var(--sfts-accent);
+      box-shadow: inset 0 0 0 1px var(--sfts-accent);
+    }
+    #sfts-manual-flow .choice h3,
+    #sfts-manual-flow .review-panel h3 { margin-bottom: 6px; }
+    #sfts-manual-flow .choice p,
+    #sfts-manual-flow .review-panel p { color: var(--sfts-muted); font-size: 13px; }
+    #sfts-manual-flow .choice button { margin-top: 14px; width: 100%; }
+    #sfts-manual-flow .choice-actions {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: stretch;
+      margin-top: 14px;
+    }
+    #sfts-manual-flow .choice-actions button { width: auto; margin-top: 0; }
+    #sfts-manual-flow .category-state {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 10px;
+      color: var(--sfts-muted);
+      font-size: 12px;
+    }
+    #sfts-manual-flow .category-state strong { color: var(--sfts-ok); }
+    #sfts-manual-flow label { display: block; color: var(--sfts-muted); font-size: 12px; font-weight: 750; }
+    #sfts-manual-flow input,
+    #sfts-manual-flow select {
+      width: 100%;
+      min-height: 42px;
+      margin-top: 6px;
+      border: 1px solid var(--sfts-line);
+      border-radius: 8px;
+      background: var(--sfts-shell);
+      color: var(--sfts-text);
+      padding: 0 10px;
+      font: inherit;
+    }
+    #sfts-manual-flow .span-2 { grid-column: span 2; }
+    #sfts-manual-flow .corner-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    #sfts-manual-flow .corner {
+      padding: 16px;
+      border-radius: 10px;
+      background: var(--sfts-panel);
+      border-top: 4px solid var(--sfts-hong);
+    }
+    #sfts-manual-flow .corner.chung { border-top-color: var(--sfts-chung); }
+    #sfts-manual-flow .corner .form-grid { grid-template-columns: 1fr 1fr; margin-top: 12px; }
+    #sfts-manual-flow .corner-actions { display: flex; gap: 8px; margin-bottom: 12px; }
+    #sfts-manual-flow .review-panel ul { margin: 10px 0 0; padding: 0; list-style: none; }
+    #sfts-manual-flow .review-panel li {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 7px 0;
+      border-bottom: 1px solid var(--sfts-line);
+      font-size: 13px;
+    }
+    #sfts-manual-flow .review-panel li:last-child { border-bottom: 0; }
+    #sfts-manual-flow .review-panel li span { color: var(--sfts-muted); }
+    #sfts-manual-flow .announce-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 14px;
+      padding: 12px;
+      border-radius: 8px;
+      background: var(--sfts-panel-strong);
+      font-size: 13px;
+    }
+    #sfts-manual-flow .announce-row input { width: 18px; min-height: 18px; margin: 0; }
+    #sfts-manual-flow .footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 18px;
+      border-top: 1px solid var(--sfts-line);
+      background: color-mix(in srgb, var(--sfts-panel) 70%, transparent);
+    }
+    #sfts-manual-flow .footer-actions { display: flex; gap: 8px; }
+    #sfts-manual-flow .ready {
+      padding: 24px;
+      text-align: center;
+      border-radius: 10px;
+      background: var(--sfts-panel);
+    }
+    #sfts-manual-flow .ready-mark {
+      display: grid;
+      place-items: center;
+      width: 52px;
+      height: 52px;
+      margin: 0 auto 12px;
+      border-radius: 50%;
+      background: color-mix(in srgb, var(--sfts-ok) 18%, transparent);
+      color: var(--sfts-ok);
+      font-size: 25px;
+      font-weight: 900;
+    }
+    #sfts-manual-flow .ready p { margin: 8px auto 16px; max-width: 620px; color: var(--sfts-muted); }
+    #sfts-manual-flow .ready-actions { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
+    #sfts-manual-flow .confirm-layer {
+      position: absolute;
+      inset: 0;
+      z-index: 10;
+      display: grid;
+      place-items: center;
+      padding: 22px;
+      background: color-mix(in srgb, var(--sfts-bg) 82%, transparent);
+      backdrop-filter: blur(5px);
+    }
+    #sfts-manual-flow .confirm-layer[hidden] { display: none; }
+    #sfts-manual-flow .confirm-box {
+      width: min(480px, 100%);
+      padding: 20px;
+      border: 1px solid var(--sfts-line);
+      border-radius: 12px;
+      background: var(--sfts-shell);
+      box-shadow: 0 20px 60px color-mix(in srgb, var(--sfts-text) 18%, transparent);
+    }
+    #sfts-manual-flow .confirm-box h3 { color: var(--sfts-danger); }
+    #sfts-manual-flow .confirm-box > p { margin-top: 8px; color: var(--sfts-muted); }
+    #sfts-manual-flow .delete-summary {
+      margin: 14px 0;
+      padding: 12px;
+      border-radius: 8px;
+      background: var(--sfts-panel);
+      font-size: 13px;
+    }
+    #sfts-manual-flow .delete-summary b,
+    #sfts-manual-flow .delete-summary span { display: block; }
+    #sfts-manual-flow .delete-summary span { margin-top: 5px; color: var(--sfts-muted); }
+    #sfts-manual-flow .confirm-actions { display: flex; justify-content: flex-end; gap: 8px; }
+    @media (max-width: 760px) {
+      #sfts-manual-flow { padding: 8px; }
+      #sfts-manual-flow .topbar,
+      #sfts-manual-flow .heading-row,
+      #sfts-manual-flow .footer { align-items: stretch; flex-direction: column; }
+      #sfts-manual-flow .category-summary { text-align: left; }
+      #sfts-manual-flow .steps { grid-template-columns: 1fr 1fr; }
+      #sfts-manual-flow .choice-grid,
+      #sfts-manual-flow .form-grid,
+      #sfts-manual-flow .corner-grid,
+      #sfts-manual-flow .review-grid { grid-template-columns: 1fr; }
+      #sfts-manual-flow .span-2 { grid-column: span 1; }
+      #sfts-manual-flow .corner .form-grid { grid-template-columns: 1fr; }
+      #sfts-manual-flow .footer-actions { width: 100%; }
+      #sfts-manual-flow .footer-actions button { flex: 1; }
+    }
+  </style>
+
+  <section class="shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">S</div>
+        <div>
+          <div class="eyebrow">PLAYER SETTINGS</div>
+          <h2>Manual Entry</h2>
+        </div>
+      </div>
+      <div class="top-actions">
+        <button type="button" class="ghost">Category results</button>
+        <button type="button" class="ghost">Exit</button>
+      </div>
+    </header>
+
+    <div class="progress-wrap">
+      <ol class="steps" aria-label="Bout setup progress">
+        <li class="step active"><span class="num">1</span><span>Category</span></li>
+        <li class="step"><span class="num">2</span><span>Bout</span></li>
+        <li class="step"><span class="num">3</span><span>Competitors</span></li>
+        <li class="step"><span class="num">4</span><span>Review &amp; load</span></li>
+      </ol>
+    </div>
+
+    <main class="workspace" aria-live="polite">
+      <section class="screen active" data-step="0">
+        <div class="heading-row">
+          <div><h3>Choose the category for this bout</h3><p>Use an existing category or create one from the active rule pack.</p></div>
+          <div class="category-summary">Active ruleset: WT Kyorugi · v2</div>
+        </div>
+        <div class="choice-grid">
+          <article class="choice selected">
+            <h3>Use existing category</h3>
+            <p>Continue adding bouts to an open category.</p>
+            <label>OPEN CATEGORY
+              <select id="mock-category-select"><option>District Championship · Junior · Male · Flyweight · Arena 2</option></select>
+            </label>
+            <div class="category-state" id="mock-category-state"><span><strong>OPEN</strong> · 0 completed bouts</span><span>Safe to delete</span></div>
+            <div class="choice-actions">
+              <button type="button">Use this category</button>
+              <button type="button" class="danger" id="mock-delete-category">Delete category</button>
+            </div>
+          </article>
+          <article class="choice">
+            <h3>Create new category</h3>
+            <p>Enter event details and choose a rule-pack category.</p>
+            <button type="button">Create a category</button>
+          </article>
+        </div>
+      </section>
+
+      <section class="screen" data-step="1">
+        <div class="heading-row">
+          <div><h3>Enter bout details</h3><p>The official reference and stage will appear in the permanent match record.</p></div>
+          <div class="category-summary">Junior · Male · Flyweight<br>Arena 2 · OPEN</div>
+        </div>
+        <div class="form-grid">
+          <label class="span-2">OFFICIAL BOUT / REFERENCE NO.
+            <input value="J-M-FLY-07" />
+          </label>
+          <label>STAGE
+            <select><option>SEMIFINAL</option><option>PRELIMINARY</option><option>QUARTERFINAL</option><option>FINAL</option></select>
+          </label>
+        </div>
+      </section>
+
+      <section class="screen" data-step="2">
+        <div class="heading-row">
+          <div><h3>Enter HONG and CHUNG</h3><p>Player name and affiliation are required. State and district are optional.</p></div>
+          <div class="corner-actions"><button type="button">Swap HONG / CHUNG</button><button type="button">Clear competitors</button></div>
+        </div>
+        <div class="corner-grid">
+          <section class="corner">
+            <h3>HONG</h3>
+            <div class="form-grid">
+              <label>PLAYER NAME<input value="Aarav Sen" /></label>
+              <label>AFFILIATION / CLUB<input value="Nadia TKD Academy" /></label>
+              <label>STATE CODE<input value="WB" /></label>
+              <label>DISTRICT<input value="Nadia" /></label>
+            </div>
+          </section>
+          <section class="corner chung">
+            <h3>CHUNG</h3>
+            <div class="form-grid">
+              <label>PLAYER NAME<input value="Rohan Das" /></label>
+              <label>AFFILIATION / CLUB<input value="Krishnanagar Club" /></label>
+              <label>STATE CODE<input value="WB" /></label>
+              <label>DISTRICT<input value="Nadia" /></label>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <section class="screen" data-step="3">
+        <div class="heading-row">
+          <div><h3>Review before loading the scoreboard</h3><p>Nothing should change after the match clock starts.</p></div>
+          <div class="category-summary">All required information complete</div>
+        </div>
+        <div class="review-grid">
+          <section class="review-panel"><h3>Category</h3><ul><li><span>Division</span><b>Junior</b></li><li><span>Gender</span><b>Male</b></li><li><span>Category</span><b>Flyweight</b></li><li><span>Arena</span><b>2</b></li></ul></section>
+          <section class="review-panel"><h3>Bout</h3><ul><li><span>Reference</span><b>J-M-FLY-07</b></li><li><span>Stage</span><b>Semifinal</b></li><li><span>Ruleset</span><b>WT Kyorugi v2</b></li></ul></section>
+          <section class="review-panel"><h3>Competitors</h3><ul><li><span>HONG</span><b>Aarav Sen</b></li><li><span>CHUNG</span><b>Rohan Das</b></li></ul></section>
+        </div>
+        <label class="announce-row"><input id="mock-announce" type="checkbox" checked /> Announce competitors immediately after loading</label>
+      </section>
+
+      <section class="screen" data-step="4">
+        <div class="ready">
+          <div class="ready-mark">✓</div>
+          <h3>Bout J-M-FLY-07 is ready</h3>
+          <p>HONG Aarav Sen versus CHUNG Rohan Das · Junior Male Flyweight · Semifinal · Arena 2</p>
+          <div class="ready-actions"><button type="button" class="primary">Open scoreboard</button><button type="button">Edit bout</button><button type="button">Prepare next bout</button></div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="status" id="mock-status">Step 1 of 4 · Category</div>
+      <div class="footer-actions">
+        <button type="button" id="mock-back" disabled>Back</button>
+        <button type="button" class="primary" id="mock-next">Continue</button>
+      </div>
+    </footer>
+
+    <section class="confirm-layer" id="mock-delete-confirm" role="dialog" aria-modal="true" aria-labelledby="mock-delete-title" hidden>
+      <div class="confirm-box">
+        <h3 id="mock-delete-title">Delete this category permanently?</h3>
+        <p>This action is available because the category contains no completed bout records.</p>
+        <div class="delete-summary">
+          <b>District Championship · Junior · Male · Flyweight</b>
+          <span>Arena 2 · OPEN · 0 completed bouts</span>
+        </div>
+        <div class="confirm-actions">
+          <button type="button" id="mock-delete-cancel">Cancel</button>
+          <button type="button" class="danger-solid" id="mock-delete-confirm-button">Delete permanently</button>
+        </div>
+      </div>
+    </section>
+  </section>
+
+  <script>
+    (() => {
+      const root = document.getElementById("sfts-manual-flow");
+      const state = { step: 0, compact: false, categoryDeleted: false };
+      const labels = ["Category", "Bout", "Competitors", "Review & load"];
+      const screens = [...root.querySelectorAll(".screen")];
+      const steps = [...root.querySelectorAll(".step")];
+      const back = root.querySelector("#mock-back");
+      const next = root.querySelector("#mock-next");
+      const status = root.querySelector("#mock-status");
+      const deleteButton = root.querySelector("#mock-delete-category");
+      const deleteDialog = root.querySelector("#mock-delete-confirm");
+      const categoryState = root.querySelector("#mock-category-state");
+
+      function render() {
+        screens.forEach((screen, index) => screen.classList.toggle("active", index === state.step));
+        steps.forEach((step, index) => {
+          step.classList.toggle("active", index === state.step);
+          step.classList.toggle("done", index < state.step);
+        });
+        back.disabled = state.step === 0 || state.step === 4;
+        next.disabled = state.step === 0 && state.categoryDeleted;
+        next.style.display = state.step === 4 ? "none" : "inline-block";
+        next.textContent = state.step === 3
+          ? (root.querySelector("#mock-announce").checked ? "Load & announce" : "Load bout")
+          : "Continue";
+        status.textContent = state.categoryDeleted && state.step === 0
+          ? "Category deleted · Select another category or create a new one"
+          : state.step === 4
+            ? "Loaded · Ready for scoreboard"
+            : `Step ${state.step + 1} of 4 · ${labels[state.step]}`;
+        deleteButton.disabled = state.categoryDeleted;
+        deleteButton.textContent = state.categoryDeleted ? "Category deleted" : "Delete category";
+        categoryState.innerHTML = state.categoryDeleted
+          ? "<span>Category removed</span><span>Select another category</span>"
+          : "<span><strong>OPEN</strong> · 0 completed bouts</span><span>Safe to delete</span>";
+        root.classList.toggle("compact", state.compact);
+      }
+
+      back.addEventListener("click", () => { if (state.step > 0) { state.step -= 1; render(); } });
+      next.addEventListener("click", () => { if (state.step < 4) { state.step += 1; render(); } });
+      root.querySelector("#mock-announce").addEventListener("change", render);
+      deleteButton.addEventListener("click", () => { deleteDialog.hidden = false; });
+      root.querySelector("#mock-delete-cancel").addEventListener("click", () => { deleteDialog.hidden = true; });
+      root.querySelector("#mock-delete-confirm-button").addEventListener("click", () => {
+        state.categoryDeleted = true;
+        root.querySelector("#mock-category-select").innerHTML = "<option>No category selected</option>";
+        deleteDialog.hidden = true;
+        render();
+      });
+      render();
+
+      if (globalThis.Tweak) {
+        const tweak = new Tweak({ container: root, onChange: render });
+        tweak.addToggle(state, "compact", { label: "Compact spacing", reference: "manual-entry.compact" });
+      }
+    })();
+  </script>
+</div>

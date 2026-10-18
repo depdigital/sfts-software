@@ -1624,6 +1624,30 @@ function saveManualBout(input) {
   return { ok: true, categoryId: category.id };
 }
 
+function deleteManualCategory(categoryId) {
+  const id = String(categoryId || '').trim();
+  const index = manualCompetition.categories.findIndex(category => category.id === id);
+  if (index < 0) {
+    return { ok: false, code: 'MANUAL_CATEGORY_NOT_FOUND', message: 'Manual category not found' };
+  }
+  const category = manualCompetition.categories[index];
+  if (match.manualBout?.categoryId === id) {
+    return { ok: false, code: 'MANUAL_CATEGORY_IN_USE', message: 'This category is currently loaded on the scoreboard' };
+  }
+  const hasCompletedBouts = category.matchRecordIds.length > 0 || manualMatchRecords.some(record => (
+    record.manualBout?.categoryId === id
+  ));
+  if (hasCompletedBouts) {
+    return { ok: false, code: 'MANUAL_CATEGORY_NOT_EMPTY', message: 'Categories with completed bouts cannot be deleted because their official records must be preserved' };
+  }
+  if (category.status === 'FINALIZED') {
+    return { ok: false, code: 'MANUAL_CATEGORY_FINALIZED', message: 'Finalized categories cannot be deleted' };
+  }
+  manualCompetition.categories.splice(index, 1);
+  persistManualArchive();
+  return { ok: true };
+}
+
 function manualCategoryParticipants(categoryId) {
   const participants = new Map();
   for (const record of manualMatchRecords.filter(item => item.manualBout?.categoryId === categoryId)) {
@@ -4082,6 +4106,13 @@ wss.on('connection', ws => {
         if (msg.announce === true) {
           const announcement = manualPlayersAnnouncement({ RED: match.red, BLUE: match.blue });
           if (announcement.ok) void announceAnnouncement(announcement.text);
+        }
+      }
+      if (msg.action === 'deleteManualCategory') {
+        const result = deleteManualCategory(msg.categoryId);
+        if (!result.ok) {
+          sendError(ws, result.code, result.message);
+          return;
         }
       }
       if (msg.action === 'saveManualCategoryPlacements') {
