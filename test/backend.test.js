@@ -941,8 +941,14 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(html, /id="summaryBlueTechnicalChest"/);
   assert.match(html, /id="summaryBlueTechnicalHead"/);
   assert.match(html, /id="tieDecisionModal"/);
-  assert.match(html, /onclick="editKickCounts\('RED'\)"/);
-  assert.match(html, /onclick="editKickCounts\('BLUE'\)"/);
+  assert.match(html, /onclick="openCornerEditor\('RED'\)">EDIT RED<\/button>/);
+  assert.match(html, /onclick="openCornerEditor\('BLUE'\)">EDIT BLUE<\/button>/);
+  assert.match(html, /id="cornerEditModal"/);
+  assert.match(html, /id="kickCountModal"/);
+  assert.match(html, /onclick="editSelectedCornerScore\(\)">EDIT SCORE<\/button>/);
+  assert.match(html, /onclick="editSelectedCornerKickCounts\(\)">EDIT KICK COUNTS<\/button>/);
+  assert.doesNotMatch(html, /EDIT RED KICK COUNTS<\/button>/);
+  assert.doesNotMatch(html, /EDIT BLUE KICK COUNTS<\/button>/);
   assert.match(html, /onclick="startGoldenRound\(\)"/);
   assert.match(html, /PROCEED TO GOLDEN ROUND \(ROUND 4\)/);
   assert.match(html, /onclick="backFromTieDecision\(\)"/);
@@ -1017,6 +1023,11 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(jsText, /ROUND_WOO_SE_GIROK/);
   assert.match(jsText, /MATCH_WOO_SE_GIROK/);
   assert.match(jsText, /function editKickCounts\(player\)/);
+  assert.match(jsText, /scoringRules\?\.roundTie\?\.type !== "SUPERIORITY"/);
+  assert.match(jsText, /scoringRules\.roundTie\.criteria/);
+  assert.match(jsText, /scoringRules\?\.basePointLabels/);
+  assert.match(jsText, /technicalInput\.pointsByBasePoints/);
+  assert.match(jsText, /function saveKickCounts\(\)/);
   assert.match(jsText, /v\?\.button \|\| "—"/);
   assert.match(jsText, /match\.phase === "ROUND" && match\.running === true/);
   assert.match(jsText, /matchClockRunning/);
