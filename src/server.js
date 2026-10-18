@@ -69,7 +69,8 @@ const WS_MESSAGE_LIMIT = 120;
 const WS_MESSAGE_WINDOW_MS = 1000;
 const VOTE_SETTLE_MS = 750;
 const COALESCED_HOST_ACTIONS = new Set([
-  'point', 'headPoint', 'technicalPoint', 'gamjeom', 'editScore', 'editGamjeom', 'editRoundTieStats'
+  'point', 'headPoint', 'technicalPoint', 'gamjeom', 'editScore', 'editGamjeom', 'editRoundTieStats',
+  'correctScoringAction', 'correctGamjeom'
 ]);
 let TECHNICAL_COMBO_WINDOW_MS = rules.scoring.technicalInput.windowMilliseconds;
 let MIN_ACTIVE_REMOTES = rules.voting.minimumActiveRemotes;
@@ -757,6 +758,7 @@ function scoringRulesState() {
     acceptedPointValues: [...rules.scoring.acceptedPointValues],
     technicalInput: deep(rules.scoring.technicalInput),
     gamJeomPointValue: rules.scoring.gamJeomPointValue,
+    gamJeom: deep(rules.penalties.gamJeom),
     manualMatchDecisions: [...rules.decisions.manualMatchDecisions],
     roundTie: deep(rules.decisions.roundTie),
     tieBreak: deep(rules.tieBreak),
@@ -2405,7 +2407,7 @@ function recordCornerRefereePress(corner, button, score = null) {
   return entry;
 }
 
-function recordOperatorAction(action, player, from, to) {
+function recordOperatorAction(action, player, from, to, details = null) {
   match.operatorHistory.push({
     id: `${match.matchNo}-operator-${match.operatorHistory.length + 1}`,
     matchNo: match.matchNo,
@@ -2416,12 +2418,13 @@ function recordOperatorAction(action, player, from, to) {
     player,
     from,
     to,
+    ...(details ? { details: deep(details) } : {}),
     recordedAt: new Date().toISOString()
   });
 }
 
-function recordOperatorCorrection(action, player, from, to) {
-  recordOperatorAction(action, player, from, to);
+function recordOperatorCorrection(action, player, from, to, details = null) {
+  recordOperatorAction(action, player, from, to, details);
 }
 
 function replaceCornerRefereeHistoryEntry(entry, button, score) {
@@ -2903,6 +2906,144 @@ function editRoundTieStats(player, input) {
   return { ok: true };
 }
 
+function scoringCorrectionDefinition(actionKey) {
+  const normal = /^NORMAL_([123])$/.exec(actionKey);
+  if (normal) {
+    const basePoints = Number(normal[1]);
+    if (!rules.scoring.basePointValues.includes(basePoints)) return null;
+    return {
+      actionKey,
+      basePoints,
+      points: basePoints,
+      statKey: `plus${basePoints}`,
+      label: String(rules.scoring.basePointLabels[String(basePoints)] || `${basePoints} POINT`).toUpperCase(),
+      technical: false
+    };
+  }
+
+  const technical = /^TECHNICAL_([23])$/.exec(actionKey);
+  if (!technical) return null;
+  const basePoints = Number(technical[1]);
+  const points = technicalPointsFor(basePoints);
+  if (points === null) return null;
+  return {
+    actionKey,
+    basePoints,
+    points,
+    statKey: basePoints === 2 ? 'technicalChest' : 'technicalHead',
+    label: `TECHNICAL ${String(rules.scoring.basePointLabels[String(basePoints)] || `${basePoints} POINT`).toUpperCase()}`,
+    technical: true
+  };
+}
+
+function correctScoringAction(player, direction, actionKey) {
+  if (!validPlayer(player) || !operatorScoringIsAllowed()) {
+    return { ok: false, code: 'ROUND_NOT_ACTIVE', message: 'Scoring actions can only be corrected during an active round' };
+  }
+  if (!['ADD', 'REMOVE'].includes(direction)) {
+    return { ok: false, code: 'INVALID_CORRECTION', message: 'Correction direction must be ADD or REMOVE' };
+  }
+  const definition = scoringCorrectionDefinition(actionKey);
+  if (!definition) {
+    return { ok: false, code: 'INVALID_SCORING_ACTION', message: 'The scoring action is not available in the active rule pack' };
+  }
+
+  const correctedSide = side(player);
+  const multiplier = direction === 'ADD' ? 1 : -1;
+  const previousScore = correctedSide.score;
+  const previousCount = Number(correctedSide.stats[definition.statKey] || 0);
+  if (direction === 'REMOVE' && previousCount <= 0) {
+    return { ok: false, code: 'NO_SCORING_ACTION', message: `No recorded ${definition.label} action can be removed` };
+  }
+  if (direction === 'REMOVE' && previousScore < definition.points) {
+    return { ok: false, code: 'SCORE_TOO_LOW', message: 'The score is too low to remove that scoring action' };
+  }
+
+  correctedSide.score += multiplier * definition.points;
+  correctedSide.stats[definition.statKey] = previousCount + multiplier;
+  recordOperatorCorrection(
+    `${direction === 'ADD' ? 'ADD MISSED' : 'REMOVE WRONG'} ${definition.label}`,
+    player,
+    previousScore,
+    correctedSide.score,
+    {
+      type: 'SCORING_ACTION_CORRECTION',
+      direction,
+      actionKey: definition.actionKey,
+      basePoints: definition.basePoints,
+      awardedPoints: definition.points,
+      technical: definition.technical,
+      stat: definition.statKey,
+      statFrom: previousCount,
+      statTo: correctedSide.stats[definition.statKey]
+    }
+  );
+  checkPointGap();
+  return { ok: true };
+}
+
+function checkGamjeomConsequences(player) {
+  const penalized = side(player);
+  const opponent = other(player);
+  if (isGoldenRound() && penalized.gamjeom >= rules.tieBreak.goldenRound.opponentGamJeomsToWin) {
+    endGoldenRound(opponent, `GDP - ${rules.tieBreak.goldenRound.opponentGamJeomsToWin} GAM-JEOMS`);
+    return;
+  }
+  if (rules.penalties.gamJeom.matchLossAt !== null &&
+      totalGamJeomsFor(player, { includeCurrentRound: true }) >= rules.penalties.gamJeom.matchLossAt) {
+    finishMatch(opponent, `PUN - ${rules.penalties.gamJeom.matchLossAt} TOTAL GAM-JEOMS`);
+    return;
+  }
+  if (penalized.gamjeom >= rules.penalties.gamJeom.roundLossAt) {
+    endRound(opponent, `ROUND GAM-JEOM LIMIT - ${rules.penalties.gamJeom.roundLossAt} GAM-JEOM`);
+    return;
+  }
+  checkPointGap();
+}
+
+function correctGamjeom(player, direction) {
+  if (!validPlayer(player) || !operatorScoringIsAllowed()) {
+    return { ok: false, code: 'ROUND_NOT_ACTIVE', message: 'Gam-jeom can only be corrected during an active round' };
+  }
+  if (!['ADD', 'REMOVE'].includes(direction)) {
+    return { ok: false, code: 'INVALID_CORRECTION', message: 'Correction direction must be ADD or REMOVE' };
+  }
+  const penalized = side(player);
+  const opponentPlayer = other(player);
+  const opponentSide = side(opponentPlayer);
+  const multiplier = direction === 'ADD' ? 1 : -1;
+  const scoreEffect = rules.penalties.gamJeom.awardsPointToOpponent
+    ? rules.scoring.gamJeomPointValue
+    : 0;
+  if (direction === 'REMOVE' && penalized.gamjeom <= 0) {
+    return { ok: false, code: 'NO_GAMJEOM', message: 'No recorded Gam-jeom can be removed' };
+  }
+  if (direction === 'REMOVE' && opponentSide.score < scoreEffect) {
+    return { ok: false, code: 'SCORE_TOO_LOW', message: 'The opponent score is too low to remove that Gam-jeom' };
+  }
+
+  const previousCount = penalized.gamjeom;
+  const previousOpponentScore = opponentSide.score;
+  penalized.gamjeom += multiplier;
+  opponentSide.score += multiplier * scoreEffect;
+  recordOperatorCorrection(
+    `${direction === 'ADD' ? 'ADD MISSED' : 'REMOVE WRONG'} GAM-JEOM`,
+    player,
+    previousCount,
+    penalized.gamjeom,
+    {
+      type: 'GAMJEOM_CORRECTION',
+      direction,
+      opponent: opponentPlayer,
+      opponentScoreFrom: previousOpponentScore,
+      opponentScoreTo: opponentSide.score,
+      opponentPointValue: scoreEffect
+    }
+  );
+  if (direction === 'ADD') checkGamjeomConsequences(player);
+  return { ok: true };
+}
+
 function addGamjeom(player, allowPaused = false) {
   const canScore = allowPaused ? operatorScoringIsAllowed() : scoringIsAllowed();
   if (!validPlayer(player) || !canScore) return false;
@@ -2918,20 +3059,7 @@ function addGamjeom(player, allowPaused = false) {
       source: 'gamjeom'
     }));
   }
-  if (isGoldenRound() && penalized.gamjeom >= rules.tieBreak.goldenRound.opponentGamJeomsToWin) {
-    endGoldenRound(opponent, `GDP - ${rules.tieBreak.goldenRound.opponentGamJeomsToWin} GAM-JEOMS`);
-    return true;
-  }
-  if (rules.penalties.gamJeom.matchLossAt !== null &&
-      totalGamJeomsFor(player, { includeCurrentRound: true }) >= rules.penalties.gamJeom.matchLossAt) {
-    finishMatch(opponent, `PUN - ${rules.penalties.gamJeom.matchLossAt} TOTAL GAM-JEOMS`);
-    return true;
-  }
-  if (penalized.gamjeom >= rules.penalties.gamJeom.roundLossAt) {
-    endRound(opponent, `ROUND GAM-JEOM LIMIT - ${rules.penalties.gamJeom.roundLossAt} GAM-JEOM`);
-    return true;
-  }
-  checkPointGap();
+  checkGamjeomConsequences(player);
   return true;
 }
 
@@ -4012,6 +4140,27 @@ wss.on('connection', ws => {
       }
       if (msg.action === 'editRoundTieStats') {
         const result = editRoundTieStats(String(msg.player || '').toUpperCase(), msg.stats);
+        if (!result.ok) {
+          sendError(ws, result.code, result.message);
+          return;
+        }
+      }
+      if (msg.action === 'correctScoringAction') {
+        const result = correctScoringAction(
+          String(msg.player || '').toUpperCase(),
+          String(msg.direction || '').toUpperCase(),
+          String(msg.actionKey || '').toUpperCase()
+        );
+        if (!result.ok) {
+          sendError(ws, result.code, result.message);
+          return;
+        }
+      }
+      if (msg.action === 'correctGamjeom') {
+        const result = correctGamjeom(
+          String(msg.player || '').toUpperCase(),
+          String(msg.direction || '').toUpperCase()
+        );
         if (!result.ok) {
           sendError(ws, result.code, result.message);
           return;

@@ -42,48 +42,21 @@
       aria-labelledby="cornerEditTitle"
     >
       <div class="modalCard smallModal cornerEditModal">
-        <h2 id="cornerEditTitle">EDIT CORNER</h2>
-        <p>Choose the value that needs correction.</p>
-        <button onclick="editSelectedCornerScore()">EDIT SCORE</button>
-        <button id="cornerKickCountsButton" onclick="editSelectedCornerKickCounts()">EDIT KICK COUNTS</button>
-        <p id="cornerKickCountsHint" class="cornerEditHint"></p>
-        <button onclick="closeCornerEditor()">CANCEL</button>
-      </div>
-    </section>
-
-    <section
-      id="kickCountModal"
-      class="overlay hidden"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="kickCountTitle"
-    >
-      <div class="modalCard kickCountModal">
-        <h2 id="kickCountTitle">EDIT KICK COUNTS</h2>
-        <p id="kickCountRound" class="kickCountRound"></p>
-        <p id="kickCountRuleHint" class="kickCountRuleHint"></p>
-        <div id="kickCountFields" class="kickCountFields">
-          <label id="kickCountTechnicalHeadRow" class="kickCountField">
-            <span id="kickCountTechnicalHeadLabel">TECHNICAL HEAD KICKS</span>
-            <small id="kickCountTechnicalHeadPriority"></small>
-            <input id="kickCountTechnicalHead" type="number" min="0" step="1" inputmode="numeric" />
-          </label>
-          <label id="kickCountTechnicalChestRow" class="kickCountField">
-            <span id="kickCountTechnicalChestLabel">TECHNICAL CHEST KICKS</span>
-            <small id="kickCountTechnicalChestPriority"></small>
-            <input id="kickCountTechnicalChest" type="number" min="0" step="1" inputmode="numeric" />
-          </label>
-          <label id="kickCountNormalHeadRow" class="kickCountField">
-            <span id="kickCountNormalHeadLabel">NORMAL HEAD KICKS</span>
-            <small id="kickCountNormalHeadPriority"></small>
-            <input id="kickCountNormalHead" type="number" min="0" step="1" inputmode="numeric" />
-          </label>
+        <h2 id="cornerEditTitle">CORRECT CORNER</h2>
+        <p id="cornerCorrectionSummary">Choose what needs to be corrected.</p>
+        <div id="cornerCorrectionMenu">
+          <button onclick="openScoringCorrection('ADD')">ADD MISSED SCORING ACTION</button>
+          <button onclick="openScoringCorrection('REMOVE')">REMOVE WRONG SCORING ACTION</button>
+          <button onclick="correctSelectedGamjeom('ADD')">ADD MISSED GAM-JEOM</button>
+          <button onclick="correctSelectedGamjeom('REMOVE')">REMOVE WRONG GAM-JEOM</button>
+          <button class="advancedCorrectionButton" onclick="editSelectedCornerScore()">ADVANCED SCORE ADJUSTMENT</button>
+          <button onclick="closeCornerEditor()">CANCEL</button>
         </div>
-        <p class="kickCountScoreWarning">Kick-count corrections do not change the score.</p>
-        <div class="kickCountActions">
-          <button onclick="saveKickCounts()">SAVE CHANGES</button>
-          <button onclick="closeKickCountEditor()">CANCEL</button>
+        <div id="scoringCorrectionPanel" class="hidden">
+          <div id="scoringCorrectionActions" class="scoringCorrectionActions"></div>
+          <button onclick="showCornerCorrectionMenu()">BACK</button>
         </div>
+        <p id="cornerCorrectionHint" class="cornerEditHint"></p>
       </div>
     </section>
     <div id="remoteDisconnectPopup" class="remoteDisconnectPopup" role="alert" aria-live="assertive"></div>
@@ -255,9 +228,8 @@
           </button>
           <button id="redChestButton" data-score-point="2" aria-label="+2 CHEST; Ctrl+click for +4 TECHNICAL CHEST" title="+2 CHEST | CTRL+CLICK = +4 TECHNICAL CHEST" onclick="manualConfiguredPoint('RED', 'redChestButton', event)"><img class="scoreActionIcon" src="/assets/chestguard.png" alt="" aria-hidden="true" /></button>
           <button id="redPunchButton" data-score-point="1" aria-label="+1 PUNCH" title="+1 PUNCH" onclick="manualConfiguredPoint('RED', 'redPunchButton')"><img class="scoreActionIcon" src="/assets/fist.png" alt="" aria-hidden="true" /></button>
-          <button onclick="manualGam('RED')">GAM-JEOM</button>
-          <button onclick="openCornerEditor('RED')">EDIT RED</button>
-          <button onclick="editGam('RED')">EDIT GAM-JEOM</button>
+          <button class="secondaryControl" onclick="manualGam('RED')">GAM-JEOM</button>
+          <button class="secondaryControl" onclick="openCornerEditor('RED')">CORRECT HONG</button>
         </div>
 
         <div class="centerBottomBox">
@@ -282,9 +254,8 @@
           </button>
           <button id="blueChestButton" data-score-point="2" aria-label="+2 CHEST; Ctrl+click for +4 TECHNICAL CHEST" title="+2 CHEST | CTRL+CLICK = +4 TECHNICAL CHEST" onclick="manualConfiguredPoint('BLUE', 'blueChestButton', event)"><img class="scoreActionIcon" src="/assets/chestguard.png" alt="" aria-hidden="true" /></button>
           <button id="bluePunchButton" data-score-point="1" aria-label="+1 PUNCH" title="+1 PUNCH" onclick="manualConfiguredPoint('BLUE', 'bluePunchButton')"><img class="scoreActionIcon" src="/assets/fist.png" alt="" aria-hidden="true" /></button>
-          <button onclick="manualGam('BLUE')">GAM-JEOM</button>
-          <button onclick="openCornerEditor('BLUE')">EDIT BLUE</button>
-          <button onclick="editGam('BLUE')">EDIT GAM-JEOM</button>
+          <button class="secondaryControl" onclick="manualGam('BLUE')">GAM-JEOM</button>
+          <button class="secondaryControl" onclick="openCornerEditor('BLUE')">CORRECT CHUNG</button>
         </div>
       </section>
     </section>

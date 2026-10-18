@@ -747,13 +747,14 @@ button {
 }
 .controlGrid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   grid-template-rows: repeat(2, clamp(60px, 7vh, 110px));
   gap: clamp(8px, 1vw, 18px);
   position: relative;
   z-index: 11;
 }
 .controlGrid button {
+  grid-column: span 2;
   color: #fff;
   border-radius: 8px;
   font-size: clamp(13px, min(1.1vw, 2vh), 24px);
@@ -765,6 +766,9 @@ button {
   position: relative;
   z-index: 12;
   cursor: pointer;
+}
+.controlGrid .secondaryControl {
+  grid-column: span 3;
 }
 .redButtons button {
   background: #b31e1e;
@@ -886,74 +890,26 @@ button {
   color: #ffbd72;
   font-size: 12px;
 }
-.kickCountModal {
-  width: min(600px, 94vw);
+.modalCard.cornerEditModal {
+  width: min(560px, 94vw);
 }
-.kickCountRound {
-  margin: -5px 0 8px;
-  color: #fff;
-  font-size: 18px;
-  font-weight: 900;
-  letter-spacing: 0.08em;
+.cornerEditModal .advancedCorrectionButton {
+  margin-top: 18px;
+  border: 1px solid #d69b45;
+  background: #4a3518;
 }
-.kickCountRuleHint,
-.kickCountScoreWarning {
-  color: #c8d2e4;
-  font-size: 13px;
-  font-weight: 800;
-  line-height: 1.4;
-}
-.kickCountFields {
-  display: grid;
-  gap: 10px;
-  margin: 18px 0;
-}
-.kickCountField {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 110px;
-  align-items: center;
-  gap: 2px 14px;
-  padding: 12px 14px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 10px;
-  background: #0b1019;
-  text-align: left;
-}
-.kickCountField > span {
-  font-weight: 900;
-}
-.kickCountField small {
-  grid-column: 1;
-  color: #8bb8ff;
-  font-size: 10px;
-  font-weight: 900;
-  letter-spacing: 0.04em;
-}
-.kickCountField input {
-  grid-column: 2;
-  grid-row: 1 / span 2;
-  width: 100%;
-  padding: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  border-radius: 8px;
-  background: #05080d;
-  color: #fff;
-  font-size: 24px;
-  font-weight: 900;
-  text-align: center;
-}
-.kickCountField input:focus {
-  border-color: #8bb8ff;
-  box-shadow: 0 0 0 2px rgba(139, 184, 255, 0.18);
-  outline: none;
-}
-.kickCountActions {
+.scoringCorrectionActions {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
+  margin: 18px 0;
 }
-.kickCountActions button {
+.scoringCorrectionActions button {
+  min-height: 64px;
   margin: 0;
+}
+.scoringCorrectionActions button:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
 }
 .tieDecisionModal {
   width: min(620px, 92vw);

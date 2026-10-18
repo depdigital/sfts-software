@@ -641,35 +641,38 @@ function manualGam(player) {
 async function editScore(player) {
   if (!lastState) return;
   const current = player === "RED" ? lastState.red.score : lastState.blue.score;
-  const value = await requestUserInput(`Set ${player} score`, current);
+  const value = await requestUserInput(
+    `Advanced: set ${cornerName(player)} score only. Scoring-action counts will not change.`,
+    current
+  );
   if (value !== null)
     send({ type: "host", action: "editScore", player, value: Number(value) });
 }
-async function editGam(player) {
-  if (!lastState) return;
-  const current =
-    player === "RED" ? lastState.red.gamjeom : lastState.blue.gamjeom;
-  const value = await requestUserInput(`Set ${player} gam-jeom`, current);
-  if (value !== null)
-    send({ type: "host", action: "editGamjeom", player, value: Number(value) });
+
+function cornerName(player) {
+  return player === "RED" ? "HONG" : "CHUNG";
 }
 
-function kickCountEditError() {
+function correctionEditError() {
   if (!lastState || lastState.phase !== "ROUND" || !lastState.roundStarted || lastState.timerMs <= 0) {
-    return "KICK COUNTS CAN ONLY BE EDITED AFTER THE ROUND STARTS AND BEFORE THE TIMER EXPIRES";
+    return "CORRECTIONS ARE AVAILABLE AFTER THE ROUND STARTS AND BEFORE THE TIMER EXPIRES";
   }
-  if (lastState.test?.active) return "KICK COUNTS CANNOT BE EDITED IN REMOTE TEST MODE";
-  if (lastState.kyeShi?.active) return "KICK COUNTS CANNOT BE EDITED DURING KYE-SHI";
+  if (lastState.test?.active) return "CORRECTIONS ARE NOT AVAILABLE IN REMOTE TEST MODE";
+  if (lastState.kyeShi?.active) return "CORRECTIONS ARE NOT AVAILABLE DURING KYE-SHI";
   return "";
 }
 
 function openCornerEditor(player) {
   if (!lastState || !["RED", "BLUE"].includes(player)) return;
+  const error = correctionEditError();
+  if (error) {
+    toast(error);
+    return;
+  }
   cornerEditPlayer = player;
-  $("cornerEditTitle").textContent = `EDIT ${player} CORNER`;
-  const error = kickCountEditError();
-  $("cornerKickCountsButton").disabled = Boolean(error);
-  $("cornerKickCountsHint").textContent = error;
+  $("cornerEditTitle").textContent = `CORRECT ${cornerName(player)}`;
+  $("cornerCorrectionHint").textContent = "Every correction is recorded in the match operator history.";
+  showCornerCorrectionMenu();
   $("cornerEditModal").classList.remove("hidden");
 }
 
@@ -684,140 +687,123 @@ function editSelectedCornerScore() {
   if (player) void editScore(player);
 }
 
-function editSelectedCornerKickCounts() {
-  const player = cornerEditPlayer;
-  if (!player) return;
-  const error = kickCountEditError();
-  if (error) {
-    toast(error);
-    return;
-  }
-  closeCornerEditor();
-  editKickCounts(player);
+function showCornerCorrectionMenu() {
+  if (!cornerEditPlayer) return;
+  $("cornerEditTitle").textContent = `CORRECT ${cornerName(cornerEditPlayer)}`;
+  $("cornerCorrectionSummary").textContent = "Choose what needs to be corrected.";
+  $("cornerCorrectionMenu").classList.remove("hidden");
+  $("scoringCorrectionPanel").classList.add("hidden");
 }
 
-function kickCountFieldDefinitions() {
+function scoringCorrectionDefinitions() {
   const baseLabels = scoringRules?.basePointLabels || {};
+  const basePointValues = Array.isArray(scoringRules?.basePointValues)
+    ? scoringRules.basePointValues
+    : [];
   const technicalInput = scoringRules?.technicalInput || {};
   const technicalPoints = technicalInput.pointsByBasePoints || {};
   const eligibleTechnicalPoints = Array.isArray(technicalInput.eligibleBasePoints)
     ? technicalInput.eligibleBasePoints
     : [];
-  const headLabel = String(baseLabels["3"] || "HEAD").toUpperCase();
-  const chestLabel = String(baseLabels["2"] || "CHEST").toUpperCase();
-  const technicalSuffix = (basePoints) => {
-    const award = Number(technicalPoints[String(basePoints)]);
-    const enabled = technicalInput.enabled && eligibleTechnicalPoints.includes(basePoints);
-    return enabled && Number.isSafeInteger(award) ? ` (+${award})` : " (NOT ENABLED)";
-  };
-  return [
-    {
-      criterion: "TECHNICAL_HEAD_KICKS",
-      statKey: "technicalHead",
-      inputKey: "technicalHead",
-      rowId: "kickCountTechnicalHeadRow",
-      labelId: "kickCountTechnicalHeadLabel",
-      priorityId: "kickCountTechnicalHeadPriority",
-      inputId: "kickCountTechnicalHead",
-      label: `TECHNICAL ${headLabel} KICKS${technicalSuffix(3)}`
-    },
-    {
-      criterion: "TECHNICAL_CHEST_KICKS",
-      statKey: "technicalChest",
-      inputKey: "technicalChest",
-      rowId: "kickCountTechnicalChestRow",
-      labelId: "kickCountTechnicalChestLabel",
-      priorityId: "kickCountTechnicalChestPriority",
-      inputId: "kickCountTechnicalChest",
-      label: `TECHNICAL ${chestLabel} KICKS${technicalSuffix(2)}`
-    },
-    {
-      criterion: "NORMAL_HEAD_KICKS",
-      statKey: "plus3",
-      inputKey: "normalHead",
-      rowId: "kickCountNormalHeadRow",
-      labelId: "kickCountNormalHeadLabel",
-      priorityId: "kickCountNormalHeadPriority",
-      inputId: "kickCountNormalHead",
-      label: `NORMAL ${headLabel} KICKS (+3)`
-    }
-  ];
+  const normal = basePointValues.map(basePoints => ({
+    key: `NORMAL_${basePoints}`,
+    label: String(baseLabels[String(basePoints)] || `${basePoints} POINT`).toUpperCase(),
+    points: basePoints,
+    statKey: `plus${basePoints}`,
+    technical: false
+  }));
+  const technical = technicalInput.enabled
+    ? eligibleTechnicalPoints
+      .filter(basePoints => [2, 3].includes(basePoints))
+      .map(basePoints => ({
+        key: `TECHNICAL_${basePoints}`,
+        label: `TECHNICAL ${String(baseLabels[String(basePoints)] || `${basePoints} POINT`).toUpperCase()}`,
+        points: Number(technicalPoints[String(basePoints)]),
+        statKey: basePoints === 2 ? "technicalChest" : "technicalHead",
+        technical: true
+      }))
+      .filter(action => Number.isSafeInteger(action.points) && action.points > 0)
+    : [];
+  return [...normal, ...technical];
 }
 
-function configuredKickCountCriteria() {
-  if (scoringRules?.roundTie?.type !== "SUPERIORITY") return [];
-  const supported = new Set(kickCountFieldDefinitions().map(field => field.criterion));
-  return (scoringRules.roundTie.criteria || []).filter((criterion, index, criteria) => (
-    supported.has(criterion) && criteria.indexOf(criterion) === index
-  ));
-}
-
-function editKickCounts(player) {
-  const error = kickCountEditError();
-  if (error) {
-    toast(error);
-    return;
-  }
-  if (!["RED", "BLUE"].includes(player)) return;
-
-  cornerEditPlayer = player;
-  const side = player === "RED" ? lastState.red : lastState.blue;
-  const definitions = kickCountFieldDefinitions();
-  const criteria = configuredKickCountCriteria();
-  const priority = new Map(criteria.map((criterion, index) => [criterion, index + 1]));
-  const order = [
-    ...criteria,
-    ...definitions.map(field => field.criterion).filter(criterion => !priority.has(criterion))
-  ];
-  const byCriterion = new Map(definitions.map(field => [field.criterion, field]));
-  const fields = $("kickCountFields");
-
-  for (const criterion of order) {
-    const field = byCriterion.get(criterion);
-    if (!field) continue;
-    $(field.labelId).textContent = field.label;
-    $(field.priorityId).textContent = priority.has(criterion)
-      ? `ROUND-TIE PRIORITY ${priority.get(criterion)}`
-      : "TRACKED — NOT IN REGULATION ROUND-TIE PRIORITY";
-    $(field.inputId).value = Number(side.stats?.[field.statKey] || 0);
-    fields.appendChild($(field.rowId));
-  }
-
-  $("kickCountTitle").textContent = `EDIT ${player} KICK COUNTS`;
-  $("kickCountRound").textContent = `ROUND ${lastState.round}`;
-  $("kickCountRuleHint").textContent = criteria.length
-    ? "The active rule pack compares tied rounds in the priority shown below."
-    : "The active rule pack records these counts but does not use them for regulation-round superiority.";
-  $("kickCountModal").classList.remove("hidden");
-  $(byCriterion.get(order[0])?.inputId)?.focus();
-}
-
-function closeKickCountEditor() {
-  $("kickCountModal").classList.add("hidden");
-  cornerEditPlayer = "";
-}
-
-function saveKickCounts() {
+function openScoringCorrection(direction) {
   const player = cornerEditPlayer;
-  const error = kickCountEditError();
+  const error = correctionEditError();
   if (error) {
     toast(error);
     return;
   }
-  if (!["RED", "BLUE"].includes(player)) return;
-
-  const stats = {};
-  for (const field of kickCountFieldDefinitions()) {
-    const value = Number($(field.inputId).value);
-    if (!Number.isSafeInteger(value) || value < 0) {
-      toast("KICK COUNTS MUST BE NON-NEGATIVE WHOLE NUMBERS");
-      $(field.inputId).focus();
-      return;
-    }
-    stats[field.inputKey] = value;
+  if (!["RED", "BLUE"].includes(player) || !["ADD", "REMOVE"].includes(direction)) return;
+  const side = player === "RED" ? lastState.red : lastState.blue;
+  const actions = $("scoringCorrectionActions");
+  actions.replaceChildren();
+  for (const definition of scoringCorrectionDefinitions()) {
+    const button = document.createElement("button");
+    const sign = direction === "ADD" ? "+" : "−";
+    button.textContent = `${definition.label} (${sign}${definition.points})`;
+    const count = Number(side.stats?.[definition.statKey] || 0);
+    button.disabled = direction === "REMOVE" && (count <= 0 || side.score < definition.points);
+    if (button.disabled) button.title = "No matching recorded scoring action can be removed";
+    button.addEventListener("click", () => void confirmScoringCorrection(direction, definition.key));
+    actions.appendChild(button);
   }
-  send({ type: "host", action: "editRoundTieStats", player, stats });
-  closeKickCountEditor();
+  $("cornerEditTitle").textContent = `${direction === "ADD" ? "ADD MISSED" : "REMOVE WRONG"} ${cornerName(player)} ACTION`;
+  $("cornerCorrectionSummary").textContent = "Select the scoring action. Its points and recorded statistic will change together.";
+  $("cornerCorrectionMenu").classList.add("hidden");
+  $("scoringCorrectionPanel").classList.remove("hidden");
+}
+
+async function confirmScoringCorrection(direction, actionKey) {
+  const player = cornerEditPlayer;
+  const definition = scoringCorrectionDefinitions().find(action => action.key === actionKey);
+  if (!definition || !["RED", "BLUE"].includes(player)) return;
+  const side = player === "RED" ? lastState.red : lastState.blue;
+  const multiplier = direction === "ADD" ? 1 : -1;
+  const fromCount = Number(side.stats?.[definition.statKey] || 0);
+  const confirmed = await requestUserPermission(
+    `${direction === "ADD" ? "Add missed" : "Remove wrong"} ${cornerName(player)} ${definition.label}? ` +
+    `Score ${side.score} to ${side.score + (multiplier * definition.points)}; ` +
+    `recorded count ${fromCount} to ${fromCount + multiplier}.`
+  );
+  if (!confirmed) return;
+  send({ type: "host", action: "correctScoringAction", player, direction, actionKey });
+  closeCornerEditor();
+}
+
+async function correctSelectedGamjeom(direction) {
+  const player = cornerEditPlayer;
+  const error = correctionEditError();
+  if (error) {
+    toast(error);
+    return;
+  }
+  if (!["RED", "BLUE"].includes(player) || !["ADD", "REMOVE"].includes(direction)) return;
+  const penalized = player === "RED" ? lastState.red : lastState.blue;
+  if (direction === "REMOVE" && Number(penalized.gamjeom || 0) <= 0) {
+    toast(`NO RECORDED ${cornerName(player)} GAM-JEOM CAN BE REMOVED`);
+    return;
+  }
+  const opponentPlayer = player === "RED" ? "BLUE" : "RED";
+  const opponent = opponentPlayer === "RED" ? lastState.red : lastState.blue;
+  const pointValue = scoringRules?.gamJeom?.awardsPointToOpponent
+    ? Number(scoringRules?.gamJeomPointValue || 0)
+    : 0;
+  if (direction === "REMOVE" && pointValue > opponent.score) {
+    toast("THE OPPONENT SCORE IS TOO LOW TO REMOVE THIS GAM-JEOM");
+    return;
+  }
+  const multiplier = direction === "ADD" ? 1 : -1;
+  const scoreEffect = pointValue
+    ? ` ${cornerName(opponentPlayer)} score ${opponent.score} to ${opponent.score + (multiplier * pointValue)}.`
+    : " The active rule pack does not award an opponent point.";
+  const confirmed = await requestUserPermission(
+    `${direction === "ADD" ? "Add missed" : "Remove wrong"} ${cornerName(player)} Gam-jeom? ` +
+    `Count ${penalized.gamjeom} to ${penalized.gamjeom + multiplier}.${scoreEffect}`
+  );
+  if (!confirmed) return;
+  send({ type: "host", action: "correctGamjeom", player, direction });
+  closeCornerEditor();
 }
 
 function openSettings() {
@@ -2407,14 +2393,12 @@ window.manualConfiguredPoint = manualConfiguredPoint;
 window.manualHeadPoint = manualHeadPoint;
 window.manualGam = manualGam;
 window.editScore = editScore;
-window.editGam = editGam;
 window.openCornerEditor = openCornerEditor;
 window.closeCornerEditor = closeCornerEditor;
 window.editSelectedCornerScore = editSelectedCornerScore;
-window.editSelectedCornerKickCounts = editSelectedCornerKickCounts;
-window.editKickCounts = editKickCounts;
-window.closeKickCountEditor = closeKickCountEditor;
-window.saveKickCounts = saveKickCounts;
+window.showCornerCorrectionMenu = showCornerCorrectionMenu;
+window.openScoringCorrection = openScoringCorrection;
+window.correctSelectedGamjeom = correctSelectedGamjeom;
 window.openSettings = openSettings;
 window.closeSettings = closeSettings;
 window.resolveUserPermission = resolveUserPermission;

@@ -331,6 +331,57 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
     message.match.blue.stats.plus3 === 1 && message.match.blue.stats.technicalHead === 1
   ));
   assert.equal(manualBlueTechnicalHead.match.operatorHistory.at(-1).action, 'TECHNICAL HEAD KICK');
+
+  host.send(JSON.stringify({
+    type: 'host', action: 'correctScoringAction', player: 'RED', direction: 'ADD', actionKey: 'NORMAL_1'
+  }));
+  const addedMissedPunch = await waitForMessage(host, message => (
+    message.type === 'state' && message.match.red.score === 8 && message.match.red.stats.plus1 === 1
+  ));
+  assert.equal(addedMissedPunch.match.operatorHistory.at(-1).action, 'ADD MISSED PUNCH');
+  assert.deepEqual(addedMissedPunch.match.operatorHistory.at(-1).details, {
+    type: 'SCORING_ACTION_CORRECTION',
+    direction: 'ADD',
+    actionKey: 'NORMAL_1',
+    basePoints: 1,
+    awardedPoints: 1,
+    technical: false,
+    stat: 'plus1',
+    statFrom: 0,
+    statTo: 1
+  });
+
+  host.send(JSON.stringify({
+    type: 'host', action: 'correctScoringAction', player: 'RED', direction: 'REMOVE', actionKey: 'NORMAL_1'
+  }));
+  await waitForMessage(host, message => (
+    message.type === 'state' && message.match.red.score === 7 && message.match.red.stats.plus1 === 0
+  ));
+
+  host.send(JSON.stringify({
+    type: 'host', action: 'correctScoringAction', player: 'BLUE', direction: 'ADD', actionKey: 'TECHNICAL_2'
+  }));
+  const addedTechnicalChest = await waitForMessage(host, message => (
+    message.type === 'state' && message.match.blue.score === 13 && message.match.blue.stats.technicalChest === 1
+  ));
+  assert.equal(addedTechnicalChest.match.operatorHistory.at(-1).details.awardedPoints, 4);
+  host.send(JSON.stringify({
+    type: 'host', action: 'correctScoringAction', player: 'BLUE', direction: 'REMOVE', actionKey: 'TECHNICAL_2'
+  }));
+  await waitForMessage(host, message => (
+    message.type === 'state' && message.match.blue.score === 9 && message.match.blue.stats.technicalChest === 0
+  ));
+
+  host.send(JSON.stringify({ type: 'host', action: 'correctGamjeom', player: 'RED', direction: 'ADD' }));
+  const addedGamjeomCorrection = await waitForMessage(host, message => (
+    message.type === 'state' && message.match.red.gamjeom === 1 && message.match.blue.score === 10
+  ));
+  assert.equal(addedGamjeomCorrection.match.operatorHistory.at(-1).details.opponentPointValue, 1);
+  host.send(JSON.stringify({ type: 'host', action: 'correctGamjeom', player: 'RED', direction: 'REMOVE' }));
+  await waitForMessage(host, message => (
+    message.type === 'state' && message.match.red.gamjeom === 0 && message.match.blue.score === 9
+  ));
+
   host.send(JSON.stringify({ type: 'host', action: 'resetMatch' }));
   await waitForMessage(host, message => message.type === 'state' && message.match.red.score === 0 && message.match.blue.score === 0);
   host.send(JSON.stringify({ type: 'host', action: 'playPause' }));
@@ -941,14 +992,16 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(html, /id="summaryBlueTechnicalChest"/);
   assert.match(html, /id="summaryBlueTechnicalHead"/);
   assert.match(html, /id="tieDecisionModal"/);
-  assert.match(html, /onclick="openCornerEditor\('RED'\)">EDIT RED<\/button>/);
-  assert.match(html, /onclick="openCornerEditor\('BLUE'\)">EDIT BLUE<\/button>/);
+  assert.match(html, /onclick="openCornerEditor\('RED'\)">CORRECT HONG<\/button>/);
+  assert.match(html, /onclick="openCornerEditor\('BLUE'\)">CORRECT CHUNG<\/button>/);
   assert.match(html, /id="cornerEditModal"/);
-  assert.match(html, /id="kickCountModal"/);
-  assert.match(html, /onclick="editSelectedCornerScore\(\)">EDIT SCORE<\/button>/);
-  assert.match(html, /onclick="editSelectedCornerKickCounts\(\)">EDIT KICK COUNTS<\/button>/);
-  assert.doesNotMatch(html, /EDIT RED KICK COUNTS<\/button>/);
-  assert.doesNotMatch(html, /EDIT BLUE KICK COUNTS<\/button>/);
+  assert.match(html, /onclick="openScoringCorrection\('ADD'\)">ADD MISSED SCORING ACTION<\/button>/);
+  assert.match(html, /onclick="openScoringCorrection\('REMOVE'\)">REMOVE WRONG SCORING ACTION<\/button>/);
+  assert.match(html, /onclick="correctSelectedGamjeom\('ADD'\)">ADD MISSED GAM-JEOM<\/button>/);
+  assert.match(html, /onclick="correctSelectedGamjeom\('REMOVE'\)">REMOVE WRONG GAM-JEOM<\/button>/);
+  assert.match(html, /ADVANCED SCORE ADJUSTMENT/);
+  assert.doesNotMatch(html, /onclick="editGam\('/);
+  assert.doesNotMatch(html, /EDIT KICK COUNTS/);
   assert.match(html, /onclick="startGoldenRound\(\)"/);
   assert.match(html, /PROCEED TO GOLDEN ROUND \(ROUND 4\)/);
   assert.match(html, /onclick="backFromTieDecision\(\)"/);
@@ -977,6 +1030,8 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(cssText, /@keyframes homeLaunchGlow/);
   assert.match(cssText, /screensaverLogoCycle[\s\S]*transform: scale\(2\.5\)/);
   assert.match(cssText, /\.controlGrid button[\s\S]*cursor: pointer/);
+  assert.match(cssText, /\.controlGrid\s*\{[^}]*grid-template-columns:\s*repeat\(6, 1fr\)/);
+  assert.match(cssText, /\.controlGrid \.secondaryControl\s*\{[^}]*grid-column:\s*span 3/);
   assert.match(html, /id="redChestButton"[\s\S]*src="\/assets\/chestguard\.png"/);
   assert.match(html, /id="redHeadButton"[\s\S]*src="\/assets\/headgear\.png"/);
   assert.match(html, /id="redPunchButton"[\s\S]*src="\/assets\/fist\.png"/);
@@ -1022,12 +1077,13 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(jsText, /decideGoldenRoundSuperiority/);
   assert.match(jsText, /ROUND_WOO_SE_GIROK/);
   assert.match(jsText, /MATCH_WOO_SE_GIROK/);
-  assert.match(jsText, /function editKickCounts\(player\)/);
-  assert.match(jsText, /scoringRules\?\.roundTie\?\.type !== "SUPERIORITY"/);
-  assert.match(jsText, /scoringRules\.roundTie\.criteria/);
+  assert.match(jsText, /function scoringCorrectionDefinitions\(\)/);
   assert.match(jsText, /scoringRules\?\.basePointLabels/);
   assert.match(jsText, /technicalInput\.pointsByBasePoints/);
-  assert.match(jsText, /function saveKickCounts\(\)/);
+  assert.match(jsText, /action: "correctScoringAction"/);
+  assert.match(jsText, /action: "correctGamjeom"/);
+  assert.match(serverSource, /function correctScoringAction\(player, direction, actionKey\)/);
+  assert.match(serverSource, /SCORING_ACTION_CORRECTION/);
   assert.match(jsText, /v\?\.button \|\| "—"/);
   assert.match(jsText, /match\.phase === "ROUND" && match\.running === true/);
   assert.match(jsText, /matchClockRunning/);
