@@ -288,10 +288,20 @@ button {
 }
 .homeFooter {
   margin-top: clamp(20px, 5vh, 50px);
-  color: rgba(217, 224, 238, 0.62);
-  font-size: clamp(10px, 0.9vw, 14px);
-  letter-spacing: 0.06em;
   text-align: center;
+  line-height: 1.45;
+}
+.homeFooterProduct {
+  color: rgba(236, 240, 248, 0.76);
+  font-size: clamp(10px, 0.9vw, 14px);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+.homeFooterLegal {
+  margin-top: 3px;
+  color: rgba(181, 190, 207, 0.52);
+  font-size: clamp(8px, 0.72vw, 11px);
+  letter-spacing: 0.07em;
 }
 
 .hostScreen {

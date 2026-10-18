@@ -974,6 +974,9 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   const html = await page.text();
   assert.match(html, /STRIKE FORCE TAEKWONDO SCORING SYSTEM/);
   assert.match(html, /class="homeSportsIntro" src="\/assets\/sfsports-logo-launch\.png" width="720" height="489"/);
+  assert.match(html, /SFTS v3\.0\.0[\s\S]*AN SF SPORTS PRODUCT/);
+  assert.match(html, /&copy; 2026 SF SPORTS\. ALL RIGHTS RESERVED\./);
+  assert.doesNotMatch(html, /Official technology partner/i);
   assert.doesNotMatch(html, /class="homeSportsBy"/);
   assert.doesNotMatch(html, /Powered by Strike Force Combat Academy/i);
   assert.match(html, /id="playerSheetFile"/);
