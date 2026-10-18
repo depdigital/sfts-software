@@ -120,6 +120,8 @@ button {
 }
 
 .homeScreen {
+  position: relative;
+  isolation: isolate;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -137,6 +139,25 @@ button {
   padding: clamp(14px, 2.5vh, 24px);
   overflow: hidden;
 }
+.homeScreen > :not(.homeSportsBackdrop) {
+  position: relative;
+  z-index: 1;
+}
+.homeSportsBackdrop {
+  position: absolute;
+  top: 50%;
+  right: -10vw;
+  z-index: 0;
+  width: min(72vw, 1050px);
+  height: auto;
+  opacity: 0.09;
+  pointer-events: none;
+  filter:
+    drop-shadow(0 0 28px rgba(156, 178, 230, 0.48))
+    drop-shadow(0 0 72px rgba(194, 21, 50, 0.28));
+  transform: translateY(-50%);
+  user-select: none;
+}
 .homeLogo {
   width: min(1500px, 100%);
   max-height: min(50vh, 600px);
@@ -150,35 +171,6 @@ button {
   font-weight: 800;
   letter-spacing: 0.12em;
   text-align: center;
-}
-.homeSportsBy {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: clamp(58px, 7.5vh, 68px);
-  gap: 8px;
-  color: rgba(217, 224, 238, 0.68);
-  font-size: clamp(10px, 0.85vw, 13px);
-  font-weight: 800;
-  letter-spacing: 0.16em;
-  transform: translateX(6px);
-}
-.homeSportsLogoWindow {
-  position: relative;
-  display: block;
-  flex: 0 0 102px;
-  width: 102px;
-  height: 100%;
-  overflow: hidden;
-}
-.homeSportsLogo {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 170px;
-  height: auto;
-  object-fit: contain;
-  transform: translate(-50%, -50%);
 }
 .homeBtn {
   width: min(400px, 86vw);
