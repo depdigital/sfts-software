@@ -335,6 +335,12 @@ function renderState(match) {
       `BREAK ${formatTime(match.timerMs, false)}`;
   }
 
+  const roundSummaryScoreboardButton = $("roundSummaryScoreboardButton");
+  roundSummaryScoreboardButton?.classList.toggle("hidden", match.phase === "BREAK");
+  if (match.phase === "ROUND" && !match.roundStarted) {
+    $("roundOverlay")?.classList.add("hidden");
+  }
+
   if (match.phase !== "MATCH_END") {
     $("winnerSlide").classList.add("hidden");
   }
@@ -2180,6 +2186,7 @@ function closeCornerRefereeHistory() {
 
 function showRoundSummary(record) {
   currentRoundRecord = record;
+  $("roundSummaryScoreboardButton")?.classList.add("hidden");
   const redName = record.red.playerName || record.red.name;
   const blueName = record.blue.playerName || record.blue.name;
   $("roundTitle").textContent = record.winner
