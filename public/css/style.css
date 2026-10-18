@@ -11,7 +11,8 @@ body {
 }
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 button {
@@ -893,11 +894,6 @@ button {
 .modalCard.cornerEditModal {
   width: min(560px, 94vw);
 }
-.cornerEditModal .advancedCorrectionButton {
-  margin-top: 18px;
-  border: 1px solid #d69b45;
-  background: #4a3518;
-}
 .scoringCorrectionActions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -910,6 +906,52 @@ button {
 }
 .scoringCorrectionActions button:last-child:nth-child(odd) {
   grid-column: 1 / -1;
+}
+.advancedCorrectionsModal .advancedCorrectionWarning {
+  padding: 12px;
+  border: 1px solid #d69b45;
+  border-radius: 8px;
+  background: #4a3518;
+  color: #ffd99a;
+  font-weight: 800;
+  line-height: 1.4;
+}
+.advancedCorrectionField {
+  display: block;
+  margin: 14px 0;
+  color: #c8d2e4;
+  font-size: 12px;
+  font-weight: 900;
+  text-align: left;
+}
+.advancedCorrectionField input,
+.advancedCorrectionField select,
+.advancedCorrectionField textarea {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 11px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 8px;
+  background: #090c13;
+  color: #fff;
+  outline: none;
+}
+.advancedCorrectionField textarea {
+  min-height: 82px;
+  resize: vertical;
+}
+.advancedCorrectionField input:focus,
+.advancedCorrectionField select:focus,
+.advancedCorrectionField textarea:focus {
+  border-color: #8bb8ff;
+  box-shadow: 0 0 0 2px rgba(139, 184, 255, 0.18);
+}
+.advancedCorrectionCurrent {
+  margin: 8px 0;
+  color: #fff;
+  font-size: 18px;
+  font-weight: 900;
 }
 .tieDecisionModal {
   width: min(620px, 92vw);

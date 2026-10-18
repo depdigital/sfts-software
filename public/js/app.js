@@ -638,17 +638,6 @@ function manualGam(player) {
   send({ type: "host", action: "gamjeom", player });
 }
 
-async function editScore(player) {
-  if (!lastState) return;
-  const current = player === "RED" ? lastState.red.score : lastState.blue.score;
-  const value = await requestUserInput(
-    `Advanced: set ${cornerName(player)} score only. Scoring-action counts will not change.`,
-    current
-  );
-  if (value !== null)
-    send({ type: "host", action: "editScore", player, value: Number(value) });
-}
-
 function cornerName(player) {
   return player === "RED" ? "HONG" : "CHUNG";
 }
@@ -679,12 +668,6 @@ function openCornerEditor(player) {
 function closeCornerEditor() {
   $("cornerEditModal").classList.add("hidden");
   cornerEditPlayer = "";
-}
-
-function editSelectedCornerScore() {
-  const player = cornerEditPlayer;
-  closeCornerEditor();
-  if (player) void editScore(player);
 }
 
 function showCornerCorrectionMenu() {
@@ -804,6 +787,65 @@ async function correctSelectedGamjeom(direction) {
   if (!confirmed) return;
   send({ type: "host", action: "correctGamjeom", player, direction });
   closeCornerEditor();
+}
+
+function renderAdvancedCorrectionCurrent() {
+  if (!lastState) return;
+  const player = $("advancedCorrectionPlayer").value === "BLUE" ? "BLUE" : "RED";
+  const side = player === "RED" ? lastState.red : lastState.blue;
+  $("advancedCorrectionCurrent").textContent = `${cornerName(player)} CURRENT SCORE: ${side.score}`;
+  $("advancedCorrectionScore").value = side.score;
+}
+
+function openAdvancedCorrections() {
+  const error = correctionEditError();
+  if (error) {
+    toast(error);
+    return;
+  }
+  closeSettings();
+  $("advancedCorrectionPlayer").value = "RED";
+  $("advancedCorrectionReason").value = "";
+  renderAdvancedCorrectionCurrent();
+  $("advancedCorrectionsModal").classList.remove("hidden");
+}
+
+function closeAdvancedCorrections() {
+  $("advancedCorrectionsModal").classList.add("hidden");
+}
+
+async function saveAdvancedScoreCorrection() {
+  const error = correctionEditError();
+  if (error) {
+    toast(error);
+    return;
+  }
+  const player = $("advancedCorrectionPlayer").value === "BLUE" ? "BLUE" : "RED";
+  const side = player === "RED" ? lastState.red : lastState.blue;
+  const value = Number($("advancedCorrectionScore").value);
+  const reason = $("advancedCorrectionReason").value.trim();
+  if (!Number.isSafeInteger(value) || value < 0) {
+    toast("THE NEW SCORE MUST BE A NON-NEGATIVE WHOLE NUMBER");
+    $("advancedCorrectionScore").focus();
+    return;
+  }
+  if (value === side.score) {
+    toast("THE NEW SCORE MUST BE DIFFERENT FROM THE CURRENT SCORE");
+    $("advancedCorrectionScore").focus();
+    return;
+  }
+  if (!reason) {
+    toast("A WRITTEN REASON IS REQUIRED");
+    $("advancedCorrectionReason").focus();
+    return;
+  }
+  const confirmed = await requestUserPermission(
+    `Set ${cornerName(player)} score from ${side.score} to ${value}? ` +
+    `Scoring-action counts and Gam-jeom totals will not change. Reason: ${reason}`
+  );
+  if (!confirmed) return;
+  send({ type: "host", action: "advancedScoreCorrection", player, value, reason });
+  closeAdvancedCorrections();
 }
 
 function openSettings() {
@@ -2392,13 +2434,15 @@ window.manualPoint = manualPoint;
 window.manualConfiguredPoint = manualConfiguredPoint;
 window.manualHeadPoint = manualHeadPoint;
 window.manualGam = manualGam;
-window.editScore = editScore;
 window.openCornerEditor = openCornerEditor;
 window.closeCornerEditor = closeCornerEditor;
-window.editSelectedCornerScore = editSelectedCornerScore;
 window.showCornerCorrectionMenu = showCornerCorrectionMenu;
 window.openScoringCorrection = openScoringCorrection;
 window.correctSelectedGamjeom = correctSelectedGamjeom;
+window.openAdvancedCorrections = openAdvancedCorrections;
+window.closeAdvancedCorrections = closeAdvancedCorrections;
+window.renderAdvancedCorrectionCurrent = renderAdvancedCorrectionCurrent;
+window.saveAdvancedScoreCorrection = saveAdvancedScoreCorrection;
 window.openSettings = openSettings;
 window.closeSettings = closeSettings;
 window.resolveUserPermission = resolveUserPermission;

@@ -70,7 +70,7 @@ const WS_MESSAGE_WINDOW_MS = 1000;
 const VOTE_SETTLE_MS = 750;
 const COALESCED_HOST_ACTIONS = new Set([
   'point', 'headPoint', 'technicalPoint', 'gamjeom', 'editScore', 'editGamjeom', 'editRoundTieStats',
-  'correctScoringAction', 'correctGamjeom'
+  'correctScoringAction', 'correctGamjeom', 'advancedScoreCorrection'
 ]);
 let TECHNICAL_COMBO_WINDOW_MS = rules.scoring.technicalInput.windowMilliseconds;
 let MIN_ACTIVE_REMOTES = rules.voting.minimumActiveRemotes;
@@ -3044,6 +3044,39 @@ function correctGamjeom(player, direction) {
   return { ok: true };
 }
 
+function advancedScoreCorrection(player, inputValue, inputReason) {
+  if (!validPlayer(player) || !operatorScoringIsAllowed()) {
+    return { ok: false, code: 'ROUND_NOT_ACTIVE', message: 'Scores can only be corrected during an active round' };
+  }
+  const value = Number(inputValue);
+  if (!Number.isSafeInteger(value) || value < 0) {
+    return { ok: false, code: 'INVALID_SCORE', message: 'The new score must be a non-negative whole number' };
+  }
+  const reason = String(inputReason || '').trim().slice(0, 240);
+  if (!reason) {
+    return { ok: false, code: 'CORRECTION_REASON_REQUIRED', message: 'A written reason is required for a score-only correction' };
+  }
+  const correctedSide = side(player);
+  const previous = correctedSide.score;
+  if (value === previous) {
+    return { ok: false, code: 'SCORE_UNCHANGED', message: 'The corrected score must differ from the current score' };
+  }
+  correctedSide.score = value;
+  recordOperatorCorrection(
+    'ADVANCED SCORE-ONLY ADJUSTMENT',
+    player,
+    previous,
+    value,
+    {
+      type: 'ADVANCED_SCORE_CORRECTION',
+      reason,
+      scoreOnly: true
+    }
+  );
+  checkPointGap();
+  return { ok: true };
+}
+
 function addGamjeom(player, allowPaused = false) {
   const canScore = allowPaused ? operatorScoringIsAllowed() : scoringIsAllowed();
   if (!validPlayer(player) || !canScore) return false;
@@ -4103,6 +4136,17 @@ wss.on('connection', ws => {
         const name = String(msg.name || '').trim().slice(0, 64);
         if (msg.player === 'RED') match.red.playerName = name;
         if (msg.player === 'BLUE') match.blue.playerName = name;
+      }
+      if (msg.action === 'advancedScoreCorrection') {
+        const result = advancedScoreCorrection(
+          String(msg.player || '').toUpperCase(),
+          msg.value,
+          msg.reason
+        );
+        if (!result.ok) {
+          sendError(ws, result.code, result.message);
+          return;
+        }
       }
       if (msg.action === 'editScore') {
         if (!validPlayer(msg.player) || !operatorScoringIsAllowed()) {

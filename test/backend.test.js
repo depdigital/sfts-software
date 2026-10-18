@@ -382,6 +382,25 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
     message.type === 'state' && message.match.red.gamjeom === 0 && message.match.blue.score === 9
   ));
 
+  host.send(JSON.stringify({
+    type: 'host', action: 'advancedScoreCorrection', player: 'RED', value: 11, reason: ''
+  }));
+  const missingCorrectionReason = await waitForMessage(host, message => message.type === 'error');
+  assert.equal(missingCorrectionReason.code, 'CORRECTION_REASON_REQUIRED');
+  host.send(JSON.stringify({
+    type: 'host', action: 'advancedScoreCorrection', player: 'RED', value: 11,
+    reason: 'Recovery after verified scoreboard interruption'
+  }));
+  const advancedScoreCorrection = await waitForMessage(host, message => (
+    message.type === 'state' && message.match.red.score === 11
+  ));
+  assert.equal(advancedScoreCorrection.match.red.stats.technicalChest, 1);
+  assert.deepEqual(advancedScoreCorrection.match.operatorHistory.at(-1).details, {
+    type: 'ADVANCED_SCORE_CORRECTION',
+    reason: 'Recovery after verified scoreboard interruption',
+    scoreOnly: true
+  });
+
   host.send(JSON.stringify({ type: 'host', action: 'resetMatch' }));
   await waitForMessage(host, message => message.type === 'state' && message.match.red.score === 0 && message.match.blue.score === 0);
   host.send(JSON.stringify({ type: 'host', action: 'playPause' }));
@@ -999,7 +1018,11 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(html, /onclick="openScoringCorrection\('REMOVE'\)">REMOVE WRONG SCORING ACTION<\/button>/);
   assert.match(html, /onclick="correctSelectedGamjeom\('ADD'\)">ADD MISSED GAM-JEOM<\/button>/);
   assert.match(html, /onclick="correctSelectedGamjeom\('REMOVE'\)">REMOVE WRONG GAM-JEOM<\/button>/);
-  assert.match(html, /ADVANCED SCORE ADJUSTMENT/);
+  assert.match(html, /onclick="openAdvancedCorrections\(\)">ADVANCED CORRECTIONS<\/button>/);
+  assert.match(html, /id="advancedCorrectionsModal"/);
+  assert.match(html, /id="advancedCorrectionReason"/);
+  assert.match(html, /Scoring-action counts and Gam-jeom totals will not change/);
+  assert.doesNotMatch(html, /ADVANCED SCORE ADJUSTMENT/);
   assert.doesNotMatch(html, /onclick="editGam\('/);
   assert.doesNotMatch(html, /EDIT KICK COUNTS/);
   assert.match(html, /onclick="startGoldenRound\(\)"/);
@@ -1082,8 +1105,10 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(jsText, /technicalInput\.pointsByBasePoints/);
   assert.match(jsText, /action: "correctScoringAction"/);
   assert.match(jsText, /action: "correctGamjeom"/);
+  assert.match(jsText, /action: "advancedScoreCorrection"/);
   assert.match(serverSource, /function correctScoringAction\(player, direction, actionKey\)/);
   assert.match(serverSource, /SCORING_ACTION_CORRECTION/);
+  assert.match(serverSource, /CORRECTION_REASON_REQUIRED/);
   assert.match(jsText, /v\?\.button \|\| "—"/);
   assert.match(jsText, /match\.phase === "ROUND" && match\.running === true/);
   assert.match(jsText, /matchClockRunning/);

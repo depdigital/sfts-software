@@ -49,7 +49,6 @@
           <button onclick="openScoringCorrection('REMOVE')">REMOVE WRONG SCORING ACTION</button>
           <button onclick="correctSelectedGamjeom('ADD')">ADD MISSED GAM-JEOM</button>
           <button onclick="correctSelectedGamjeom('REMOVE')">REMOVE WRONG GAM-JEOM</button>
-          <button class="advancedCorrectionButton" onclick="editSelectedCornerScore()">ADVANCED SCORE ADJUSTMENT</button>
           <button onclick="closeCornerEditor()">CANCEL</button>
         </div>
         <div id="scoringCorrectionPanel" class="hidden">
@@ -268,12 +267,40 @@
         <button onclick="openArenaNumber()">ARENA NUMBER</button>
         <button onclick="openHistory()">MATCH HISTORY</button>
         <button onclick="openCornerRefereeHistory()">CORNER REFEREE HISTORY</button>
+        <button onclick="openAdvancedCorrections()">ADVANCED CORRECTIONS</button>
         <button onclick="openMatchDecision()">MATCH DECISION</button>
         <button onclick="openTestMode()">REMOTE SETTINGS</button>
         <button onclick="openRules()">RULES</button>
         <button class="powerActionButton rebootButton" onclick="openPowerAction('reboot')">REBOOT</button>
         <button class="powerActionButton shutdownButton" onclick="openPowerAction('shutdown')">SHUTDOWN</button>
         <button onclick="closeSettings()">CLOSE</button>
+      </div>
+    </section>
+
+    <section id="advancedCorrectionsModal" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="advancedCorrectionsTitle">
+      <div class="modalCard smallModal advancedCorrectionsModal">
+        <h2 id="advancedCorrectionsTitle">ADVANCED CORRECTIONS</h2>
+        <p class="advancedCorrectionWarning">
+          Emergency score-only adjustment. Scoring-action counts and Gam-jeom totals will not change.
+        </p>
+        <label class="advancedCorrectionField">
+          CORNER
+          <select id="advancedCorrectionPlayer" onchange="renderAdvancedCorrectionCurrent()">
+            <option value="RED">HONG</option>
+            <option value="BLUE">CHUNG</option>
+          </select>
+        </label>
+        <p id="advancedCorrectionCurrent" class="advancedCorrectionCurrent"></p>
+        <label class="advancedCorrectionField">
+          NEW SCORE
+          <input id="advancedCorrectionScore" type="number" min="0" step="1" inputmode="numeric" />
+        </label>
+        <label class="advancedCorrectionField">
+          REQUIRED REASON
+          <textarea id="advancedCorrectionReason" maxlength="240" rows="3" placeholder="Explain why an action-based correction cannot be used"></textarea>
+        </label>
+        <button onclick="saveAdvancedScoreCorrection()">REVIEW SCORE ADJUSTMENT</button>
+        <button onclick="closeAdvancedCorrections()">CANCEL</button>
       </div>
     </section>
 
