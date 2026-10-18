@@ -141,6 +141,7 @@ button {
 }
 .homeBrandSequence {
   position: relative;
+  contain: layout paint;
   flex: 0 1 min(50vh, 480px);
   width: 100%;
   height: min(50vh, 480px);
@@ -158,6 +159,7 @@ button {
   transform-origin: center;
   user-select: none;
   animation: homeSportsBrandSequence 10s ease-in-out infinite;
+  will-change: opacity, transform;
 }
 .homeSftsSequence {
   position: absolute;
@@ -168,6 +170,7 @@ button {
   justify-content: center;
   opacity: 0;
   animation: homeSftsBrandSequence 10s ease-in-out infinite;
+  will-change: opacity, transform;
 }
 .homeLogo {
   width: min(1500px, 100%);
@@ -186,31 +189,23 @@ button {
 @keyframes homeSportsBrandSequence {
   0% {
     opacity: 0;
-    filter: blur(5px) drop-shadow(0 0 0 rgba(235, 241, 255, 0));
     transform: translate(-50%, -50%) scale(0.9);
   }
   7% {
     opacity: 0.72;
-    filter: blur(0) drop-shadow(0 0 12px rgba(235, 241, 255, 0.62));
     transform: translate(-50%, -50%) scale(1);
   }
   17% {
     opacity: 1;
-    filter:
-      blur(0)
-      drop-shadow(0 0 16px rgba(245, 248, 255, 0.95))
-      drop-shadow(0 0 42px rgba(197, 216, 255, 0.72));
     transform: translate(-50%, -50%) scale(1.025);
   }
   25% {
     opacity: 0.88;
-    filter: blur(0) drop-shadow(0 0 22px rgba(235, 241, 255, 0.74));
     transform: translate(-50%, -50%) scale(1.035);
   }
   34%,
   100% {
     opacity: 0;
-    filter: blur(7px) drop-shadow(0 0 8px rgba(235, 241, 255, 0.2));
     transform: translate(-50%, -50%) scale(1.08);
   }
 }
@@ -218,18 +213,15 @@ button {
   0%,
   33% {
     opacity: 0;
-    filter: blur(7px);
     transform: scale(0.96);
   }
   43%,
   90% {
     opacity: 1;
-    filter: blur(0);
     transform: scale(1);
   }
   100% {
     opacity: 0;
-    filter: blur(5px);
     transform: scale(1.035);
   }
 }
@@ -240,12 +232,13 @@ button {
   }
   .homeSftsSequence {
     opacity: 1;
-    filter: none;
     transform: none;
     animation: none;
   }
 }
 .homeBtn {
+  position: relative;
+  isolation: isolate;
   width: min(400px, 86vw);
   margin-top: clamp(20px, 4.5vh, 45px);
   padding: 22px 24px;
@@ -254,12 +247,25 @@ button {
   font-size: clamp(22px, 3vw, 36px);
   font-weight: 900;
   background: linear-gradient(180deg, #1c2432, #2e3748);
-  box-shadow:
-    0 12px 28px rgba(0, 0, 0, 0.35),
-    0 0 18px rgba(255, 25, 50, 0.28);
-  animation: homeLaunchGlow 1.45s ease-in-out infinite;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
   transition: transform 0.1s ease, background 0.12s ease;
-  will-change: transform, box-shadow;
+  will-change: transform;
+}
+.homeBtn::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  z-index: -1;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow:
+    0 0 12px rgba(255, 35, 58, 0.95),
+    0 0 34px rgba(255, 20, 48, 0.72),
+    0 0 58px rgba(255, 0, 36, 0.4);
+  opacity: 0.35;
+  transform: scale(0.985);
+  animation: homeLaunchGlow 1.45s ease-in-out infinite;
+  will-change: opacity, transform;
 }
 .homeBtn:hover {
   background: linear-gradient(180deg, #252f40, #39445a);
@@ -272,19 +278,12 @@ button {
 @keyframes homeLaunchGlow {
   0%,
   100% {
-    border-color: rgba(255, 56, 76, 0.32);
-    box-shadow:
-      0 12px 28px rgba(0, 0, 0, 0.35),
-      0 0 12px rgba(255, 35, 58, 0.42),
-      0 0 28px rgba(255, 20, 48, 0.2);
+    opacity: 0.32;
+    transform: scale(0.985);
   }
   50% {
-    border-color: rgba(255, 92, 108, 1);
-    box-shadow:
-      0 12px 28px rgba(0, 0, 0, 0.35),
-      0 0 12px rgba(255, 35, 58, 0.95),
-      0 0 34px rgba(255, 20, 48, 0.72),
-      0 0 58px rgba(255, 0, 36, 0.4);
+    opacity: 1;
+    transform: scale(1.025);
   }
 }
 .homeFooter {
