@@ -973,6 +973,9 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.equal(page.status, 200);
   const html = await page.text();
   assert.match(html, /STRIKE FORCE TAEKWONDO SCORING SYSTEM/);
+  assert.match(html, /class="homeSportsLogo" src="\/assets\/sfsports-logo\.png"/);
+  assert.ok(html.indexOf('class="homeSportsLogo"') < html.indexOf('class="homeLogo"'));
+  assert.doesNotMatch(html, /Powered by Strike Force Combat Academy/i);
   assert.match(html, /id="playerSheetFile"/);
   assert.match(html, /id="manualEntryModal"/);
   assert.match(html, /id="manualWizardSteps"/);
@@ -1051,7 +1054,8 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(cssText, /\.screensaver[\s\S]*background-image: url\("\/assets\/tkd_cover\.png"\)/);
   assert.match(cssText, /\.screensaver[\s\S]*background-position: right center/);
   assert.match(cssText, /\.homeScreen\s*\{[^}]*height:\s*100vh[^}]*overflow:\s*hidden/);
-  assert.match(cssText, /\.homeLogo\s*\{[^}]*width:\s*min\(1500px, 100%\)/);
+  assert.match(cssText, /\.homeBrandPanel\s*\{[^}]*width:\s*min\(920px, 94vw\)/);
+  assert.match(cssText, /\.homeLogo\s*\{[^}]*width:\s*min\(670px, 82vw\)/);
   assert.doesNotMatch(cssText, /\.screensaver\s*\{[^}]*transition:/);
   assert.match(cssText, /\.screensaverContent img[\s\S]*animation: screensaverLogoCycle 5s ease-in-out infinite/);
   assert.match(cssText, /\.homeBtn[\s\S]*animation: homeLaunchGlow 2s ease-in-out infinite/);
