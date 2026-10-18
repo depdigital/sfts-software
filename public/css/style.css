@@ -120,8 +120,6 @@ button {
 }
 
 .homeScreen {
-  position: relative;
-  isolation: isolate;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -129,140 +127,70 @@ button {
   width: 100%;
   height: 100vh;
   min-height: 100vh;
-  gap: clamp(14px, 2.2vh, 24px);
-  padding: clamp(18px, 3vh, 34px);
+  gap: clamp(10px, 2vh, 18px);
+  background: radial-gradient(
+    circle at center,
+    #182031 0%,
+    #090c14 65%,
+    #05070d 100%
+  );
+  padding: clamp(14px, 2.5vh, 24px);
   overflow: hidden;
-  background:
-    radial-gradient(circle at 50% 34%, rgba(55, 71, 103, 0.42) 0%, rgba(11, 15, 24, 0) 42%),
-    radial-gradient(circle at 50% 100%, rgba(177, 15, 38, 0.12) 0%, rgba(7, 9, 15, 0) 44%),
-    linear-gradient(145deg, #090d16 0%, #05070d 52%, #0b0f18 100%);
-}
-.homeScreen::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -2;
-  opacity: 0.18;
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
-  background-size: 54px 54px;
-  mask-image: radial-gradient(circle at center, #000 15%, transparent 72%);
-}
-.homeScreen::after {
-  content: "";
-  position: absolute;
-  top: -30vh;
-  left: 50%;
-  z-index: -1;
-  width: min(1100px, 100vw);
-  height: 70vh;
-  border-radius: 50%;
-  background: rgba(102, 122, 166, 0.1);
-  filter: blur(90px);
-  transform: translateX(-50%);
-}
-.homeBrandPanel {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: min(920px, 94vw);
-  padding: clamp(20px, 3.5vh, 38px) clamp(22px, 4vw, 56px) clamp(22px, 4vh, 44px);
-  border: 1px solid rgba(207, 219, 244, 0.14);
-  border-radius: clamp(18px, 2vw, 28px);
-  background: linear-gradient(160deg, rgba(25, 32, 47, 0.82), rgba(8, 11, 18, 0.9));
-  box-shadow:
-    0 32px 90px rgba(0, 0, 0, 0.48),
-    inset 0 1px 0 rgba(255, 255, 255, 0.055);
-  backdrop-filter: blur(16px);
 }
 .homeSportsLogo {
-  width: min(260px, 46vw);
-  height: auto;
-  max-height: 11vh;
+  width: min(300px, 52vw);
+  max-height: 13vh;
   object-fit: contain;
-  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.38));
-}
-.homeBrandDivider {
-  display: flex;
-  align-items: center;
-  width: min(460px, 72%);
-  margin: clamp(12px, 2vh, 20px) 0 clamp(8px, 1.2vh, 14px);
-}
-.homeBrandDivider::before,
-.homeBrandDivider::after {
-  content: "";
-  flex: 1;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(218, 226, 243, 0.36));
-}
-.homeBrandDivider::after {
-  background: linear-gradient(90deg, rgba(218, 226, 243, 0.36), transparent);
-}
-.homeBrandDivider span {
-  width: 7px;
-  height: 7px;
-  margin: 0 14px;
-  border: 1px solid rgba(255, 87, 105, 0.85);
-  background: #b61931;
-  transform: rotate(45deg);
+  margin-bottom: clamp(-28px, -3vh, -16px);
 }
 .homeLogo {
-  width: min(670px, 82vw);
-  height: auto;
-  max-height: 25vh;
+  width: min(1500px, 100%);
+  max-height: min(50vh, 600px);
   object-fit: contain;
-  filter: drop-shadow(0 14px 30px rgba(0, 0, 0, 0.45));
+  margin-bottom: 8px;
 }
 .homeSubtitle {
-  margin-top: clamp(6px, 1vh, 12px);
-  color: rgba(225, 232, 246, 0.82);
-  font-size: clamp(11px, 1.15vw, 17px);
+  margin-top: clamp(-160px, -14vh, -85px);
+  color: #d9e0ee;
+  font-size: clamp(14px, 1.5vw, 24px);
   font-weight: 800;
-  letter-spacing: 0.2em;
+  letter-spacing: 0.12em;
   text-align: center;
 }
 .homeBtn {
-  position: relative;
-  width: min(360px, 84vw);
-  margin-top: clamp(2px, 0.8vh, 10px);
-  padding: clamp(16px, 2.2vh, 22px) 24px;
-  border: 1px solid rgba(255, 112, 126, 0.46);
-  border-radius: 12px;
+  width: min(400px, 86vw);
+  margin-top: clamp(20px, 4.5vh, 45px);
+  padding: 22px 24px;
+  border-radius: 15px;
   color: #fff;
-  font-size: clamp(19px, 2vw, 27px);
+  font-size: clamp(22px, 3vw, 36px);
   font-weight: 900;
-  letter-spacing: 0.15em;
-  background: linear-gradient(180deg, #bd2038, #861024);
-  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.38);
+  background: linear-gradient(180deg, #1c2432, #2e3748);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
   animation: homeLaunchGlow 2s ease-in-out infinite;
-}
-.homeBtn:hover {
-  background: linear-gradient(180deg, #d12b44, #99152b);
 }
 @keyframes homeLaunchGlow {
   0%,
   100% {
-    border-color: rgba(255, 112, 126, 0.46);
+    border-color: rgba(255, 56, 76, 0.32);
     box-shadow:
-      0 14px 32px rgba(0, 0, 0, 0.38),
-      0 0 0 0 rgba(198, 28, 52, 0.16);
+      0 12px 28px rgba(0, 0, 0, 0.35),
+      0 0 0 rgba(255, 25, 50, 0);
   }
   50% {
-    border-color: rgba(255, 154, 166, 0.9);
+    border-color: rgba(255, 92, 108, 1);
     box-shadow:
-      0 14px 32px rgba(0, 0, 0, 0.38),
-      0 0 0 8px rgba(198, 28, 52, 0.08),
-      0 0 28px rgba(198, 28, 52, 0.32);
+      0 12px 28px rgba(0, 0, 0, 0.35),
+      0 0 12px rgba(255, 35, 58, 0.95),
+      0 0 30px rgba(255, 20, 48, 0.8),
+      0 0 54px rgba(255, 0, 36, 0.55);
   }
 }
 .homeFooter {
-  margin-top: clamp(2px, 1vh, 12px);
-  color: rgba(191, 201, 220, 0.56);
-  font-size: clamp(9px, 0.75vw, 12px);
-  font-weight: 700;
-  letter-spacing: 0.11em;
+  margin-top: clamp(20px, 5vh, 50px);
+  color: rgba(217, 224, 238, 0.62);
+  font-size: clamp(10px, 0.9vw, 14px);
+  letter-spacing: 0.06em;
   text-align: center;
 }
 
