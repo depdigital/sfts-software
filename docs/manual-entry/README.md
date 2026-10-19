@@ -185,7 +185,11 @@ If a medal was not awarded, leave it as **NOT AWARDED**.
 Two print options are available:
 
 - **PRINT SUMMARY:** Prints the event details, confirmed medal positions, and bout summary.
-- **PRINT FULL REPORT:** Prints the summary plus round details, penalties, corrections, and corner-referee history.
+- **PRINT FULL REPORT:** Prints the summary plus round details, penalties, and operator corrections.
+
+Corner-referee history is optional audit evidence. Leave **INCLUDE CORNER-REFEREE HISTORY** clear for the normal official result. Select it only when the full report must include every recorded corner-referee button press. This option changes only the report; the history always remains safely stored.
+
+Use **SHOW REPORT PREVIEW** to check the current medal selections and report contents before printing. The preview and printout include the selections currently shown on screen, even before they are saved.
 
 Before printing:
 

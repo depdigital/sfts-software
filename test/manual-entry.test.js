@@ -203,12 +203,26 @@ test('manual categories are rulepack validated and preserve official bout eviden
     type: 'host',
     action: 'saveManualCategoryPlacements',
     categoryId: category.id,
+    finalize: false,
+    placements: { gold: redKey, silver: '', bronze1: '', bronze2: '' }
+  }));
+  const savedPlacements = await waitFor(host, message => (
+    message.type === 'state' && message.manualCompetition.categories[0]?.placementsSavedAt
+  ));
+  assert.equal(savedPlacements.manualCompetition.categories[0].status, 'OPEN');
+  assert.equal(savedPlacements.manualCompetition.categories[0].placements.silver, null);
+
+  host.send(JSON.stringify({
+    type: 'host',
+    action: 'saveManualCategoryPlacements',
+    categoryId: category.id,
     finalize: true,
     placements: { gold: redKey, silver: blueKey, bronze1: '', bronze2: '' }
   }));
   const finalized = await waitFor(host, message => message.type === 'state' && message.manualCompetition.categories[0]?.status === 'FINALIZED');
   assert.equal(finalized.manualCompetition.categories[0].placements.gold.playerName, 'Aarav Sen');
   assert.equal(finalized.manualCompetition.categories[0].placements.silver.playerName, 'Rohan Das');
+  assert.ok(finalized.manualCompetition.categories[0].placementsSavedAt);
 
   const practiceDetails = {
     RED: { playerName: 'Practice Hong', stateCode: 'WB', district: 'Nadia' },

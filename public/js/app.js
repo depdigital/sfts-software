@@ -1681,7 +1681,14 @@ function manualReportCategory() {
   return (lastManualCompetition?.categories || []).find(item => item.id === $("manualResultsCategoryId")?.value) || null;
 }
 
-function setPlacementOptions(category, records) {
+const manualPlacementFields = {
+  manualPlaceGold: "gold",
+  manualPlaceSilver: "silver",
+  manualPlaceBronze1: "bronze1",
+  manualPlaceBronze2: "bronze2",
+};
+
+function manualParticipants(records) {
   const participants = new Map();
   for (const record of records) {
     for (const player of [record.red, record.blue]) {
@@ -1689,17 +1696,28 @@ function setPlacementOptions(category, records) {
       if (participant) participants.set(participant.key, participant);
     }
   }
+  return participants;
+}
+
+function manualPlacementsWereSaved(category) {
+  return Boolean(
+    category?.placementsSavedAt ||
+    category?.status === "FINALIZED" ||
+    Object.values(category?.placements || {}).some(Boolean)
+  );
+}
+
+function setPlacementOptions(category, records) {
+  const participants = manualParticipants(records);
   const suggestions = manualPlacementSuggestions(records);
   const saved = category.placements || {};
-  const mapping = {
-    manualPlaceGold: "gold",
-    manualPlaceSilver: "silver",
-    manualPlaceBronze1: "bronze1",
-    manualPlaceBronze2: "bronze2",
-  };
-  for (const [id, place] of Object.entries(mapping)) {
+  const useSaved = manualPlacementsWereSaved(category);
+  for (const [id, place] of Object.entries(manualPlacementFields)) {
     const select = $(id);
     const previous = select.value;
+    const sameCategory = select.dataset.categoryId === category.id;
+    const savedAt = category.placementsSavedAt || "";
+    const preserveUnsavedEdit = sameCategory && select.dataset.dirty === "true" && select.dataset.savedAt === savedAt;
     select.replaceChildren();
     const blank = document.createElement("option");
     blank.value = "";
@@ -1711,10 +1729,110 @@ function setPlacementOptions(category, records) {
       option.textContent = `${participant.playerName}${participant.club ? ` · ${participant.club}` : ""}`;
       select.appendChild(option);
     }
-    const desired = saved[place]?.key || previous || suggestions[place]?.key || "";
+    const desired = preserveUnsavedEdit
+      ? previous
+      : useSaved
+        ? saved[place]?.key || ""
+        : sameCategory
+          ? previous
+          : suggestions[place]?.key || "";
     if ([...select.options].some(option => option.value === desired)) select.value = desired;
+    select.dataset.categoryId = category.id;
+    select.dataset.savedAt = savedAt;
+    if (!preserveUnsavedEdit) select.dataset.dirty = "false";
     select.disabled = category.status === "FINALIZED";
   }
+}
+
+function currentManualPlacements(records) {
+  const participants = manualParticipants(records);
+  const placements = {};
+  for (const [id, place] of Object.entries(manualPlacementFields)) {
+    placements[place] = participants.get($(id)?.value || "") || null;
+  }
+  return placements;
+}
+
+function updateManualResultsControls(category, records) {
+  const status = $("manualResultsCategoryStatus");
+  const boutCount = $("manualResultsBoutCount");
+  const guidance = $("manualPlacementGuidance");
+  const saveButton = $("manualSavePlacementsButton");
+  const finalizeButton = $("manualFinalizeCategoryButton");
+  const historyOption = $("manualIncludeCornerRefereeHistory");
+  const historyAvailability = $("manualCornerHistoryAvailability");
+  const previewButton = $("manualToggleReportPreviewButton");
+  const printSummaryButton = $("manualPrintSummaryButton");
+  const printFullButton = $("manualPrintFullButton");
+  const hasCategory = Boolean(category);
+  const finalized = category?.status === "FINALIZED";
+  const placementSelects = Object.keys(manualPlacementFields).map(id => $(id));
+  const selectedPlacements = placementSelects.map(select => select?.value).filter(Boolean);
+  const hasDuplicatePlacement = new Set(selectedPlacements).size !== selectedPlacements.length;
+  const hasUnsavedChanges = manualPlacementsWereSaved(category)
+    ? Object.entries(manualPlacementFields).some(([id, place]) => (
+        ($(id)?.value || "") !== (category?.placements?.[place]?.key || "")
+      ))
+    : placementSelects.some(select => select?.dataset.dirty === "true");
+  const totalCornerPresses = records.reduce(
+    (total, record) => total + (record.cornerRefereeHistory || []).length,
+    0,
+  );
+
+  status.textContent = !category ? "NO CATEGORY" : finalized ? "FINALIZED" : "OPEN";
+  status.classList.toggle("finalized", finalized);
+  status.classList.toggle("empty", !category);
+  boutCount.textContent = `${records.length} completed bout${records.length === 1 ? "" : "s"}`;
+
+  if (!category) guidance.textContent = "Create and complete a manual category before confirming results.";
+  else if (finalized) guidance.textContent = "This official result is finalized and locked. You can still preview or print it.";
+  else if (hasDuplicatePlacement) guidance.textContent = "Choose a different competitor for each awarded medal position.";
+  else if (hasUnsavedChanges) guidance.textContent = "You have unsaved placement changes. Check them against the paper fixture, then save.";
+  else if (category.placementsSavedAt) guidance.textContent = `Placements saved ${reportDateTime(category.placementsSavedAt)}. Finalize only after an official check.`;
+  else guidance.textContent = "Suggestions are ready. Check every position against the official paper fixture before saving.";
+
+  guidance.classList.toggle("warning", hasDuplicatePlacement);
+  saveButton.disabled = !hasCategory || finalized || records.length === 0 || hasDuplicatePlacement;
+  saveButton.textContent = finalized ? "PLACEMENTS SAVED" : hasUnsavedChanges ? "SAVE CHANGES" : "SAVE PLACEMENTS";
+  finalizeButton.disabled = !hasCategory || finalized || hasDuplicatePlacement || !$("manualPlaceGold")?.value;
+  finalizeButton.textContent = finalized ? "CATEGORY FINALIZED" : "FINALIZE CATEGORY";
+  previewButton.disabled = !hasCategory;
+  printSummaryButton.disabled = !hasCategory;
+  printFullButton.disabled = !hasCategory;
+
+  historyOption.disabled = !hasCategory || totalCornerPresses === 0;
+  if (historyOption.disabled) historyOption.checked = false;
+  historyAvailability.textContent = totalCornerPresses
+    ? `${totalCornerPresses} recorded button press${totalCornerPresses === 1 ? "" : "es"} · full report only`
+    : "No corner-referee history is recorded for this category.";
+  updateManualResultsPrintOptions();
+}
+
+function manualPlacementChanged(select) {
+  if (select) select.dataset.dirty = "true";
+  renderManualCategoryReport();
+}
+
+function updateManualResultsPrintOptions() {
+  const includeHistory = $("manualIncludeCornerRefereeHistory")?.checked === true;
+  $("categoryPrintReport")?.classList.toggle("includeCornerRefereeHistory", includeHistory);
+  const previewType = $("manualReportPreviewType");
+  if (previewType) {
+    previewType.textContent = includeHistory
+      ? "Corner-referee history included in the full report"
+      : "Corner-referee history excluded";
+  }
+}
+
+function toggleManualReportPreview(forceOpen) {
+  const panel = $("manualReportPreviewPanel");
+  const button = $("manualToggleReportPreviewButton");
+  if (!panel || !button) return;
+  const open = typeof forceOpen === "boolean" ? forceOpen : panel.classList.contains("hidden");
+  if (open) renderManualCategoryReport();
+  panel.classList.toggle("hidden", !open);
+  button.textContent = open ? "HIDE REPORT PREVIEW" : "SHOW REPORT PREVIEW";
+  button.setAttribute("aria-expanded", String(open));
 }
 
 function reportDateTime(value) {
@@ -1780,11 +1898,12 @@ function renderManualCategoryReport() {
   const report = $("categoryPrintReport");
   if (!category) {
     report.innerHTML = "<p>No manual category has been created.</p>";
+    updateManualResultsControls(null, []);
     return;
   }
   const records = manualCategoryRecords(category.id);
   setPlacementOptions(category, records);
-  const placements = category.placements || manualPlacementSuggestions(records);
+  const placements = currentManualPlacements(records);
   const boutRows = records.map(record => `<tr>
     <td>${escapeHtml(record.manualBout?.officialBoutNo || "—")}</td>
     <td>${escapeHtml(record.matchNo)}</td>
@@ -1803,15 +1922,16 @@ function renderManualCategoryReport() {
     return `<section class="categoryReportBout"><h3>BOUT ${escapeHtml(record.manualBout?.officialBoutNo || record.matchNo)} · INTERNAL MATCH ${escapeHtml(record.matchNo)} · RULESET ${escapeHtml(record.ruleset?.name || record.ruleset?.id || "—")} ${escapeHtml(record.ruleset?.version || "")}</h3>
       <h4>ROUND AND PENALTY DETAILS</h4><table><thead><tr><th>ROUND</th><th>RED SCORE</th><th>BLUE SCORE</th><th>RED GAM-JEOM</th><th>BLUE GAM-JEOM</th><th>WINNER</th><th>REASON</th></tr></thead><tbody>${roundRows || '<tr><td colspan="7">NO ROUND RECORDS</td></tr>'}</tbody></table>
       <h4>OPERATOR CORRECTIONS</h4><table><thead><tr><th>ROUND</th><th>PLAYER</th><th>ACTION</th><th>FROM</th><th>TO</th><th>MATCH CLOCK</th><th>TIME</th></tr></thead><tbody>${correctionRows || '<tr><td colspan="7">NO OPERATOR CORRECTIONS RECORDED</td></tr>'}</tbody></table>
-      <h4>CORNER REFEREE HISTORY</h4><table><thead><tr><th>ROUND</th><th>REFEREE</th><th>BUTTON</th><th>SCORE</th><th>MATCH CLOCK</th><th>TIME</th></tr></thead><tbody>${refereeRows || '<tr><td colspan="6">NO CORNER INPUTS RECORDED</td></tr>'}</tbody></table>
+      <div class="categoryReportRefereeHistory"><h4>CORNER REFEREE HISTORY</h4><table><thead><tr><th>ROUND</th><th>REFEREE</th><th>BUTTON</th><th>SCORE</th><th>MATCH CLOCK</th><th>TIME</th></tr></thead><tbody>${refereeRows || '<tr><td colspan="6">NO CORNER INPUTS RECORDED</td></tr>'}</tbody></table></div>
     </section>`;
   }).join("");
   report.innerHTML = `<header><h1>${escapeHtml(category.eventName)}</h1><h2>OFFICIAL CATEGORY RESULT</h2></header>
     <div class="categoryReportMeta"><span><b>DATE:</b> ${escapeHtml(category.eventDate)}</span><span><b>VENUE:</b> ${escapeHtml(category.venue)}</span><span><b>ARENA:</b> ${escapeHtml(category.arenaNumber)}</span><span><b>COMPETITION:</b> ${escapeHtml(category.competition)}</span><span><b>DIVISION:</b> ${escapeHtml(category.divisionLabel || category.division)}</span><span><b>GENDER:</b> ${escapeHtml(category.gender)}</span><span><b>CATEGORY:</b> ${escapeHtml(category.categoryGroup || category.weightCategory)}</span><span><b>RULESET:</b> ${escapeHtml(category.ruleset?.name || "—")} ${escapeHtml(category.ruleset?.version || "")}</span><span><b>GENERATED:</b> ${escapeHtml(reportDateTime(new Date().toISOString()))}</span></div>
-    <h3>PLACEMENTS</h3><div class="categoryReportPlacements"><span><b>GOLD:</b> ${escapeHtml(placementText(placements.gold))}</span><span><b>SILVER:</b> ${escapeHtml(placementText(placements.silver))}</span><span><b>BRONZE:</b> ${escapeHtml(placementText(placements.bronze1))}</span><span><b>BRONZE:</b> ${escapeHtml(placementText(placements.bronze2))}</span><span><b>STATUS:</b> ${escapeHtml(category.status)}</span></div>
+    <h3>PLACEMENTS</h3><div class="categoryReportPlacements"><span><b>GOLD:</b> ${escapeHtml(placementText(placements.gold))}</span><span><b>SILVER:</b> ${escapeHtml(placementText(placements.silver))}</span><span><b>BRONZE 1:</b> ${escapeHtml(placementText(placements.bronze1))}</span><span><b>BRONZE 2:</b> ${escapeHtml(placementText(placements.bronze2))}</span><span><b>STATUS:</b> ${escapeHtml(category.status)}</span></div>
     <h3>BOUT SUMMARY</h3><table><thead><tr><th>OFFICIAL BOUT</th><th>SFTS MATCH</th><th>STAGE</th><th>RED / AFFILIATION</th><th>BLUE / AFFILIATION</th><th>ROUND SCORES</th><th>ROUND WINS</th><th>WINNER</th><th>DEFEATED</th><th>RESULT</th><th>START / END</th></tr></thead><tbody>${boutRows || '<tr><td colspan="11">NO COMPLETED BOUTS RECORDED</td></tr>'}</tbody></table>
     <div class="categoryReportAudit"><h2>FULL MATCH AUDIT</h2>${audit || "<p>NO COMPLETED BOUTS RECORDED</p>"}</div>
     <footer class="categoryReportSignatures"><span>TECHNICAL OFFICIAL</span><span>REFEREE CHAIR</span><span>FEDERATION REPRESENTATIVE</span></footer>`;
+  updateManualResultsControls(category, records);
 }
 
 async function refreshManualRecords(categoryId = "") {
@@ -1841,6 +1961,8 @@ async function openManualCategoryResults() {
   renderManualCategoryOptions();
   const currentId = $("manualCategoryId")?.value;
   if (currentId && [...$("manualResultsCategoryId").options].some(option => option.value === currentId)) $("manualResultsCategoryId").value = currentId;
+  $("manualIncludeCornerRefereeHistory").checked = false;
+  toggleManualReportPreview(false);
   $("manualCategoryResultsModal").classList.remove("hidden");
   await refreshManualRecords($("manualResultsCategoryId").value);
   renderManualCategoryReport();
@@ -1854,7 +1976,7 @@ function closeManualCategoryResults() {
 async function saveManualPlacements(finalize = false) {
   const category = manualReportCategory();
   if (!category) return;
-  if (finalize && !await requestUserPermission("Finalize this category? Placements will be locked.")) return;
+  if (finalize && !await requestUserPermission("Finalize this category? Placements will be locked and no more bouts can be added.")) return;
   send({
     type: "host",
     action: "saveManualCategoryPlacements",
@@ -2879,6 +3001,9 @@ window.renderManualCategoryReport = renderManualCategoryReport;
 window.refreshManualRecords = refreshManualRecords;
 window.saveManualPlacements = saveManualPlacements;
 window.printManualCategory = printManualCategory;
+window.manualPlacementChanged = manualPlacementChanged;
+window.updateManualResultsPrintOptions = updateManualResultsPrintOptions;
+window.toggleManualReportPreview = toggleManualReportPreview;
 window.savePlayerSettings = savePlayerSettings;
 window.announceManualPlayers = announceManualPlayers;
 window.uploadPlayerSheet = uploadPlayerSheet;

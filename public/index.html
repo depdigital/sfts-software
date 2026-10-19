@@ -594,26 +594,66 @@
 
     <section id="manualCategoryResultsModal" class="overlay hidden">
       <div class="modalCard categoryResultsModal">
-        <h2>MANUAL CATEGORY RESULTS</h2>
-        <label>CATEGORY<select id="manualResultsCategoryId" onchange="refreshManualRecords(this.value)"></select></label>
-        <section class="manualPlacements">
-          <h3>CONFIRMED PLACEMENTS</h3>
-          <div class="manualFieldGrid">
-            <label>GOLD<select id="manualPlaceGold"></select></label>
-            <label>SILVER<select id="manualPlaceSilver"></select></label>
-            <label>BRONZE<select id="manualPlaceBronze1"></select></label>
-            <label>BRONZE<select id="manualPlaceBronze2"></select></label>
+        <header class="manualResultsHeader">
+          <div>
+            <p>MANUAL ENTRY · REVIEW &amp; PRINT</p>
+            <h2>Category Results</h2>
+            <span>Confirm the official medal positions, then save or print the result.</span>
           </div>
-          <p class="manualHint">Suggested from the recorded final and semifinals. Confirm against the official paper fixture.</p>
-        </section>
-        <article id="categoryPrintReport" class="categoryPrintReport"></article>
-        <div class="manualActions reportActions">
-          <button onclick="saveManualPlacements(false)">SAVE PLACEMENTS</button>
-          <button onclick="saveManualPlacements(true)">FINALIZE CATEGORY</button>
-          <button onclick="printManualCategory('summary')">PRINT SUMMARY</button>
-          <button onclick="printManualCategory('full')">PRINT FULL REPORT</button>
           <button onclick="closeManualCategoryResults()">BACK</button>
-        </div>
+        </header>
+
+        <section class="manualResultsStep manualResultsCategoryStep">
+          <div class="manualResultsStepHeading">
+            <div><b>1</b><span><strong>Select category</strong><small>Choose the category you want to review.</small></span></div>
+          </div>
+          <label class="manualResultsCategoryLabel">CATEGORY<select id="manualResultsCategoryId" onchange="refreshManualRecords(this.value)"></select></label>
+          <div class="manualResultsCategorySummary" aria-live="polite">
+            <span id="manualResultsCategoryStatus" class="manualResultsStatusBadge">NO CATEGORY</span>
+            <span id="manualResultsBoutCount">0 completed bouts</span>
+          </div>
+        </section>
+
+        <section class="manualPlacements manualResultsStep">
+          <div class="manualResultsStepHeading">
+            <div><b>2</b><span><strong>Confirm medal positions</strong><small>Suggestions come from the recorded final and semifinals.</small></span></div>
+          </div>
+          <div class="manualFieldGrid">
+            <label class="manualMedalField gold">GOLD<select id="manualPlaceGold" onchange="manualPlacementChanged(this)"></select></label>
+            <label class="manualMedalField silver">SILVER<select id="manualPlaceSilver" onchange="manualPlacementChanged(this)"></select></label>
+            <label class="manualMedalField bronze">BRONZE 1<select id="manualPlaceBronze1" onchange="manualPlacementChanged(this)"></select></label>
+            <label class="manualMedalField bronze">BRONZE 2<select id="manualPlaceBronze2" onchange="manualPlacementChanged(this)"></select></label>
+          </div>
+          <p id="manualPlacementGuidance" class="manualResultsGuidance">Check every position against the official paper fixture. Use NOT AWARDED when appropriate.</p>
+          <div class="manualPlacementActions">
+            <button id="manualSavePlacementsButton" class="manualPrimaryButton" onclick="saveManualPlacements(false)">SAVE PLACEMENTS</button>
+            <button id="manualFinalizeCategoryButton" class="manualFinalizeButton" onclick="saveManualPlacements(true)">FINALIZE CATEGORY</button>
+          </div>
+        </section>
+
+        <section class="manualResultsStep manualResultsPrintStep">
+          <div class="manualResultsStepHeading">
+            <div><b>3</b><span><strong>Preview or print</strong><small>Summary is recommended for the normal official result.</small></span></div>
+          </div>
+          <label class="manualPrintOption" for="manualIncludeCornerRefereeHistory">
+            <input id="manualIncludeCornerRefereeHistory" type="checkbox" onchange="updateManualResultsPrintOptions()" />
+            <span><strong>Include corner-referee history</strong><small id="manualCornerHistoryAvailability">Optional audit evidence for the full report only.</small></span>
+          </label>
+          <div class="manualPrintActions">
+            <button id="manualToggleReportPreviewButton" aria-expanded="false" onclick="toggleManualReportPreview()">SHOW REPORT PREVIEW</button>
+            <button id="manualPrintSummaryButton" class="manualPrimaryButton" onclick="printManualCategory('summary')">PRINT SUMMARY</button>
+            <button id="manualPrintFullButton" onclick="printManualCategory('full')">PRINT FULL REPORT</button>
+          </div>
+        </section>
+
+        <section id="manualReportPreviewPanel" class="manualReportPreviewPanel hidden">
+          <header class="manualReportPreviewHeader">
+            <div><strong>REPORT PREVIEW</strong><span id="manualReportPreviewType">Corner-referee history excluded</span></div>
+            <button onclick="toggleManualReportPreview(false)">HIDE PREVIEW</button>
+          </header>
+          <article id="categoryPrintReport" class="categoryPrintReport"></article>
+        </section>
+
       </div>
     </section>
 

@@ -1590,6 +1590,7 @@ function saveManualBout(input) {
       ruleset: deep(activeRulesMetadata),
       createdAt: new Date().toISOString(),
       finalizedAt: null,
+      placementsSavedAt: null,
       matchRecordIds: [],
       placements: { gold: null, silver: null, bronze1: null, bronze2: null }
     };
@@ -1722,6 +1723,7 @@ function saveManualCategoryPlacements(categoryId, placements, finalize = false) 
     return { ok: false, code: 'INVALID_PLACEMENTS', message: 'Confirm the gold medallist before finalizing the category' };
   }
   category.placements = next;
+  category.placementsSavedAt = new Date().toISOString();
   if (finalize) {
     category.status = 'FINALIZED';
     category.finalizedAt = new Date().toISOString();

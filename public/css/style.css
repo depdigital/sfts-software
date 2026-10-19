@@ -1255,6 +1255,118 @@ button {
 .categoryResultsModal > h2 {
   text-align: center;
 }
+.categoryResultsModal {
+  width: min(1040px, 96vw);
+}
+.manualResultsHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+.manualResultsHeader p,
+.manualResultsHeader h2,
+.manualResultsHeader span {
+  margin: 0;
+}
+.manualResultsHeader p {
+  color: #85aaff;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+.manualResultsHeader h2 {
+  margin-top: 3px;
+  font-size: 25px;
+}
+.manualResultsHeader span {
+  display: block;
+  margin-top: 4px;
+  color: #aebbd0;
+  font-size: 13px;
+}
+.manualResultsHeader button {
+  width: auto;
+  min-width: 92px;
+  margin: 0;
+}
+.manualResultsStep {
+  margin-top: 14px;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: #0b1017;
+}
+.manualResultsStepHeading > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.manualResultsStepHeading b {
+  display: grid;
+  place-items: center;
+  width: 29px;
+  height: 29px;
+  flex: 0 0 29px;
+  border-radius: 50%;
+  background: #5f8fff;
+  color: #07101d;
+  font-size: 13px;
+}
+.manualResultsStepHeading span,
+.manualResultsStepHeading strong,
+.manualResultsStepHeading small {
+  display: block;
+}
+.manualResultsStepHeading strong {
+  color: #f5f8ff;
+  font-size: 15px;
+}
+.manualResultsStepHeading small {
+  margin-top: 2px;
+  color: #91a0b7;
+  font-size: 12px;
+  font-weight: 600;
+}
+.manualResultsCategoryStep {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.65fr) minmax(0, 1.35fr);
+  align-items: end;
+  gap: 12px 18px;
+}
+.manualResultsCategoryStep .manualResultsStepHeading {
+  grid-column: 1 / -1;
+}
+.manualResultsCategorySummary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 43px;
+  color: #aebbd0;
+  font-size: 12px;
+  font-weight: 800;
+}
+.manualResultsStatusBadge {
+  padding: 6px 9px;
+  border: 1px solid rgba(99, 243, 141, 0.4);
+  border-radius: 999px;
+  background: rgba(40, 145, 74, 0.17);
+  color: #79f29b;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+.manualResultsStatusBadge.finalized {
+  border-color: rgba(95, 143, 255, 0.5);
+  background: rgba(95, 143, 255, 0.16);
+  color: #9cbaff;
+}
+.manualResultsStatusBadge.empty {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+  color: #aebbd0;
+}
 .manualWizardHeader {
   display: flex;
   align-items: center;
@@ -1578,6 +1690,13 @@ button {
   border-radius: 12px;
   background: #0b1017;
 }
+.manualPlacements.manualResultsStep {
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+.manualPlacements .manualResultsStepHeading {
+  margin-bottom: 14px;
+}
 .manualSection h3,
 .manualPlacements h3 {
   margin: 0 0 12px;
@@ -1589,6 +1708,109 @@ button {
 }
 .manualFieldGrid.twoColumns {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.manualMedalField {
+  padding: 10px;
+  border-top: 3px solid #6f7888;
+  border-radius: 8px;
+  background: #111925;
+}
+.manualMedalField.gold {
+  border-top-color: #efc84a;
+}
+.manualMedalField.silver {
+  border-top-color: #c8d0db;
+}
+.manualMedalField.bronze {
+  border-top-color: #c88955;
+}
+.manualResultsGuidance {
+  margin: 12px 0 0;
+  color: #aebbd0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.manualResultsGuidance.warning {
+  color: #ffacac;
+}
+.manualPlacementActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 12px;
+}
+.manualPlacementActions button,
+.manualPrintActions button {
+  margin: 0;
+}
+.manualFinalizeButton {
+  background: #298f4a !important;
+  color: #fff !important;
+}
+.manualPrintOption {
+  display: flex !important;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9px;
+  background: #111925;
+  cursor: pointer;
+}
+.manualPrintOption input {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  margin: 0;
+  accent-color: #5f8fff;
+}
+.manualPrintOption span,
+.manualPrintOption strong,
+.manualPrintOption small {
+  display: block;
+}
+.manualPrintOption small {
+  margin-top: 3px;
+  color: #91a0b7;
+  font-size: 11px;
+  font-weight: 600;
+}
+.manualPrintOption:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.manualPrintActions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+.manualReportPreviewPanel {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid rgba(95, 143, 255, 0.42);
+  border-radius: 12px;
+  background: #101725;
+}
+.manualReportPreviewHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.manualReportPreviewHeader strong,
+.manualReportPreviewHeader span {
+  display: block;
+}
+.manualReportPreviewHeader span {
+  margin-top: 3px;
+  color: #91a0b7;
+  font-size: 11px;
+}
+.manualReportPreviewHeader button {
+  width: auto;
+  margin: 0;
 }
 .manualEntryModal label,
 .practiceModeModal label,
@@ -1681,6 +1903,12 @@ button {
 .categoryReportBout {
   break-inside: avoid;
   margin-top: 18px;
+}
+.categoryReportRefereeHistory {
+  display: none;
+}
+.categoryPrintReport.includeCornerRefereeHistory .categoryReportRefereeHistory {
+  display: block;
 }
 .categoryReportSignatures {
   display: grid;
@@ -2418,13 +2646,17 @@ button {
     grid-template-columns: 1fr;
   }
   .manualEntryToolbar,
-  .manualCategoryPicker {
+  .manualCategoryPicker,
+  .manualResultsCategoryStep,
+  .manualPlacementActions,
+  .manualPrintActions {
     grid-template-columns: 1fr;
   }
   .manualWizardHeader,
   .manualWizardPanelHeading,
   .manualPrepareNextNotice,
-  .manualWizardFooter {
+  .manualWizardFooter,
+  .manualResultsHeader {
     align-items: stretch;
     flex-direction: column;
   }
@@ -2451,6 +2683,14 @@ button {
   .manualCategoryPicker button,
   .manualPrepareNextNotice button {
     width: 100%;
+  }
+  .manualResultsHeader button,
+  .manualReportPreviewHeader button {
+    width: 100%;
+  }
+  .manualReportPreviewHeader {
+    align-items: stretch;
+    flex-direction: column;
   }
   .rulesActions {
     grid-template-columns: 1fr;
@@ -2515,6 +2755,17 @@ button {
     border: 0;
     border-radius: 0;
     color: #000;
+  }
+  body.printManualCategory #manualReportPreviewPanel {
+    position: static;
+    display: block !important;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: #fff;
+  }
+  body.printManualCategory .manualReportPreviewHeader {
+    display: none !important;
   }
   body.printManualCategory #manualCategoryResultsModal,
   body.printManualCategory #manualCategoryResultsModal .categoryResultsModal {
