@@ -1292,11 +1292,10 @@ function renderManualCategoryState() {
     : category.status === "FINALIZED"
       ? "DELETE FINALIZED CATEGORY"
       : "DELETE CATEGORY";
-  status.textContent = reason || (completedBouts > 0
-    ? `${completedBouts} COMPLETED BOUT${completedBouts === 1 ? "" : "S"} · ADVANCED PERMANENT DELETE AVAILABLE`
-    : category.status === "FINALIZED"
-      ? "FINALIZED · ADVANCED PERMANENT DELETE AVAILABLE"
-      : "OPEN · 0 COMPLETED BOUTS · SAFE TO DELETE");
+  status.textContent = category.status === "FINALIZED"
+    ? `FINALIZED · ${completedBouts} COMPLETED BOUT${completedBouts === 1 ? "" : "S"}`
+    : `CURRENT CATEGORY · ${completedBouts} COMPLETED BOUT${completedBouts === 1 ? "" : "S"} · ALL STAGES STAY TOGETHER`;
+  if (reason) button.title = reason;
 }
 
 function manualReviewRow(label, value) {
@@ -1357,6 +1356,12 @@ function renderManualWizard() {
   $("manualWizardStatus").textContent = `STEP ${Math.min(manualWizardStep + 1, 4)} OF 4 · ${labels[Math.min(manualWizardStep, 3)]}`;
   $("manualRulesetSummary").textContent = `ACTIVE RULESET: ${activeRuleset?.name || "RULESET"} ${activeRuleset?.version || ""}`;
   $("manualBoutCategorySummary").textContent = manualCategorySummary();
+  const nextCategory = manualSelectedCategory();
+  if ($("manualPrepareNextCategory")) {
+    $("manualPrepareNextCategory").textContent = nextCategory
+      ? `Continue ${manualCategorySummary(nextCategory)}. Only the bout details and competitors will change.`
+      : "Select the existing category before preparing the next bout.";
+  }
   renderManualCategoryState();
   if (manualWizardStep === 3) renderManualReview();
   if (loaded) renderLoadedManualBout();
@@ -1421,9 +1426,12 @@ function openManualEntry() {
   closePlayerSettings();
   populateManualDivisions();
   renderManualCategoryOptions();
-  const activeCategoryId = lastState?.manualBout?.categoryId || "";
-  if (activeCategoryId && [...$("manualCategoryId").options].some(option => option.value === activeCategoryId)) {
-    $("manualCategoryId").value = activeCategoryId;
+  const activeCategoryId = lastState?.manualBout?.categoryId || lastManualCompetition?.activeCategoryId || "";
+  const activeCategory = (lastManualCompetition?.categories || []).find(category => (
+    category.id === activeCategoryId && category.status === "OPEN"
+  ));
+  if (activeCategory && [...$("manualCategoryId").options].some(option => option.value === activeCategory.id)) {
+    $("manualCategoryId").value = activeCategory.id;
     loadManualCategorySelection(false);
   } else {
     const selectedCategory = manualSelectedCategory();
@@ -1523,6 +1531,11 @@ function nextManualBout() {
   if (lastState?.phase !== "MATCH_END") {
     toast("FINISH THE CURRENT MATCH BEFORE PREPARING THE NEXT BOUT");
     return;
+  }
+  const activeCategoryId = lastState?.manualBout?.categoryId || lastManualCompetition?.activeCategoryId || "";
+  if (activeCategoryId && [...$("manualCategoryId").options].some(option => option.value === activeCategoryId)) {
+    $("manualCategoryId").value = activeCategoryId;
+    loadManualCategorySelection(false);
   }
   manualNextBoutPending = true;
   clearManualEntryMessages();
@@ -1627,9 +1640,11 @@ function handleManualEntryState(match) {
     manualNextBoutPending = false;
     clearManualPlayers();
     $("manualOfficialBoutNo").value = "";
-    $("manualStage").value = "PRELIMINARY";
-    manualWizardStep = 0;
-    showManualEntrySuccess("READY TO ENTER THE NEXT MANUAL BOUT.");
+    const category = manualSelectedCategory();
+    manualWizardStep = category?.status === "OPEN" ? 1 : 0;
+    showManualEntrySuccess(category
+      ? "SAME CATEGORY RETAINED. ENTER THE NEXT BOUT DETAILS."
+      : "SELECT A CATEGORY FOR THE NEXT MANUAL BOUT.");
   }
   if (manualBoutSavePending && match?.manualBout) {
     const expected = manualBoutSavePending;
@@ -1700,16 +1715,16 @@ function manualParticipants(records) {
 }
 
 function manualPlacementsWereSaved(category) {
-  return Boolean(
-    category?.placementsSavedAt ||
-    category?.status === "FINALIZED" ||
-    Object.values(category?.placements || {}).some(Boolean)
-  );
+  if (["AUTOMATIC", "AUTOMATIC_CONFIRMED"].includes(category?.placementSource)) {
+    return category.placementSource === "AUTOMATIC_CONFIRMED";
+  }
+  if (category?.placementSource === "OPERATOR_OVERRIDE") return true;
+  return Boolean(category?.placementsSavedAt || category?.status === "FINALIZED");
 }
 
 function setPlacementOptions(category, records) {
   const participants = manualParticipants(records);
-  const suggestions = manualPlacementSuggestions(records);
+  const suggestions = category.calculatedPlacements || manualPlacementSuggestions(records);
   const saved = category.placements || {};
   const useSaved = manualPlacementsWereSaved(category);
   for (const [id, place] of Object.entries(manualPlacementFields)) {
@@ -1733,9 +1748,7 @@ function setPlacementOptions(category, records) {
       ? previous
       : useSaved
         ? saved[place]?.key || ""
-        : sameCategory
-          ? previous
-          : suggestions[place]?.key || "";
+        : suggestions[place]?.key || "";
     if ([...select.options].some(option => option.value === desired)) select.value = desired;
     select.dataset.categoryId = category.id;
     select.dataset.savedAt = savedAt;
@@ -1756,11 +1769,13 @@ function currentManualPlacements(records) {
 function updateManualResultsControls(category, records) {
   const status = $("manualResultsCategoryStatus");
   const boutCount = $("manualResultsBoutCount");
+  const stageSummary = $("manualResultsStageSummary");
   const guidance = $("manualPlacementGuidance");
   const saveButton = $("manualSavePlacementsButton");
   const finalizeButton = $("manualFinalizeCategoryButton");
   const historyOption = $("manualIncludeCornerRefereeHistory");
   const historyAvailability = $("manualCornerHistoryAvailability");
+  const placementSource = $("manualPlacementSource");
   const previewButton = $("manualToggleReportPreviewButton");
   const printSummaryButton = $("manualPrintSummaryButton");
   const printFullButton = $("manualPrintFullButton");
@@ -1769,11 +1784,12 @@ function updateManualResultsControls(category, records) {
   const placementSelects = Object.keys(manualPlacementFields).map(id => $(id));
   const selectedPlacements = placementSelects.map(select => select?.value).filter(Boolean);
   const hasDuplicatePlacement = new Set(selectedPlacements).size !== selectedPlacements.length;
-  const hasUnsavedChanges = manualPlacementsWereSaved(category)
-    ? Object.entries(manualPlacementFields).some(([id, place]) => (
-        ($(id)?.value || "") !== (category?.placements?.[place]?.key || "")
-      ))
-    : placementSelects.some(select => select?.dataset.dirty === "true");
+  const placementBaseline = manualPlacementsWereSaved(category)
+    ? category?.placements
+    : category?.calculatedPlacements;
+  const hasUnsavedChanges = Object.entries(manualPlacementFields).some(([id, place]) => (
+    ($(id)?.value || "") !== (placementBaseline?.[place]?.key || "")
+  ));
   const totalCornerPresses = records.reduce(
     (total, record) => total + (record.cornerRefereeHistory || []).length,
     0,
@@ -1783,13 +1799,43 @@ function updateManualResultsControls(category, records) {
   status.classList.toggle("finalized", finalized);
   status.classList.toggle("empty", !category);
   boutCount.textContent = `${records.length} completed bout${records.length === 1 ? "" : "s"}`;
+  const stageCounts = records.reduce((counts, record) => {
+    const stage = record.manualBout?.stage;
+    if (stage) counts[stage] = (counts[stage] || 0) + 1;
+    return counts;
+  }, {});
+  stageSummary.textContent = records.length
+    ? [
+        `${stageCounts.PRELIMINARY || 0} preliminary`,
+        `${stageCounts.QUARTERFINAL || 0} quarterfinal`,
+        `${stageCounts.SEMIFINAL || 0} semifinal`,
+        `${stageCounts.FINAL || 0} final`,
+      ].join(" · ")
+    : "No stages recorded";
+
+  const calculatedReady = Boolean(category?.calculatedPlacements?.gold);
+  const sourceLabel = !category
+    ? "NO CATEGORY SELECTED"
+    : hasUnsavedChanges
+      ? "UNSAVED OPERATOR CHANGES"
+      : category.placementSource === "OPERATOR_OVERRIDE"
+        ? "OPERATOR OVERRIDE SAVED"
+        : category.placementSource === "AUTOMATIC_CONFIRMED"
+          ? "SOFTWARE RESULT CONFIRMED"
+          : calculatedReady
+            ? "SOFTWARE-CALCULATED RESULT"
+            : "WAITING FOR COMPLETED FINAL AND SEMIFINAL BOUTS";
+  placementSource.textContent = sourceLabel;
+  placementSource.classList.toggle("override", hasUnsavedChanges || category?.placementSource === "OPERATOR_OVERRIDE");
+  placementSource.classList.toggle("calculated", calculatedReady && !hasUnsavedChanges && category?.placementSource !== "OPERATOR_OVERRIDE");
 
   if (!category) guidance.textContent = "Create and complete a manual category before confirming results.";
   else if (finalized) guidance.textContent = "This official result is finalized and locked. You can still preview or print it.";
   else if (hasDuplicatePlacement) guidance.textContent = "Choose a different competitor for each awarded medal position.";
   else if (hasUnsavedChanges) guidance.textContent = "You have unsaved placement changes. Check them against the paper fixture, then save.";
-  else if (category.placementsSavedAt) guidance.textContent = `Placements saved ${reportDateTime(category.placementsSavedAt)}. Finalize only after an official check.`;
-  else guidance.textContent = "Suggestions are ready. Check every position against the official paper fixture before saving.";
+  else if (category.placementSource === "OPERATOR_OVERRIDE") guidance.textContent = `Operator override saved ${reportDateTime(category.placementsSavedAt)}. Finalize after an official check.`;
+  else if (calculatedReady) guidance.textContent = "The software calculated these positions from the recorded final and semifinals. Change a dropdown only to correct the official result.";
+  else guidance.textContent = "Results will be calculated automatically as the semifinal and final bouts are completed.";
 
   guidance.classList.toggle("warning", hasDuplicatePlacement);
   saveButton.disabled = !hasCategory || finalized || records.length === 0 || hasDuplicatePlacement;
@@ -1904,6 +1950,10 @@ function renderManualCategoryReport() {
   const records = manualCategoryRecords(category.id);
   setPlacementOptions(category, records);
   const placements = currentManualPlacements(records);
+  const reportUsesCalculatedPlacements = Object.keys(manualPlacementFields).every(id => {
+    const place = manualPlacementFields[id];
+    return (placements[place]?.key || "") === (category.calculatedPlacements?.[place]?.key || "");
+  });
   const boutRows = records.map(record => `<tr>
     <td>${escapeHtml(record.manualBout?.officialBoutNo || "—")}</td>
     <td>${escapeHtml(record.matchNo)}</td>
@@ -1927,7 +1977,7 @@ function renderManualCategoryReport() {
   }).join("");
   report.innerHTML = `<header><h1>${escapeHtml(category.eventName)}</h1><h2>OFFICIAL CATEGORY RESULT</h2></header>
     <div class="categoryReportMeta"><span><b>DATE:</b> ${escapeHtml(category.eventDate)}</span><span><b>VENUE:</b> ${escapeHtml(category.venue)}</span><span><b>ARENA:</b> ${escapeHtml(category.arenaNumber)}</span><span><b>COMPETITION:</b> ${escapeHtml(category.competition)}</span><span><b>DIVISION:</b> ${escapeHtml(category.divisionLabel || category.division)}</span><span><b>GENDER:</b> ${escapeHtml(category.gender)}</span><span><b>CATEGORY:</b> ${escapeHtml(category.categoryGroup || category.weightCategory)}</span><span><b>RULESET:</b> ${escapeHtml(category.ruleset?.name || "—")} ${escapeHtml(category.ruleset?.version || "")}</span><span><b>GENERATED:</b> ${escapeHtml(reportDateTime(new Date().toISOString()))}</span></div>
-    <h3>PLACEMENTS</h3><div class="categoryReportPlacements"><span><b>GOLD:</b> ${escapeHtml(placementText(placements.gold))}</span><span><b>SILVER:</b> ${escapeHtml(placementText(placements.silver))}</span><span><b>BRONZE 1:</b> ${escapeHtml(placementText(placements.bronze1))}</span><span><b>BRONZE 2:</b> ${escapeHtml(placementText(placements.bronze2))}</span><span><b>STATUS:</b> ${escapeHtml(category.status)}</span></div>
+    <h3>PLACEMENTS</h3><div class="categoryReportPlacements"><span><b>GOLD:</b> ${escapeHtml(placementText(placements.gold))}</span><span><b>SILVER:</b> ${escapeHtml(placementText(placements.silver))}</span><span><b>BRONZE 1:</b> ${escapeHtml(placementText(placements.bronze1))}</span><span><b>BRONZE 2:</b> ${escapeHtml(placementText(placements.bronze2))}</span><span><b>STATUS:</b> ${escapeHtml(category.status)}</span><span><b>SOURCE:</b> ${reportUsesCalculatedPlacements ? "SOFTWARE CALCULATION" : "OPERATOR OVERRIDE"}</span></div>
     <h3>BOUT SUMMARY</h3><table><thead><tr><th>OFFICIAL BOUT</th><th>SFTS MATCH</th><th>STAGE</th><th>RED / AFFILIATION</th><th>BLUE / AFFILIATION</th><th>ROUND SCORES</th><th>ROUND WINS</th><th>WINNER</th><th>DEFEATED</th><th>RESULT</th><th>START / END</th></tr></thead><tbody>${boutRows || '<tr><td colspan="11">NO COMPLETED BOUTS RECORDED</td></tr>'}</tbody></table>
     <div class="categoryReportAudit"><h2>FULL MATCH AUDIT</h2>${audit || "<p>NO COMPLETED BOUTS RECORDED</p>"}</div>
     <footer class="categoryReportSignatures"><span>TECHNICAL OFFICIAL</span><span>REFEREE CHAIR</span><span>FEDERATION REPRESENTATIVE</span></footer>`;

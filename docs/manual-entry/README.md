@@ -63,6 +63,8 @@ If an authorized custom rulepack defines a division as a category group instead,
 
 The event and category details are saved when the first bout is loaded.
 
+A category represents the complete bracket. Enter every preliminary, quarterfinal, semifinal, and final bout for that bracket under the same category. If the same category details are submitted again accidentally, SFTS reuses the existing open category instead of creating a duplicate.
+
 ## Step 2: Enter the bout
 
 Complete the **BOUT DETAILS** section:
@@ -142,13 +144,12 @@ If the information is wrong, stop and reset the current match before trying to c
 The current match must show **MATCH END** before the next manual bout can be prepared.
 
 1. Open **SETTINGS > PLAYER SETTINGS > MANUAL ENTRY**.
-2. Confirm that the correct existing category is selected.
-3. Select **NEXT MANUAL BOUT**.
-4. Enter the next official bout/reference number and stage.
-5. Enter the new HONG and CHUNG competitors.
-6. Select **SAVE & LOAD BOUT** or **SAVE & ANNOUNCE**.
+2. Select **NEXT BOUT IN THIS CATEGORY**.
+3. Enter the next official bout/reference number and stage.
+4. Enter the new HONG and CHUNG competitors.
+5. Select **SAVE & LOAD BOUT** or **SAVE & ANNOUNCE**.
 
-The tournament, venue, arena, division, gender, and category remain selected. Only the bout and competitor details need to be entered again.
+The current category remains selected automatically, including after reopening the screen. Only the bout and competitor details need to be entered again. Use **CREATE NEW CATEGORY** only when moving to a different bracket.
 
 ### Changing to another category
 
@@ -162,16 +163,18 @@ Open **CATEGORY RESULTS** from Manual Entry.
 
 Select the category you want to review. The report shows all completed bouts recorded for that category.
 
-### Confirm medal positions
+### Review medal positions
 
-The system may suggest placements using the recorded final and semifinals:
+The system calculates placements from the completed final and semifinals:
 
 - **Gold:** Winner of the final
 - **Silver:** Defeated competitor in the final
 - **Bronze:** Defeated competitor in the first semifinal
 - **Bronze:** Defeated competitor in the second semifinal
 
-Always compare these suggestions with the official paper fixture before saving them.
+The dropdowns remain editable. Change a calculated position only when the official fixture requires a correction; the report marks the change as an **OPERATOR OVERRIDE**.
+
+If a semifinal position was filled by a bye and no semifinal bout was contested, there is no recorded semifinal loser for that Bronze position. Leave it as **NOT AWARDED** or select the official recipient from the dropdown.
 
 If a medal was not awarded, leave it as **NOT AWARDED**.
 

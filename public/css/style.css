@@ -1341,6 +1341,7 @@ button {
 }
 .manualResultsCategorySummary {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   min-height: 43px;
@@ -1696,6 +1697,28 @@ button {
 }
 .manualPlacements .manualResultsStepHeading {
   margin-bottom: 14px;
+}
+.manualPlacementSource {
+  margin: -2px 0 12px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #aebbd0;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+.manualPlacementSource.calculated {
+  border-color: rgba(99, 243, 141, 0.4);
+  background: rgba(40, 145, 74, 0.14);
+  color: #79f29b;
+}
+.manualPlacementSource.override {
+  border-color: rgba(255, 185, 92, 0.5);
+  background: rgba(160, 96, 21, 0.16);
+  color: #ffc67b;
 }
 .manualSection h3,
 .manualPlacements h3 {

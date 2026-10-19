@@ -120,8 +120,26 @@ test('manual categories are rulepack validated and preserve official bout eviden
   const category = loaded.manualCompetition.categories[0];
   assert.equal(category.division, 'SUB_JUNIOR');
   assert.equal(category.categoryGroup, '');
+  assert.equal(loaded.manualCompetition.activeCategoryId, category.id);
   assert.equal(loaded.match.red.club, 'Nadia TKD Academy');
   assert.equal(loaded.match.red.weightCategory, 'UNDER 16 KG');
+
+  host.send(JSON.stringify({
+    type: 'host',
+    action: 'saveManualBout',
+    details: { ...details, officialBoutNo: 'SJ-U16-02' }
+  }));
+  const reusedCategory = await waitFor(host, message => (
+    message.type === 'state' && message.match.manualBout?.officialBoutNo === 'SJ-U16-02'
+  ));
+  assert.equal(reusedCategory.manualCompetition.categories.length, 1);
+  assert.equal(reusedCategory.match.manualBout.categoryId, category.id);
+  host.send(JSON.stringify({
+    type: 'host',
+    action: 'saveManualBout',
+    details: { ...details, categoryId: category.id }
+  }));
+  await waitFor(host, message => message.type === 'state' && message.match.manualBout?.officialBoutNo === 'SJ-U16-01');
 
   host.send(JSON.stringify({ type: 'host', action: 'deleteManualCategory', categoryId: category.id }));
   assert.equal((await waitFor(host, message => message.type === 'error')).code, 'MANUAL_CATEGORY_IN_USE');
@@ -176,6 +194,9 @@ test('manual categories are rulepack validated and preserve official bout eviden
   const completed = await waitFor(host, message => message.type === 'state' && message.match.phase === 'MATCH_END');
   assert.equal(completed.matchHistory[0].roundCount, 1);
   assert.equal(completed.matchHistory[0].rounds, undefined);
+  assert.equal(completed.manualCompetition.categories[0].placementSource, 'AUTOMATIC');
+  assert.equal(completed.manualCompetition.categories[0].placements.gold.playerName, 'Aarav Sen');
+  assert.equal(completed.manualCompetition.categories[0].placements.silver.playerName, 'Rohan Das');
 
   const archiveResponse = await fetch(`http://127.0.0.1:${port}/api/manual/categories?categoryId=${encodeURIComponent(category.id)}`, {
     headers: { 'X-SFTS-Host-Token': role.hostToken }
@@ -211,6 +232,7 @@ test('manual categories are rulepack validated and preserve official bout eviden
   ));
   assert.equal(savedPlacements.manualCompetition.categories[0].status, 'OPEN');
   assert.equal(savedPlacements.manualCompetition.categories[0].placements.silver, null);
+  assert.equal(savedPlacements.manualCompetition.categories[0].placementSource, 'OPERATOR_OVERRIDE');
 
   host.send(JSON.stringify({
     type: 'host',
@@ -222,6 +244,7 @@ test('manual categories are rulepack validated and preserve official bout eviden
   const finalized = await waitFor(host, message => message.type === 'state' && message.manualCompetition.categories[0]?.status === 'FINALIZED');
   assert.equal(finalized.manualCompetition.categories[0].placements.gold.playerName, 'Aarav Sen');
   assert.equal(finalized.manualCompetition.categories[0].placements.silver.playerName, 'Rohan Das');
+  assert.equal(finalized.manualCompetition.categories[0].placementSource, 'AUTOMATIC_CONFIRMED');
   assert.ok(finalized.manualCompetition.categories[0].placementsSavedAt);
 
   const practiceDetails = {

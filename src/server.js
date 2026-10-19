@@ -274,6 +274,7 @@ function makeTournament() {
 function makeManualCompetition() {
   return {
     version: 1,
+    activeCategoryId: null,
     categories: []
   };
 }
@@ -927,6 +928,7 @@ manualCompetition.categories = manualCompetition.categories.filter(category => (
 manualMatchRecords = manualMatchRecords.filter(record => (
   record && typeof record === 'object' && record.manualBout?.categoryId
 ));
+normalizeManualCategoryPlacementState();
 persistenceReady = true;
 // Mark the running server as unclean until it reaches a deliberate shutdown.
 await flushPersistedState(persistenceSnapshot());
@@ -1553,6 +1555,24 @@ function manualCategoryFromInput(input) {
   };
 }
 
+function manualCategoryIdentity(category) {
+  return [
+    category?.eventName,
+    category?.eventDate,
+    category?.competition,
+    category?.division,
+    category?.gender,
+    category?.categoryGroup || category?.weightCategory
+  ].map(normalizeTournamentValue).join('|');
+}
+
+function matchingOpenManualCategory(details) {
+  const identity = manualCategoryIdentity(details);
+  return manualCompetition.categories.find(category => (
+    category.status === 'OPEN' && manualCategoryIdentity(category) === identity
+  )) || null;
+}
+
 function saveManualBout(input) {
   if (manualBoutSettingsLocked()) {
     return { ok: false, code: 'MATCH_IN_PROGRESS', message: 'Finish or reset the current match before changing manual bout details' };
@@ -1578,23 +1598,29 @@ function saveManualBout(input) {
     return { ok: false, code: 'MANUAL_CATEGORY_NOT_FOUND', message: 'The selected manual category was not found' };
   }
   if (!category) {
-    if (manualCompetition.categories.length >= 2000) {
-      return { ok: false, code: 'MANUAL_CATEGORY_LIMIT', message: 'The manual category archive has reached its 2,000 category limit' };
-    }
     const parsed = manualCategoryFromInput(input);
     if (parsed.error) return { ok: false, code: 'INVALID_MANUAL_CATEGORY', message: parsed.error };
-    category = {
-      id: crypto.randomUUID(),
-      ...parsed.value,
-      status: 'OPEN',
-      ruleset: deep(activeRulesMetadata),
-      createdAt: new Date().toISOString(),
-      finalizedAt: null,
-      placementsSavedAt: null,
-      matchRecordIds: [],
-      placements: { gold: null, silver: null, bronze1: null, bronze2: null }
-    };
-    manualCompetition.categories.unshift(category);
+    category = matchingOpenManualCategory(parsed.value);
+    if (!category) {
+      if (manualCompetition.categories.length >= 2000) {
+        return { ok: false, code: 'MANUAL_CATEGORY_LIMIT', message: 'The manual category archive has reached its 2,000 category limit' };
+      }
+      category = {
+        id: crypto.randomUUID(),
+        ...parsed.value,
+        status: 'OPEN',
+        ruleset: deep(activeRulesMetadata),
+        createdAt: new Date().toISOString(),
+        finalizedAt: null,
+        placementsSavedAt: null,
+        placementsCalculatedAt: null,
+        placementSource: 'AUTOMATIC',
+        matchRecordIds: [],
+        calculatedPlacements: { gold: null, silver: null, bronze1: null, bronze2: null },
+        placements: { gold: null, silver: null, bronze1: null, bronze2: null }
+      };
+      manualCompetition.categories.unshift(category);
+    }
   } else if (category.status === 'FINALIZED') {
     return { ok: false, code: 'MANUAL_CATEGORY_FINALIZED', message: 'This category is finalized and cannot accept another bout' };
   }
@@ -1621,6 +1647,7 @@ function saveManualBout(input) {
     stage,
     loadedAt: new Date().toISOString()
   };
+  manualCompetition.activeCategoryId = category.id;
   persistManualArchive();
   return { ok: true, categoryId: category.id };
 }
@@ -1677,6 +1704,7 @@ function deleteManualCategory(categoryId, { deleteRecords = false, confirmation 
   manualMatchRecords = manualMatchRecords.filter(record => record.manualBout?.categoryId !== id);
   matchHistory = matchHistory.filter(record => record.manualBout?.categoryId !== id);
   manualCompetition.categories.splice(index, 1);
+  if (manualCompetition.activeCategoryId === id) manualCompetition.activeCategoryId = null;
   persistManualArchive();
   return {
     ok: true,
@@ -1695,6 +1723,75 @@ function manualCategoryParticipants(categoryId) {
     }
   }
   return participants;
+}
+
+function manualRecordParticipant(player) {
+  if (!player?.playerName) return null;
+  return {
+    key: `${player.playerName.trim().toUpperCase()}|${String(player.club || '').trim().toUpperCase()}`,
+    playerName: player.playerName,
+    club: player.club || ''
+  };
+}
+
+function calculateManualCategoryPlacements(categoryId) {
+  const records = manualMatchRecords
+    .filter(record => record.manualBout?.categoryId === categoryId)
+    .sort((left, right) => String(left.endedAt || '').localeCompare(String(right.endedAt || '')));
+  const calculated = { gold: null, silver: null, bronze1: null, bronze2: null };
+  const final = [...records].reverse().find(record => record.manualBout?.stage === 'FINAL' && record.winner);
+  if (final) {
+    calculated.gold = manualRecordParticipant(final.winner === 'RED' ? final.red : final.blue);
+    calculated.silver = manualRecordParticipant(final.winner === 'RED' ? final.blue : final.red);
+  }
+  const semifinalLosers = records
+    .filter(record => record.manualBout?.stage === 'SEMIFINAL' && record.winner)
+    .map(record => manualRecordParticipant(record.winner === 'RED' ? record.blue : record.red))
+    .filter(Boolean)
+    .slice(-2);
+  calculated.bronze1 = semifinalLosers[0] || null;
+  calculated.bronze2 = semifinalLosers[1] || null;
+  return calculated;
+}
+
+function manualPlacementsMatch(left, right) {
+  return ['gold', 'silver', 'bronze1', 'bronze2'].every(place => (
+    (left?.[place]?.key || '') === (right?.[place]?.key || '')
+  ));
+}
+
+function applyAutomaticManualPlacements(category) {
+  const calculated = calculateManualCategoryPlacements(category.id);
+  category.calculatedPlacements = calculated;
+  category.placementsCalculatedAt = new Date().toISOString();
+  if (category.status !== 'FINALIZED') {
+    category.placements = deep(calculated);
+    category.placementSource = 'AUTOMATIC';
+    category.placementsSavedAt = null;
+  }
+  return calculated;
+}
+
+function normalizeManualCategoryPlacementState() {
+  const categoryIds = new Set(manualCompetition.categories.map(category => category.id));
+  if (!categoryIds.has(manualCompetition.activeCategoryId)) manualCompetition.activeCategoryId = null;
+  for (const category of manualCompetition.categories) {
+    const calculated = calculateManualCategoryPlacements(category.id);
+    category.calculatedPlacements = calculated;
+    category.placementsCalculatedAt ||= null;
+    if (!category.placements || typeof category.placements !== 'object') {
+      category.placements = deep(calculated);
+    }
+    const hasStoredPlacement = Object.values(category.placements).some(Boolean);
+    if (category.status === 'OPEN' && !category.placementsSavedAt && !hasStoredPlacement) {
+      category.placements = deep(calculated);
+      category.placementSource = 'AUTOMATIC';
+    } else if (!category.placementSource) {
+      category.placementSource = manualPlacementsMatch(category.placements, calculated)
+        ? category.placementsSavedAt ? 'AUTOMATIC_CONFIRMED' : 'AUTOMATIC'
+        : 'OPERATOR_OVERRIDE';
+    }
+  }
 }
 
 function saveManualCategoryPlacements(categoryId, placements, finalize = false) {
@@ -1723,10 +1820,15 @@ function saveManualCategoryPlacements(categoryId, placements, finalize = false) 
     return { ok: false, code: 'INVALID_PLACEMENTS', message: 'Confirm the gold medallist before finalizing the category' };
   }
   category.placements = next;
+  category.calculatedPlacements = calculateManualCategoryPlacements(category.id);
+  category.placementSource = manualPlacementsMatch(next, category.calculatedPlacements)
+    ? 'AUTOMATIC_CONFIRMED'
+    : 'OPERATOR_OVERRIDE';
   category.placementsSavedAt = new Date().toISOString();
   if (finalize) {
     category.status = 'FINALIZED';
     category.finalizedAt = new Date().toISOString();
+    if (manualCompetition.activeCategoryId === category.id) manualCompetition.activeCategoryId = null;
   }
   persistManualArchive();
   return { ok: true };
@@ -3399,7 +3501,11 @@ function finishMatch(winner, reason) {
   if (record.manualBout?.categoryId) {
     manualMatchRecords.unshift(deep(record));
     const category = manualCompetition.categories.find(item => item.id === record.manualBout.categoryId);
-    if (category && !category.matchRecordIds.includes(record.id)) category.matchRecordIds.push(record.id);
+    if (category) {
+      if (!category.matchRecordIds.includes(record.id)) category.matchRecordIds.push(record.id);
+      applyAutomaticManualPlacements(category);
+      manualCompetition.activeCategoryId = category.id;
+    }
     persistManualArchive();
   }
   match.cornerRefereeHistory = [];

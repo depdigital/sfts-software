@@ -455,16 +455,16 @@
         <section id="manualPrepareNextNotice" class="manualPrepareNextNotice hidden">
           <div>
             <h3>THE PREVIOUS MATCH IS COMPLETE</h3>
-            <p>Prepare a clean scoreboard before entering the next manual bout.</p>
+            <p id="manualPrepareNextCategory">Continue with the next bout in this category.</p>
           </div>
-          <button onclick="nextManualBout()">PREPARE NEXT BOUT</button>
+          <button onclick="nextManualBout()">NEXT BOUT IN THIS CATEGORY</button>
         </section>
 
         <section id="manualWizardCategory" class="manualWizardPanel">
           <div class="manualWizardPanelHeading">
             <div>
               <h3>CHOOSE THE CATEGORY</h3>
-              <p>Use an open category or create one from the active rule pack.</p>
+              <p>Create it once, then keep every preliminary, quarterfinal, semifinal and final bout together.</p>
             </div>
             <span id="manualRulesetSummary" class="manualWizardBadge"></span>
           </div>
@@ -611,13 +611,15 @@
           <div class="manualResultsCategorySummary" aria-live="polite">
             <span id="manualResultsCategoryStatus" class="manualResultsStatusBadge">NO CATEGORY</span>
             <span id="manualResultsBoutCount">0 completed bouts</span>
+            <span id="manualResultsStageSummary">No stages recorded</span>
           </div>
         </section>
 
         <section class="manualPlacements manualResultsStep">
           <div class="manualResultsStepHeading">
-            <div><b>2</b><span><strong>Confirm medal positions</strong><small>Suggestions come from the recorded final and semifinals.</small></span></div>
+            <div><b>2</b><span><strong>Review calculated medal positions</strong><small>The final decides Gold and Silver; semifinal losers receive Bronze.</small></span></div>
           </div>
+          <div id="manualPlacementSource" class="manualPlacementSource">WAITING FOR COMPLETED FINAL AND SEMIFINAL BOUTS</div>
           <div class="manualFieldGrid">
             <label class="manualMedalField gold">GOLD<select id="manualPlaceGold" onchange="manualPlacementChanged(this)"></select></label>
             <label class="manualMedalField silver">SILVER<select id="manualPlaceSilver" onchange="manualPlacementChanged(this)"></select></label>
