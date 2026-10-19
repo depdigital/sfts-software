@@ -1673,6 +1673,8 @@ function manualParticipant(player) {
     key: `${player.playerName.trim().toUpperCase()}|${String(player.club || "").trim().toUpperCase()}`,
     playerName: player.playerName,
     club: player.club || "",
+    stateCode: player.stateCode || "",
+    district: player.district || "",
   };
 }
 
@@ -1766,6 +1768,40 @@ function currentManualPlacements(records) {
   return placements;
 }
 
+function manualParticipantReportRows(records, placements) {
+  const participants = manualParticipants(records);
+  for (const participant of participants.values()) participant.boutCount = 0;
+  for (const record of records) {
+    const counted = new Set();
+    for (const player of [record.red, record.blue]) {
+      const participant = manualParticipant(player);
+      if (!participant || counted.has(participant.key)) continue;
+      counted.add(participant.key);
+      const stored = participants.get(participant.key);
+      if (stored) stored.boutCount += 1;
+    }
+  }
+  const placementLabels = new Map([
+    [placements.gold?.key, "GOLD"],
+    [placements.silver?.key, "SILVER"],
+    [placements.bronze1?.key, "BRONZE 1"],
+    [placements.bronze2?.key, "BRONZE 2"],
+  ].filter(([key]) => key));
+  const placementOrder = { GOLD: 0, SILVER: 1, "BRONZE 1": 2, "BRONZE 2": 3 };
+  return [...participants.values()]
+    .map(participant => ({
+      ...participant,
+      placement: placementLabels.get(participant.key) || "—",
+    }))
+    .sort((left, right) => {
+      const leftOrder = placementOrder[left.placement] ?? 4;
+      const rightOrder = placementOrder[right.placement] ?? 4;
+      return leftOrder - rightOrder
+        || left.playerName.localeCompare(right.playerName)
+        || left.club.localeCompare(right.club);
+    });
+}
+
 function updateManualResultsControls(category, records) {
   const status = $("manualResultsCategoryStatus");
   const boutCount = $("manualResultsBoutCount");
@@ -1773,12 +1809,12 @@ function updateManualResultsControls(category, records) {
   const guidance = $("manualPlacementGuidance");
   const saveButton = $("manualSavePlacementsButton");
   const finalizeButton = $("manualFinalizeCategoryButton");
+  const boutSummaryOption = $("manualIncludeBoutSummary");
+  const fullAuditOption = $("manualIncludeFullAudit");
   const historyOption = $("manualIncludeCornerRefereeHistory");
-  const historyAvailability = $("manualCornerHistoryAvailability");
   const placementSource = $("manualPlacementSource");
   const previewButton = $("manualToggleReportPreviewButton");
-  const printSummaryButton = $("manualPrintSummaryButton");
-  const printFullButton = $("manualPrintFullButton");
+  const printResultButton = $("manualPrintResultButton");
   const hasCategory = Boolean(category);
   const finalized = category?.status === "FINALIZED";
   const placementSelects = Object.keys(manualPlacementFields).map(id => $(id));
@@ -1843,14 +1879,12 @@ function updateManualResultsControls(category, records) {
   finalizeButton.disabled = !hasCategory || finalized || hasDuplicatePlacement || !$("manualPlaceGold")?.value;
   finalizeButton.textContent = finalized ? "CATEGORY FINALIZED" : "FINALIZE CATEGORY";
   previewButton.disabled = !hasCategory;
-  printSummaryButton.disabled = !hasCategory;
-  printFullButton.disabled = !hasCategory;
-
-  historyOption.disabled = !hasCategory || totalCornerPresses === 0;
-  if (historyOption.disabled) historyOption.checked = false;
-  historyAvailability.textContent = totalCornerPresses
-    ? `${totalCornerPresses} recorded button press${totalCornerPresses === 1 ? "" : "es"} · full report only`
-    : "No corner-referee history is recorded for this category.";
+  printResultButton.disabled = !hasCategory;
+  boutSummaryOption.disabled = !hasCategory;
+  fullAuditOption.disabled = !hasCategory || records.length === 0;
+  if (fullAuditOption.disabled) fullAuditOption.checked = false;
+  historyOption.dataset.available = String(hasCategory && totalCornerPresses > 0);
+  historyOption.dataset.count = String(totalCornerPresses);
   updateManualResultsPrintOptions();
 }
 
@@ -1860,13 +1894,38 @@ function manualPlacementChanged(select) {
 }
 
 function updateManualResultsPrintOptions() {
-  const includeHistory = $("manualIncludeCornerRefereeHistory")?.checked === true;
-  $("categoryPrintReport")?.classList.toggle("includeCornerRefereeHistory", includeHistory);
+  const boutSummaryOption = $("manualIncludeBoutSummary");
+  const fullAuditOption = $("manualIncludeFullAudit");
+  const historyOption = $("manualIncludeCornerRefereeHistory");
+  const includeBoutSummary = boutSummaryOption?.checked === true;
+  const includeFullAudit = fullAuditOption?.checked === true;
+  const historyAvailable = historyOption?.dataset.available === "true";
+  const historyCount = Number(historyOption?.dataset.count || 0);
+  if (historyOption) {
+    historyOption.disabled = !includeFullAudit || !historyAvailable;
+    if (historyOption.disabled) historyOption.checked = false;
+  }
+  const includeHistory = includeFullAudit && historyOption?.checked === true;
+  const report = $("categoryPrintReport");
+  report?.classList.toggle("includeBoutSummary", includeBoutSummary);
+  report?.classList.toggle("includeFullAudit", includeFullAudit);
+  report?.classList.toggle("includeCornerRefereeHistory", includeHistory);
+
+  const historyAvailability = $("manualCornerHistoryAvailability");
+  if (historyAvailability) {
+    historyAvailability.textContent = !historyAvailable
+      ? "No corner-referee history is recorded for this category."
+      : !includeFullAudit
+        ? `${historyCount} recorded button press${historyCount === 1 ? "" : "es"} · select full match audit first`
+        : `${historyCount} recorded button press${historyCount === 1 ? "" : "es"} · optional audit evidence`;
+  }
   const previewType = $("manualReportPreviewType");
   if (previewType) {
-    previewType.textContent = includeHistory
-      ? "Corner-referee history included in the full report"
-      : "Corner-referee history excluded";
+    const includedSections = ["Participants"];
+    if (includeBoutSummary) includedSections.push("Bout summary");
+    if (includeFullAudit) includedSections.push("Full match audit");
+    if (includeHistory) includedSections.push("Corner-referee history");
+    previewType.textContent = `${includedSections.join(" · ")} included`;
   }
 }
 
@@ -1954,6 +2013,14 @@ function renderManualCategoryReport() {
     const place = manualPlacementFields[id];
     return (placements[place]?.key || "") === (category.calculatedPlacements?.[place]?.key || "");
   });
+  const participantRows = manualParticipantReportRows(records, placements).map(participant => `<tr>
+    <td>${escapeHtml(participant.placement)}</td>
+    <td>${escapeHtml(participant.playerName)}</td>
+    <td>${escapeHtml(participant.club || "—")}</td>
+    <td>${escapeHtml(participant.stateCode || "—")}</td>
+    <td>${escapeHtml(participant.district || "—")}</td>
+    <td>${escapeHtml(participant.boutCount)}</td>
+  </tr>`).join("");
   const boutRows = records.map(record => `<tr>
     <td>${escapeHtml(record.manualBout?.officialBoutNo || "—")}</td>
     <td>${escapeHtml(record.matchNo)}</td>
@@ -1978,7 +2045,8 @@ function renderManualCategoryReport() {
   report.innerHTML = `<header><h1>${escapeHtml(category.eventName)}</h1><h2>OFFICIAL CATEGORY RESULT</h2></header>
     <div class="categoryReportMeta"><span><b>DATE:</b> ${escapeHtml(category.eventDate)}</span><span><b>VENUE:</b> ${escapeHtml(category.venue)}</span><span><b>ARENA:</b> ${escapeHtml(category.arenaNumber)}</span><span><b>COMPETITION:</b> ${escapeHtml(category.competition)}</span><span><b>DIVISION:</b> ${escapeHtml(category.divisionLabel || category.division)}</span><span><b>GENDER:</b> ${escapeHtml(category.gender)}</span><span><b>CATEGORY:</b> ${escapeHtml(category.categoryGroup || category.weightCategory)}</span><span><b>RULESET:</b> ${escapeHtml(category.ruleset?.name || "—")} ${escapeHtml(category.ruleset?.version || "")}</span><span><b>GENERATED:</b> ${escapeHtml(reportDateTime(new Date().toISOString()))}</span></div>
     <h3>PLACEMENTS</h3><div class="categoryReportPlacements"><span><b>GOLD:</b> ${escapeHtml(placementText(placements.gold))}</span><span><b>SILVER:</b> ${escapeHtml(placementText(placements.silver))}</span><span><b>BRONZE 1:</b> ${escapeHtml(placementText(placements.bronze1))}</span><span><b>BRONZE 2:</b> ${escapeHtml(placementText(placements.bronze2))}</span><span><b>STATUS:</b> ${escapeHtml(category.status)}</span><span><b>SOURCE:</b> ${reportUsesCalculatedPlacements ? "SOFTWARE CALCULATION" : "OPERATOR OVERRIDE"}</span></div>
-    <h3>BOUT SUMMARY</h3><table><thead><tr><th>OFFICIAL BOUT</th><th>SFTS MATCH</th><th>STAGE</th><th>RED / AFFILIATION</th><th>BLUE / AFFILIATION</th><th>ROUND SCORES</th><th>ROUND WINS</th><th>WINNER</th><th>DEFEATED</th><th>RESULT</th><th>START / END</th></tr></thead><tbody>${boutRows || '<tr><td colspan="11">NO COMPLETED BOUTS RECORDED</td></tr>'}</tbody></table>
+    <section class="categoryReportParticipants"><h3>PARTICIPANTS (${manualParticipants(records).size})</h3><table><thead><tr><th>PLACE</th><th>PLAYER</th><th>CLUB</th><th>STATE</th><th>DISTRICT</th><th>BOUTS</th></tr></thead><tbody>${participantRows || '<tr><td colspan="6">NO PARTICIPANTS RECORDED</td></tr>'}</tbody></table></section>
+    <section class="categoryReportBoutSummary"><h3>BOUT SUMMARY</h3><table><thead><tr><th>OFFICIAL BOUT</th><th>SFTS MATCH</th><th>STAGE</th><th>RED / AFFILIATION</th><th>BLUE / AFFILIATION</th><th>ROUND SCORES</th><th>ROUND WINS</th><th>WINNER</th><th>DEFEATED</th><th>RESULT</th><th>START / END</th></tr></thead><tbody>${boutRows || '<tr><td colspan="11">NO COMPLETED BOUTS RECORDED</td></tr>'}</tbody></table></section>
     <div class="categoryReportAudit"><h2>FULL MATCH AUDIT</h2>${audit || "<p>NO COMPLETED BOUTS RECORDED</p>"}</div>
     <footer class="categoryReportSignatures"><span>TECHNICAL OFFICIAL</span><span>REFEREE CHAIR</span><span>FEDERATION REPRESENTATIVE</span></footer>`;
   updateManualResultsControls(category, records);
@@ -2011,6 +2079,8 @@ async function openManualCategoryResults() {
   renderManualCategoryOptions();
   const currentId = $("manualCategoryId")?.value;
   if (currentId && [...$("manualResultsCategoryId").options].some(option => option.value === currentId)) $("manualResultsCategoryId").value = currentId;
+  $("manualIncludeBoutSummary").checked = true;
+  $("manualIncludeFullAudit").checked = false;
   $("manualIncludeCornerRefereeHistory").checked = false;
   toggleManualReportPreview(false);
   $("manualCategoryResultsModal").classList.remove("hidden");
@@ -2041,9 +2111,9 @@ async function saveManualPlacements(finalize = false) {
   });
 }
 
-function printManualCategory(mode) {
+function printManualCategory() {
   renderManualCategoryReport();
-  document.body.classList.add("printManualCategory", mode === "full" ? "printManualFull" : "printManualSummary");
+  document.body.classList.add("printManualCategory");
   const cleanup = () => document.body.classList.remove("printManualCategory", "printManualFull", "printManualSummary");
   window.addEventListener("afterprint", cleanup, { once: true });
   setTimeout(() => window.print(), 100);

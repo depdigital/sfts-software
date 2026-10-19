@@ -635,22 +635,31 @@
 
         <section class="manualResultsStep manualResultsPrintStep">
           <div class="manualResultsStepHeading">
-            <div><b>3</b><span><strong>Preview or print</strong><small>Summary is recommended for the normal official result.</small></span></div>
+            <div><b>3</b><span><strong>Choose details and print</strong><small>Placements and all participants are always included.</small></span></div>
           </div>
-          <label class="manualPrintOption" for="manualIncludeCornerRefereeHistory">
-            <input id="manualIncludeCornerRefereeHistory" type="checkbox" onchange="updateManualResultsPrintOptions()" />
-            <span><strong>Include corner-referee history</strong><small id="manualCornerHistoryAvailability">Optional audit evidence for the full report only.</small></span>
-          </label>
+          <div class="manualPrintOptions">
+            <label class="manualPrintOption" for="manualIncludeBoutSummary">
+              <input id="manualIncludeBoutSummary" type="checkbox" checked onchange="updateManualResultsPrintOptions()" />
+              <span><strong>Include bout summary</strong><small>Recommended overview of every completed bout.</small></span>
+            </label>
+            <label class="manualPrintOption" for="manualIncludeFullAudit">
+              <input id="manualIncludeFullAudit" type="checkbox" onchange="updateManualResultsPrintOptions()" />
+              <span><strong>Include full match audit</strong><small>Add round details, penalties, and operator corrections.</small></span>
+            </label>
+            <label class="manualPrintOption nested" for="manualIncludeCornerRefereeHistory">
+              <input id="manualIncludeCornerRefereeHistory" type="checkbox" onchange="updateManualResultsPrintOptions()" />
+              <span><strong>Include corner-referee history</strong><small id="manualCornerHistoryAvailability">Available when full match audit is selected.</small></span>
+            </label>
+          </div>
           <div class="manualPrintActions">
             <button id="manualToggleReportPreviewButton" aria-expanded="false" onclick="toggleManualReportPreview()">SHOW REPORT PREVIEW</button>
-            <button id="manualPrintSummaryButton" class="manualPrimaryButton" onclick="printManualCategory('summary')">PRINT SUMMARY</button>
-            <button id="manualPrintFullButton" onclick="printManualCategory('full')">PRINT FULL REPORT</button>
+            <button id="manualPrintResultButton" class="manualPrimaryButton" onclick="printManualCategory()">PRINT RESULT</button>
           </div>
         </section>
 
         <section id="manualReportPreviewPanel" class="manualReportPreviewPanel hidden">
           <header class="manualReportPreviewHeader">
-            <div><strong>REPORT PREVIEW</strong><span id="manualReportPreviewType">Corner-referee history excluded</span></div>
+            <div><strong>REPORT PREVIEW</strong><span id="manualReportPreviewType">Participants and bout summary included</span></div>
             <button onclick="toggleManualReportPreview(false)">HIDE PREVIEW</button>
           </header>
           <article id="categoryPrintReport" class="categoryPrintReport"></article>

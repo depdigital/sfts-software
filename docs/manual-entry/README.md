@@ -185,12 +185,15 @@ If a medal was not awarded, leave it as **NOT AWARDED**.
 
 ## Print the result
 
-Two print options are available:
+The printed result always starts with the confirmed medal positions, followed by every participant recorded in the selected category. The participant list shows each player's club, state, district, bout count, and medal placement when applicable.
 
-- **PRINT SUMMARY:** Prints the event details, confirmed medal positions, and bout summary.
-- **PRINT FULL REPORT:** Prints the summary plus round details, penalties, and operator corrections.
+Choose any extra detail required for the copy you are preparing:
 
-Corner-referee history is optional audit evidence. Leave **INCLUDE CORNER-REFEREE HISTORY** clear for the normal official result. Select it only when the full report must include every recorded corner-referee button press. This option changes only the report; the history always remains safely stored.
+- **INCLUDE BOUT SUMMARY:** Selected by default and recommended for the normal official result.
+- **INCLUDE FULL MATCH AUDIT:** Adds round details, penalties, and operator corrections.
+- **INCLUDE CORNER-REFEREE HISTORY:** Becomes available after Full Match Audit is selected and adds every recorded corner-referee button press.
+
+Corner-referee history is optional audit evidence and remains safely stored when it is not included. Select **PRINT RESULT** to print exactly the sections currently selected.
 
 Use **SHOW REPORT PREVIEW** to check the current medal selections and report contents before printing. The preview and printout include the selections currently shown on screen, even before they are saved.
 

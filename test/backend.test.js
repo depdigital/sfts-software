@@ -988,8 +988,13 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(html, /id="manualDeleteCategoryConfirmation"/);
   assert.match(html, /id="dataImportModal"/);
   assert.match(html, /id="manualCategoryResultsModal"/);
+  assert.match(html, /id="manualIncludeBoutSummary"/);
+  assert.match(html, /id="manualIncludeFullAudit"/);
   assert.match(html, /id="manualIncludeCornerRefereeHistory"/);
   assert.match(html, /id="manualToggleReportPreviewButton"/);
+  assert.match(html, /id="manualPrintResultButton"/);
+  assert.doesNotMatch(html, /id="manualPrintSummaryButton"/);
+  assert.doesNotMatch(html, /id="manualPrintFullButton"/);
   assert.match(html, /id="manualPlacementSource"/);
   assert.match(html, />NEXT BOUT IN THIS CATEGORY</);
   assert.match(html, /id="practiceModeModal"/);
