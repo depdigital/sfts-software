@@ -142,17 +142,21 @@ button {
 .homeBrandSequence {
   position: relative;
   contain: layout paint;
-  flex: 0 1 min(50vh, 480px);
+  flex: 0 1 min(60vh, 960px);
   width: 100%;
-  height: min(50vh, 480px);
+  min-height: 0;
+  height: min(60vh, 960px);
   overflow: hidden;
 }
 .homeSportsIntro {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: min(60vw, 640px);
+  width: min(72vw, 1400px);
+  max-width: 92%;
+  max-height: 92%;
   height: auto;
+  object-fit: contain;
   opacity: 0;
   pointer-events: none;
   transform: translate(-50%, -50%);
