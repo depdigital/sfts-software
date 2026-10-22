@@ -3427,8 +3427,8 @@ function endRound(winner = null, reason = 'TIME 0:00') {
   let actualWinner = winner || winnerByScore();
   let actualReason = reason;
   const roundTie = rules.decisions.roundTie;
-  const applyRoundTieSuperiority = match.round < rules.match.rounds || roundTie.applyToFinalRound;
-  if (!actualWinner && roundTie.type === 'SUPERIORITY' && applyRoundTieSuperiority) {
+  const isNonFinalRegulationRound = match.round < rules.match.rounds;
+  if (!actualWinner && isNonFinalRegulationRound && roundTie.type === 'SUPERIORITY') {
     const superiority = roundTieSuperiority(match.red, match.blue, roundTie.criteria);
     if (superiority) {
       actualWinner = superiority.winner;

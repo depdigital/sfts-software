@@ -109,7 +109,6 @@
     // regulation round bypasses these criteria and uses tieBreak.afterRegulation.
     "roundTie": {
       "type": "SUPERIORITY",
-      "applyToFinalRound": false,
       "criteria": [
         "TECHNICAL_HEAD_KICKS",
         "TECHNICAL_CHEST_KICKS",
