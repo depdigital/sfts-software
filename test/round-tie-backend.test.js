@@ -117,6 +117,7 @@ test('round superiority, round Woo-se-girok, final tie choices, and expiry locki
   await waitForMessage(host, message => message.type === 'roleAccepted');
   const initial = await waitForMessage(host, message => message.type === 'state');
   assert.equal(initial.scoringRules.roundTie.type, 'SUPERIORITY');
+  assert.equal(initial.scoringRules.roundTie.applyToFinalRound, false);
   hostAction(host, 'setTime', { ms: 1500 });
   await waitForMessage(host, message => message.type === 'state' && message.match.timerMs === 1500);
 
@@ -173,6 +174,12 @@ test('round superiority, round Woo-se-girok, final tie choices, and expiry locki
   await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'ROUND' && message.match.round === 3);
 
   await startRound(host, 3);
+  await setTiedRound(
+    host,
+    12,
+    { technicalHead: 2, technicalChest: 0, normalHead: 0 },
+    { technicalHead: 0, technicalChest: 0, normalHead: 0 }
+  );
   const finalRound = await waitForMessage(host, message => (
     message.type === 'roundEnd' && message.record.round === 3
   ));

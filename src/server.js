@@ -3426,12 +3426,14 @@ function endRound(winner = null, reason = 'TIME 0:00') {
 
   let actualWinner = winner || winnerByScore();
   let actualReason = reason;
-  if (!actualWinner && rules.decisions.roundTie.type === 'SUPERIORITY') {
-    const superiority = roundTieSuperiority(match.red, match.blue, rules.decisions.roundTie.criteria);
+  const roundTie = rules.decisions.roundTie;
+  const applyRoundTieSuperiority = match.round < rules.match.rounds || roundTie.applyToFinalRound;
+  if (!actualWinner && roundTie.type === 'SUPERIORITY' && applyRoundTieSuperiority) {
+    const superiority = roundTieSuperiority(match.red, match.blue, roundTie.criteria);
     if (superiority) {
       actualWinner = superiority.winner;
       actualReason = superiority.reason;
-    } else if (rules.decisions.roundTie.unresolved === 'WOO_SE_GIROK') {
+    } else if (roundTie.unresolved === 'WOO_SE_GIROK') {
       clearAllRemoteCombinations();
       match.votes = {};
       clearRemoteScoreHighlights();

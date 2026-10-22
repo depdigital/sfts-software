@@ -318,6 +318,12 @@ function normalizeRules(input) {
   requireObject(input, 'root');
   const rules = input.schemaVersion === LEGACY_RULE_SCHEMA_VERSION ? migrateV1ToV2(input) : structuredClone(input);
   upgradeManualTournamentTieBreak(rules);
+  // Preserve the historical behavior for existing rule packs that predate
+  // this switch. New packs can explicitly bypass round-level superiority in
+  // their final regulation round and proceed to afterRegulation instead.
+  if (rules.decisions?.roundTie?.type === 'SUPERIORITY') {
+    rules.decisions.roundTie.applyToFinalRound ??= true;
+  }
   rules.tournament ||= {};
   rules.tournament.placements ??= structuredClone(DEFAULT_TOURNAMENT_PLACEMENTS);
   if (!rules.tournament.divisions) {
@@ -437,6 +443,7 @@ export function validateRules(input) {
   const roundTie = requireObject(decisions.roundTie, 'decisions.roundTie');
   if (!['DRAW', 'SUPERIORITY'].includes(roundTie.type)) fail('decisions.roundTie.type must be DRAW or SUPERIORITY');
   if (roundTie.type === 'SUPERIORITY') {
+    requireBoolean(roundTie.applyToFinalRound, 'decisions.roundTie.applyToFinalRound');
     const roundCriteria = requireStringArray(roundTie.criteria, 'decisions.roundTie.criteria');
     if (roundCriteria.some(item => !SUPPORTED_ROUND_TIE_CRITERIA.has(item))) {
       fail('decisions.roundTie.criteria contains an unsupported criterion');

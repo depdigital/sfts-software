@@ -104,11 +104,12 @@
       "difference": 15,
       "appliesToRounds": [1, 2, 3]
     },
-    // A tied round is decided by the first unequal kick count in this order.
-    // If all counts remain equal, Woo-se-girok decides only a non-final round.
-    // A final regulation-round tie uses tieBreak.afterRegulation below.
+    // A tied non-final round is decided by the first unequal kick count in this order.
+    // If all counts remain equal, Woo-se-girok decides that round. The final
+    // regulation round bypasses these criteria and uses tieBreak.afterRegulation.
     "roundTie": {
       "type": "SUPERIORITY",
+      "applyToFinalRound": false,
       "criteria": [
         "TECHNICAL_HEAD_KICKS",
         "TECHNICAL_CHEST_KICKS",

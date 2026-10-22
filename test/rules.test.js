@@ -26,6 +26,7 @@ test('the built-in ruleset is valid and describes the current behavior', async (
   assert.equal(rules.decisions.pointGap.difference, 15);
   assert.deepEqual(rules.decisions.roundTie, {
     type: 'SUPERIORITY',
+    applyToFinalRound: false,
     criteria: ['TECHNICAL_HEAD_KICKS', 'TECHNICAL_CHEST_KICKS', 'NORMAL_HEAD_KICKS'],
     unresolved: 'WOO_SE_GIROK'
   });
@@ -60,6 +61,14 @@ test('round-tie superiority is rule-pack controlled while legacy draws remain va
   const rules = await defaultRules();
   rules.decisions.roundTie.criteria = ['NORMAL_HEAD_KICKS', 'TECHNICAL_HEAD_KICKS'];
   assert.deepEqual(validateRules(rules).decisions.roundTie.criteria, ['NORMAL_HEAD_KICKS', 'TECHNICAL_HEAD_KICKS']);
+
+  const olderRules = await defaultRules();
+  delete olderRules.decisions.roundTie.applyToFinalRound;
+  assert.equal(validateRules(olderRules).decisions.roundTie.applyToFinalRound, true);
+
+  const invalidRules = await defaultRules();
+  invalidRules.decisions.roundTie.applyToFinalRound = 'no';
+  assert.throws(() => validateRules(invalidRules), /applyToFinalRound must be boolean/);
 
   rules.decisions.roundTie = { type: 'DRAW' };
   assert.deepEqual(validateRules(rules).decisions.roundTie, { type: 'DRAW' });
