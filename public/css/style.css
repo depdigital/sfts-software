@@ -1822,6 +1822,14 @@ button {
   gap: 8px;
   margin-top: 10px;
 }
+.manualPdfUsbToolbar {
+  margin-top: 12px;
+  margin-bottom: 0;
+  padding: 10px;
+  border: 1px solid rgba(95, 143, 255, 0.35);
+  border-radius: 9px;
+  background: rgba(11, 19, 32, 0.72);
+}
 .manualReportPreviewPanel {
   margin-top: 14px;
   padding: 12px;
@@ -2746,19 +2754,17 @@ button {
   body * {
     visibility: hidden !important;
   }
-  body:not(.printManualCategory) #scheduleModal,
-  body:not(.printManualCategory) #scheduleModal *,
-  body.printManualCategory #categoryPrintReport,
-  body.printManualCategory #categoryPrintReport * {
+  #scheduleModal,
+  #scheduleModal * {
     visibility: visible !important;
   }
-  body:not(.printManualCategory) #scheduleModal {
+  #scheduleModal {
     position: static;
     display: block;
     background: #fff;
     color: #000;
   }
-  body:not(.printManualCategory) #scheduleModal .modalCard {
+  #scheduleModal .modalCard {
     width: 100%;
     max-height: none;
     overflow: visible;
@@ -2767,57 +2773,25 @@ button {
     background: #fff;
     color: #000;
   }
-  body:not(.printManualCategory) #scheduleModal .scheduleActions,
-  body:not(.printManualCategory) #scheduleModal .scheduleRowActions,
-  body:not(.printManualCategory) #scheduleModal > .modalCard > button {
+  #scheduleModal .scheduleActions,
+  #scheduleModal .scheduleRowActions,
+  #scheduleModal > .modalCard > button {
     display: none !important;
   }
-  body:not(.printManualCategory) #scheduleModal .scheduleTable {
+  #scheduleModal .scheduleTable {
     max-height: none;
     overflow: visible;
     border: 0;
   }
-  body:not(.printManualCategory) #scheduleModal .scheduleTable table {
+  #scheduleModal .scheduleTable table {
     min-width: 0;
     font-size: 10px;
   }
-  body:not(.printManualCategory) #scheduleModal .scheduleTable th,
-  body:not(.printManualCategory) #scheduleModal .scheduleTable td {
+  #scheduleModal .scheduleTable th,
+  #scheduleModal .scheduleTable td {
     color: #000;
     background: #fff;
     padding: 5px;
-  }
-  body.printManualCategory #categoryPrintReport {
-    position: absolute;
-    inset: 0;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    border-radius: 0;
-    color: #000;
-  }
-  body.printManualCategory #manualReportPreviewPanel {
-    position: static;
-    display: block !important;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    background: #fff;
-  }
-  body.printManualCategory .manualReportPreviewHeader {
-    display: none !important;
-  }
-  body.printManualCategory #manualCategoryResultsModal,
-  body.printManualCategory #manualCategoryResultsModal .categoryResultsModal {
-    position: static;
-    display: block;
-    width: 100%;
-    max-height: none;
-    overflow: visible;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    background: #fff;
   }
 }
 .homeAccessToken {

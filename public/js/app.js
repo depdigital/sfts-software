@@ -1814,7 +1814,7 @@ function updateManualResultsControls(category, records) {
   const historyOption = $("manualIncludeCornerRefereeHistory");
   const placementSource = $("manualPlacementSource");
   const previewButton = $("manualToggleReportPreviewButton");
-  const printResultButton = $("manualPrintResultButton");
+  const savePdfButton = $("manualSavePdfButton");
   const hasCategory = Boolean(category);
   const finalized = category?.status === "FINALIZED";
   const placementSelects = Object.keys(manualPlacementFields).map(id => $(id));
@@ -1879,7 +1879,12 @@ function updateManualResultsControls(category, records) {
   finalizeButton.disabled = !hasCategory || finalized || hasDuplicatePlacement || !$("manualPlaceGold")?.value;
   finalizeButton.textContent = finalized ? "CATEGORY FINALIZED" : "FINALIZE CATEGORY";
   previewButton.disabled = !hasCategory;
-  printResultButton.disabled = !hasCategory;
+  savePdfButton.disabled = !hasCategory || !usbImportOnly || hasUnsavedChanges || hasDuplicatePlacement;
+  savePdfButton.title = !usbImportOnly
+    ? "USB PDF export is not enabled on this deployment."
+    : hasUnsavedChanges
+      ? "Save placement changes before exporting the official PDF."
+      : "Save this category result directly to the connected USB drive.";
   boutSummaryOption.disabled = !hasCategory;
   fullAuditOption.disabled = !hasCategory || records.length === 0;
   if (fullAuditOption.disabled) fullAuditOption.checked = false;
@@ -2086,6 +2091,7 @@ async function openManualCategoryResults() {
   $("manualCategoryResultsModal").classList.remove("hidden");
   await refreshManualRecords($("manualResultsCategoryId").value);
   renderManualCategoryReport();
+  if (usbImportOnly) void refreshManualPdfUsbStatus();
 }
 
 function closeManualCategoryResults() {
@@ -2111,12 +2117,85 @@ async function saveManualPlacements(finalize = false) {
   });
 }
 
-function printManualCategory() {
-  renderManualCategoryReport();
-  document.body.classList.add("printManualCategory");
-  const cleanup = () => document.body.classList.remove("printManualCategory", "printManualFull", "printManualSummary");
-  window.addEventListener("afterprint", cleanup, { once: true });
-  setTimeout(() => window.print(), 100);
+function renderManualPdfUsbStatus(result) {
+  const status = $("manualPdfUsbStatus");
+  if (!status) return;
+  const mounted = result?.connected === true && result?.mounted === true;
+  status.textContent = result?.message || (mounted ? "USB READY FOR PDF EXPORT" : "USB DRIVE NOT READY");
+  status.classList.toggle("connected", mounted);
+  status.classList.toggle("disconnected", !mounted);
+}
+
+async function refreshManualPdfUsbStatus() {
+  if (!hostToken) {
+    toast("HOST SESSION REQUIRED");
+    return;
+  }
+  renderManualPdfUsbStatus({ message: "CHECKING USB DRIVE..." });
+  try {
+    const response = await fetch("/api/usb/status", {
+      headers: { "X-SFTS-Host-Token": hostToken },
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.message || "USB CHECK FAILED");
+    renderManualPdfUsbStatus(result);
+  } catch (error) {
+    renderManualPdfUsbStatus({ message: error.message || "USB CHECK FAILED" });
+    toast(error.message || "USB CHECK FAILED");
+  }
+}
+
+async function saveManualCategoryPdfToUsb() {
+  const category = manualReportCategory();
+  if (!category) {
+    toast("SELECT A CATEGORY");
+    return;
+  }
+  if (!usbImportOnly) {
+    toast("USB PDF EXPORT IS NOT ENABLED");
+    return;
+  }
+  const placementBaseline = manualPlacementsWereSaved(category)
+    ? category.placements
+    : category.calculatedPlacements;
+  const hasUnsavedPlacements = Object.entries(manualPlacementFields).some(([id, place]) => (
+    ($(id)?.value || "") !== (placementBaseline?.[place]?.key || "")
+  ));
+  if (hasUnsavedPlacements) {
+    toast("SAVE PLACEMENT CHANGES BEFORE EXPORTING THE PDF");
+    return;
+  }
+  if (!hostToken) {
+    toast("HOST SESSION REQUIRED");
+    return;
+  }
+  const button = $("manualSavePdfButton");
+  if (button) button.disabled = true;
+  renderManualPdfUsbStatus({ message: "GENERATING PDF AND SAVING TO USB..." });
+  try {
+    const response = await fetch("/api/manual/categories/pdf-usb", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-SFTS-Host-Token": hostToken,
+      },
+      body: JSON.stringify({
+        categoryId: category.id,
+        includeBoutSummary: $("manualIncludeBoutSummary")?.checked === true,
+        includeFullAudit: $("manualIncludeFullAudit")?.checked === true,
+        includeCornerRefereeHistory: $("manualIncludeCornerRefereeHistory")?.checked === true,
+      }),
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.message || "COULD NOT SAVE CATEGORY RESULT TO USB");
+    renderManualPdfUsbStatus({ connected: true, mounted: true, message: `SAVED: ${result.fileName}` });
+    toast(result.message || "CATEGORY RESULT SAVED TO USB");
+  } catch (error) {
+    renderManualPdfUsbStatus({ message: error.message || "PDF EXPORT FAILED" });
+    toast(error.message || "COULD NOT SAVE CATEGORY RESULT TO USB");
+  } finally {
+    renderManualCategoryReport();
+  }
 }
 function savePlayerSettings() {
   send({
@@ -2207,6 +2286,7 @@ function downloadPlayerTemplate() {
 function renderUsbImportMode() {
   $("nativeTournamentImport")?.classList.toggle("hidden", usbImportOnly);
   $("usbTournamentImport")?.classList.toggle("hidden", !usbImportOnly);
+  if (!usbImportOnly) renderManualPdfUsbStatus({ message: "USB PDF EXPORT IS DISABLED" });
 }
 
 function renderUsbStatus(result) {
@@ -2451,6 +2531,7 @@ async function unmountUsb() {
     if (!response.ok || !result.ok) throw new Error(result.message || "COULD NOT UNMOUNT USB DRIVE");
     renderUsbStatus({ files: [], message: result.message || "USB DRIVE UNMOUNTED SAFELY" });
     renderRulesUsbStatus({ rulesFiles: [], message: result.message || "USB DRIVE UNMOUNTED SAFELY" });
+    renderManualPdfUsbStatus({ message: result.message || "USB DRIVE UNMOUNTED SAFELY" });
     toast(result.message || "USB DRIVE UNMOUNTED SAFELY");
   } catch (error) {
     toast(error.message || "COULD NOT UNMOUNT USB DRIVE");
@@ -3120,7 +3201,8 @@ window.closeManualCategoryResults = closeManualCategoryResults;
 window.renderManualCategoryReport = renderManualCategoryReport;
 window.refreshManualRecords = refreshManualRecords;
 window.saveManualPlacements = saveManualPlacements;
-window.printManualCategory = printManualCategory;
+window.refreshManualPdfUsbStatus = refreshManualPdfUsbStatus;
+window.saveManualCategoryPdfToUsb = saveManualCategoryPdfToUsb;
 window.manualPlacementChanged = manualPlacementChanged;
 window.updateManualResultsPrintOptions = updateManualResultsPrintOptions;
 window.toggleManualReportPreview = toggleManualReportPreview;

@@ -596,9 +596,9 @@
       <div class="modalCard categoryResultsModal">
         <header class="manualResultsHeader">
           <div>
-            <p>MANUAL ENTRY · REVIEW &amp; PRINT</p>
+            <p>MANUAL ENTRY · REVIEW &amp; EXPORT</p>
             <h2>Category Results</h2>
-            <span>Confirm the official medal positions, then save or print the result.</span>
+            <span>Confirm the official medal positions, then save the PDF directly to USB.</span>
           </div>
           <button onclick="closeManualCategoryResults()">BACK</button>
         </header>
@@ -635,7 +635,7 @@
 
         <section class="manualResultsStep manualResultsPrintStep">
           <div class="manualResultsStepHeading">
-            <div><b>3</b><span><strong>Choose details and print</strong><small>Placements and all participants are always included.</small></span></div>
+            <div><b>3</b><span><strong>Choose details and save PDF</strong><small>Placements and all participants are always included.</small></span></div>
           </div>
           <div class="manualPrintOptions">
             <label class="manualPrintOption" for="manualIncludeBoutSummary">
@@ -651,9 +651,16 @@
               <span><strong>Include corner-referee history</strong><small id="manualCornerHistoryAvailability">Available when full match audit is selected.</small></span>
             </label>
           </div>
+          <div class="usbImportToolbar manualPdfUsbToolbar">
+            <div id="manualPdfUsbStatus" class="usbDriveStatus">USB NOT CHECKED</div>
+            <div class="usbDeviceActions">
+              <button onclick="refreshManualPdfUsbStatus()">REFRESH USB</button>
+              <button onclick="unmountUsb()">UNMOUNT USB SAFELY</button>
+            </div>
+          </div>
           <div class="manualPrintActions">
             <button id="manualToggleReportPreviewButton" aria-expanded="false" onclick="toggleManualReportPreview()">SHOW REPORT PREVIEW</button>
-            <button id="manualPrintResultButton" class="manualPrimaryButton" onclick="printManualCategory()">PRINT RESULT</button>
+            <button id="manualSavePdfButton" class="manualPrimaryButton" onclick="saveManualCategoryPdfToUsb()">SAVE PDF TO USB</button>
           </div>
         </section>
 

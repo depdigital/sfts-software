@@ -1,6 +1,6 @@
 # Manual Entry - Match-Day Operator Guide
 
-This guide explains how to enter competitors from a paper fixture, run their bouts, record the category results, and print the final report.
+This guide explains how to enter competitors from a paper fixture, run their bouts, record the category results, and save the final report as a PDF on a USB drive.
 
 You do not need computer or engineering knowledge to use Manual Entry.
 
@@ -183,9 +183,9 @@ If a medal was not awarded, leave it as **NOT AWARDED**.
 
 **Warning:** A finalized category is locked. More bouts cannot be added and its placements cannot be changed from the operator screen.
 
-## Print the result
+## Save the result PDF to USB
 
-The printed result always starts with the confirmed medal positions, followed by every participant recorded in the selected category. The participant list shows each player's club, state, district, bout count, and medal placement when applicable.
+The PDF always starts with the confirmed medal positions, followed by every participant recorded in the selected category. The participant list shows each player's club, state, district, bout count, and medal placement when applicable.
 
 Choose any extra detail required for the copy you are preparing:
 
@@ -193,20 +193,22 @@ Choose any extra detail required for the copy you are preparing:
 - **INCLUDE FULL MATCH AUDIT:** Adds round details, penalties, and operator corrections.
 - **INCLUDE CORNER-REFEREE HISTORY:** Becomes available after Full Match Audit is selected and adds every recorded corner-referee button press.
 
-Corner-referee history is optional audit evidence and remains safely stored when it is not included. Select **PRINT RESULT** to print exactly the sections currently selected.
+Corner-referee history is optional audit evidence and remains safely stored when it is not included.
 
-Use **SHOW REPORT PREVIEW** to check the current medal selections and report contents before printing. The preview and printout include the selections currently shown on screen, even before they are saved.
+Use **SHOW REPORT PREVIEW** to check the current medal selections and report contents. The preview can show placement changes that have not yet been saved, but the official PDF can only be exported after those changes are saved.
 
-Before printing:
+Before saving:
 
 1. Confirm the correct category is selected.
 2. Confirm all completed bouts are listed.
 3. Confirm Gold, Silver, Bronze, and Bronze against the paper fixture.
 4. Save or finalize the placements.
-5. Check the print preview.
-6. Print the required number of copies.
+5. Check the report preview.
+6. Insert the USB drive and select **REFRESH USB** if it is not already shown as ready.
+7. Select **SAVE PDF TO USB**.
+8. Wait for the saved filename to appear, then select **UNMOUNT USB SAFELY** before removing the drive.
 
-The printed report includes signature spaces for the Technical Official, Referee Chair, and Federation Representative.
+The system writes the PDF directly to the USB drive with a unique filename. It does not open a browser print dialog or reveal File Explorer. The PDF includes signature spaces for the Technical Official, Referee Chair, and Federation Representative.
 
 ## Common messages
 
@@ -247,4 +249,4 @@ After the category is complete:
 - Final and semifinal results match the paper fixture
 - Gold, Silver, Bronze, and Bronze are confirmed
 - Category is finalized only after official approval
-- Required summary or full reports are printed and signed
+- Required summary or full reports are saved to USB, printed where authorized, and signed

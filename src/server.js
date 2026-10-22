@@ -2,7 +2,7 @@ import express from "express";
 import crypto from "node:crypto";
 import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { lstat, readFile, readdir, realpath, stat, writeFile } from "node:fs/promises";
+import { lstat, open, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import http from "http";
 import os from "os";
 import path from "path";
@@ -12,6 +12,7 @@ import * as XLSX from "xlsx";
 import { createTts } from "./tts.js";
 import { createPersistence } from "./persistence.js";
 import { createManualArchive } from "./manualArchive.js";
+import { createManualCategoryPdf, manualCategoryPdfFileName } from "./manualCategoryPdf.js";
 import { roundTieSuperiority } from "./roundTie.js";
 import {
   loadRules,
@@ -1326,6 +1327,56 @@ async function writePlayerTemplateToUsb(context) {
   return { fileName: USB_TEMPLATE_FILE, size: details.size };
 }
 
+async function availableUsbTarget(context, requestedFileName) {
+  if (!context.mounted) throw new Error('USB DRIVE IS NOT MOUNTED');
+  const extension = path.extname(requestedFileName);
+  const stem = path.basename(requestedFileName, extension);
+  for (let sequence = 0; sequence < 1000; sequence += 1) {
+    const fileName = sequence ? `${stem}_${sequence}${extension}` : requestedFileName;
+    const target = path.resolve(context.mountPath, fileName);
+    if (path.dirname(target) !== context.mountPath) throw new Error('INVALID USB PDF TARGET');
+    try {
+      await lstat(target);
+    } catch (error) {
+      if (error.code === 'ENOENT') return { fileName, target };
+      throw error;
+    }
+  }
+  throw new Error('TOO MANY CATEGORY RESULT FILES WITH THE SAME NAME');
+}
+
+async function writeManualCategoryPdfToUsb(context, category, records, options) {
+  const generatedAt = new Date();
+  const pdf = await createManualCategoryPdf({
+    category,
+    records,
+    options,
+    generatedAt: generatedAt.toISOString()
+  });
+  const destination = await availableUsbTarget(
+    context,
+    manualCategoryPdfFileName(category, generatedAt)
+  );
+  const temporaryPath = path.join(
+    context.mountPath,
+    `.${destination.fileName}.tmp-${process.pid}-${crypto.randomBytes(6).toString('hex')}`
+  );
+  let handle;
+  try {
+    handle = await open(temporaryPath, 'wx', 0o640);
+    await handle.writeFile(pdf);
+    await handle.sync();
+    await handle.close();
+    handle = null;
+    await rename(temporaryPath, destination.target);
+  } finally {
+    if (handle) await handle.close().catch(() => {});
+    await rm(temporaryPath, { force: true }).catch(() => {});
+  }
+  const details = await stat(destination.target);
+  return { fileName: destination.fileName, size: details.size };
+}
+
 async function unmountUsb(context) {
   if (!context.mounted || !context.device?.path) throw new Error('USB DRIVE IS NOT MOUNTED');
   if (!/^\/dev\/[^/]+$/.test(context.device.path)) throw new Error('USB DEVICE PATH IS INVALID');
@@ -2469,6 +2520,35 @@ app.get('/api/manual/categories', requireHostRequest, (req, res) => {
       ? manualMatchRecords.filter(record => record.manualBout?.categoryId === categoryId)
       : [])
   });
+});
+
+app.post('/api/manual/categories/pdf-usb', requireHostRequest, express.json({ limit: '8kb' }), async (req, res) => {
+  if (!USB_IMPORT_ONLY) {
+    res.status(403).json({ ok: false, message: 'USB PDF EXPORT IS DISABLED ON THIS DEPLOYMENT' });
+    return;
+  }
+  const categoryId = String(req.body?.categoryId || '').trim();
+  const category = manualCompetition.categories.find(item => item.id === categoryId);
+  if (!category) {
+    res.status(404).json({ ok: false, message: 'Manual category not found' });
+    return;
+  }
+  const options = {
+    includeBoutSummary: req.body?.includeBoutSummary !== false,
+    includeFullAudit: req.body?.includeFullAudit === true,
+    includeCornerRefereeHistory: req.body?.includeFullAudit === true && req.body?.includeCornerRefereeHistory === true
+  };
+  try {
+    const result = await withUsbOperation(async () => {
+      const context = await usbContext({ mountIfNeeded: true });
+      if (!context.mounted) throw new Error(context.message || 'USB DRIVE IS NOT MOUNTED');
+      const records = manualMatchRecords.filter(record => record.manualBout?.categoryId === category.id);
+      return writeManualCategoryPdfToUsb(context, deep(category), deep(records), options);
+    });
+    res.json({ ok: true, ...result, message: `CATEGORY RESULT SAVED TO USB: ${result.fileName}` });
+  } catch (error) {
+    res.status(400).json({ ok: false, message: error.message || 'COULD NOT SAVE CATEGORY RESULT TO USB' });
+  }
 });
 
 function validPlayer(player) {

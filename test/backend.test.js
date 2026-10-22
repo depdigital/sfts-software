@@ -130,6 +130,16 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   });
   assert.equal(rulesStatus.status, 200);
   assert.equal((await rulesStatus.json()).activeRuleset.id, 'sfts-current');
+  const disabledPdfExport = await fetch(`http://127.0.0.1:${port}/api/manual/categories/pdf-usb`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-SFTS-Host-Token': hostRole.hostToken
+    },
+    body: JSON.stringify({ categoryId: 'test-category' })
+  });
+  assert.equal(disabledPdfExport.status, 403);
+  assert.equal((await disabledPdfExport.json()).message, 'USB PDF EXPORT IS DISABLED ON THIS DEPLOYMENT');
   host.send(JSON.stringify({ type: 'host', action: 'setArenaNumber', value: '12' }));
   const arenaState = await waitForMessage(host, message => message.type === 'state' && message.arenaNumber === '12');
   assert.equal(arenaState.arenaNumber, '12');
@@ -992,7 +1002,9 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(html, /id="manualIncludeFullAudit"/);
   assert.match(html, /id="manualIncludeCornerRefereeHistory"/);
   assert.match(html, /id="manualToggleReportPreviewButton"/);
-  assert.match(html, /id="manualPrintResultButton"/);
+  assert.match(html, /id="manualPdfUsbStatus"/);
+  assert.match(html, /id="manualSavePdfButton"[^>]*onclick="saveManualCategoryPdfToUsb\(\)"/);
+  assert.doesNotMatch(html, /onclick="printManualCategory\(\)"/);
   assert.doesNotMatch(html, /id="manualPrintSummaryButton"/);
   assert.doesNotMatch(html, /id="manualPrintFullButton"/);
   assert.match(html, /id="manualPlacementSource"/);
@@ -1036,6 +1048,12 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(html, /id="cornerEditModal"/);
   assert.match(html, /onclick="openScoringCorrection\('ADD'\)">ADD MISSED SCORING ACTION<\/button>/);
   assert.match(html, /onclick="openScoringCorrection\('REMOVE'\)">REMOVE WRONG SCORING ACTION<\/button>/);
+  const appScriptResponse = await fetch(`http://127.0.0.1:${port}/js/app.js`);
+  assert.equal(appScriptResponse.status, 200);
+  const appScript = await appScriptResponse.text();
+  assert.match(appScript, /window\.saveManualCategoryPdfToUsb = saveManualCategoryPdfToUsb;/);
+  assert.match(appScript, /window\.refreshManualPdfUsbStatus = refreshManualPdfUsbStatus;/);
+  assert.doesNotMatch(appScript, /window\.printManualCategory/);
   assert.match(html, /onclick="correctSelectedGamjeom\('ADD'\)">ADD MISSED GAM-JEOM<\/button>/);
   assert.match(html, /onclick="correctSelectedGamjeom\('REMOVE'\)">REMOVE WRONG GAM-JEOM<\/button>/);
   assert.match(html, /onclick="openAdvancedCorrections\(\)">ADVANCED CORRECTIONS<\/button>/);
