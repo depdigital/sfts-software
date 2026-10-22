@@ -1072,7 +1072,8 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(html, /DECLARE "CHUNG" WINNER/);
   assert.match(html, /id="matchDecisionModal"/);
   assert.match(html, /id="screensaver"/);
-  assert.match(html, /src="\/assets\/sfts-logo\.png"/);
+  assert.match(html, /class="screensaverLogo screensaverSftsLogo" src="\/assets\/sfts-logo\.png"/);
+  assert.match(html, /class="screensaverLogo screensaverSportsLogo" src="\/assets\/sfsports-logo-launch\.png"/);
   assert.doesNotMatch(html, /class="screensaverSubtitle"/);
   assert.doesNotMatch(html, /class="screensaverPoweredBy"/);
   assert.doesNotMatch(html, /class="screensaverFooter"/);
@@ -1094,11 +1095,13 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(cssText, /@keyframes homeSftsBrandSequence/);
   assert.match(cssText, /\.homeLogo\s*\{[^}]*width:\s*min\(1500px, 100%\)/);
   assert.doesNotMatch(cssText, /\.screensaver\s*\{[^}]*transition:/);
-  assert.match(cssText, /\.screensaverContent img[\s\S]*animation: screensaverLogoCycle 5s ease-in-out infinite/);
+  assert.match(cssText, /\.screensaver\.visible \.screensaverLogo[\s\S]*animation: screensaverLogoCycle 10s ease-in-out infinite/);
+  assert.match(cssText, /\.screensaverSftsLogo\s*\{[^}]*--screensaver-end-scale: 2\.5/);
+  assert.match(cssText, /\.screensaverSportsLogo\s*\{[^}]*width: min\(42vw, 560px\)[^}]*animation-delay: 5s/);
   assert.match(cssText, /\.homeBtn::before[\s\S]*animation: homeLaunchGlow 1\.45s ease-in-out infinite/);
   assert.match(cssText, /\.homeBtn:active[\s\S]*scale\(0\.985\)/);
   assert.match(cssText, /@keyframes homeLaunchGlow/);
-  assert.match(cssText, /screensaverLogoCycle[\s\S]*transform: scale\(2\.5\)/);
+  assert.match(cssText, /screensaverLogoCycle[\s\S]*transform: scale\(var\(--screensaver-end-scale\)\)/);
   assert.match(cssText, /\.controlGrid button[\s\S]*cursor: pointer/);
   assert.match(cssText, /\.controlGrid\s*\{[^}]*grid-template-columns:\s*repeat\(6, 1fr\)/);
   assert.match(cssText, /\.controlGrid \.secondaryControl\s*\{[^}]*grid-column:\s*span 3/);
