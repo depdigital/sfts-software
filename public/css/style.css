@@ -152,9 +152,9 @@ button {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: min(72vw, 1400px);
-  max-width: 92%;
-  max-height: 92%;
+  width: min(56vw, 980px);
+  max-width: 82%;
+  max-height: 75%;
   height: auto;
   object-fit: contain;
   opacity: 0;

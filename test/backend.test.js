@@ -1068,7 +1068,7 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(cssText, /\.homeScreen\s*\{[^}]*height:\s*100vh[^}]*overflow:\s*hidden/);
   assert.match(cssText, /\.homeSportsIntro\s*\{[^}]*animation:\s*homeSportsBrandSequence 10s ease-in-out infinite/);
   assert.match(cssText, /\.homeBrandSequence\s*\{[^}]*height:\s*min\(60vh, 960px\)[^}]*overflow:\s*hidden/);
-  assert.match(cssText, /\.homeSportsIntro\s*\{[^}]*width:\s*min\(72vw, 1400px\)[^}]*max-height:\s*92%[^}]*object-fit:\s*contain/);
+  assert.match(cssText, /\.homeSportsIntro\s*\{[^}]*width:\s*min\(56vw, 980px\)[^}]*max-height:\s*75%[^}]*object-fit:\s*contain/);
   assert.doesNotMatch(cssText, /\.homeSportsIntro\s*\{[^}]*filter:/);
   assert.match(cssText, /\.homeSftsSequence\s*\{[^}]*animation:\s*homeSftsBrandSequence 10s ease-in-out infinite/);
   assert.match(cssText, /@keyframes homeSftsBrandSequence/);
