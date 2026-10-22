@@ -1198,3 +1198,13 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   const info = await fetch(`http://127.0.0.1:${port}/api/info`);
   assert.equal(info.status, 404);
 });
+
+test('restart stack refreshes missing production dependencies before restarting services', async () => {
+  const script = await readFile(path.join(projectRoot, 'deployment', 'scripts', 'restart-stack.sh'), 'utf8');
+  const dependencyInstall = script.indexOf('ci --omit=dev');
+  const scoreboardRestart = script.indexOf('systemctl restart "${SCOREBOARD_SERVICE}"');
+  assert.ok(dependencyInstall >= 0, 'restart script must install production dependencies when required');
+  assert.ok(scoreboardRestart > dependencyInstall, 'dependencies must be installed before the scoreboard restarts');
+  assert.match(script, /runuser -u "\$\{SERVICE_USER\}"/);
+  assert.match(script, /npm is not installed/);
+});

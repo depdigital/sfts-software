@@ -140,7 +140,7 @@ To refresh the complete SFTS application stack after deploying code changes with
 sudo bash deployment/scripts/restart-stack.sh
 ```
 
-The script reloads systemd, restarts Piper, restarts the scoreboard, waits for both local services to respond, and restarts LightDM so the kiosk browser loads the latest dashboard. The current graphical session will close and relaunch; saved match state is preserved and the match remains paused after the server restart.
+The script first verifies the production dependency tree and runs `npm ci --omit=dev` as the scoreboard service user when the lockfile requires new or changed packages. It then reloads systemd, restarts Piper, restarts the scoreboard, waits for both local services to respond, and restarts LightDM so the kiosk browser loads the latest dashboard. The current graphical session will close and relaunch; saved match state is preserved and the match remains paused after the server restart.
 
 Check the local HTTP endpoint:
 

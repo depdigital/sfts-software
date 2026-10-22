@@ -11,6 +11,8 @@ WAIT_SECONDS=30
 PROJECT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 KIOSK_RC_SOURCE="${PROJECT_DIR}/deployment/config/labwc-kiosk-rc.xml"
 KIOSK_RC_DEST="/etc/sfts/sfts-scoreboard-kiosk/labwc/rc.xml"
+PACKAGE_JSON="${PROJECT_DIR}/package.json"
+PACKAGE_LOCK="${PROJECT_DIR}/package-lock.json"
 
 log() {
   printf '[sfts-restart] %s\n' "$*"
@@ -24,10 +26,38 @@ fail() {
 [[ "${EUID}" -eq 0 ]] || fail "run this script with sudo"
 command -v systemctl >/dev/null 2>&1 || fail "systemctl is not available"
 command -v curl >/dev/null 2>&1 || fail "curl is not available"
+command -v runuser >/dev/null 2>&1 || fail "runuser is not available"
+command -v flock >/dev/null 2>&1 || fail "flock is not available"
 [[ -f "${KIOSK_RC_SOURCE}" ]] || fail "kiosk Labwc configuration is missing"
+[[ -f "${PACKAGE_JSON}" ]] || fail "package.json is missing"
+[[ -f "${PACKAGE_LOCK}" ]] || fail "package-lock.json is missing"
 
 systemctl cat "${PIPER_SERVICE}" >/dev/null 2>&1 || fail "${PIPER_SERVICE} is not installed"
 systemctl cat "${SCOREBOARD_SERVICE}" >/dev/null 2>&1 || fail "${SCOREBOARD_SERVICE} is not installed"
+
+SERVICE_USER="$(systemctl show -p User --value "${SCOREBOARD_SERVICE}")"
+[[ -n "${SERVICE_USER}" && "${SERVICE_USER}" != "root" ]] || fail "could not determine the non-root scoreboard service user"
+id "${SERVICE_USER}" >/dev/null 2>&1 || fail "scoreboard service user does not exist: ${SERVICE_USER}"
+NPM_BIN="$(command -v npm || true)"
+[[ -n "${NPM_BIN}" ]] || fail "npm is not installed"
+
+install -d -m 0755 /run/lock
+exec 8>/run/lock/sfts-scoreboard-install.lock
+flock -n 8 || fail "another SFTS install or restart is already running"
+
+if runuser -u "${SERVICE_USER}" -- env PATH="/usr/bin:/bin" \
+  "${NPM_BIN}" --prefix "${PROJECT_DIR}" ls --omit=dev --all >/dev/null 2>&1; then
+  log "Production dependencies are current"
+else
+  log "Production dependencies changed; stopping ${SCOREBOARD_SERVICE} before installation"
+  systemctl stop "${SCOREBOARD_SERVICE}"
+  runuser -u "${SERVICE_USER}" -- env PATH="/usr/bin:/bin" \
+    "${NPM_BIN}" --prefix "${PROJECT_DIR}" ci --omit=dev
+  runuser -u "${SERVICE_USER}" -- env PATH="/usr/bin:/bin" \
+    "${NPM_BIN}" --prefix "${PROJECT_DIR}" ls --omit=dev --all >/dev/null 2>&1 \
+    || fail "production dependency verification failed"
+  log "Production dependencies installed"
+fi
 
 log "Reloading systemd service definitions"
 systemctl daemon-reload
