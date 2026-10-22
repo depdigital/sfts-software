@@ -1095,13 +1095,14 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(cssText, /@keyframes homeSftsBrandSequence/);
   assert.match(cssText, /\.homeLogo\s*\{[^}]*width:\s*min\(1500px, 100%\)/);
   assert.doesNotMatch(cssText, /\.screensaver\s*\{[^}]*transition:/);
-  assert.match(cssText, /\.screensaver\.visible \.screensaverLogo[\s\S]*animation: screensaverLogoCycle 10s ease-in-out infinite/);
-  assert.match(cssText, /\.screensaverSftsLogo\s*\{[^}]*--screensaver-end-scale: 2\.5/);
-  assert.match(cssText, /\.screensaverSportsLogo\s*\{[^}]*width: min\(42vw, 560px\)[^}]*animation-delay: 5s/);
+  assert.match(cssText, /\.screensaver\.visible \.screensaverSftsLogo\s*\{[^}]*animation: screensaverSftsLogoCycle 10s ease-in-out infinite/);
+  assert.match(cssText, /\.screensaverSportsLogo\s*\{[^}]*width: min\(42vw, 560px\)[^}]*max-height: 40vh/);
+  assert.match(cssText, /\.screensaver\.visible \.screensaverSportsLogo\s*\{[^}]*animation: screensaverSportsLogoCycle 10s linear infinite/);
   assert.match(cssText, /\.homeBtn::before[\s\S]*animation: homeLaunchGlow 1\.45s ease-in-out infinite/);
   assert.match(cssText, /\.homeBtn:active[\s\S]*scale\(0\.985\)/);
   assert.match(cssText, /@keyframes homeLaunchGlow/);
-  assert.match(cssText, /screensaverLogoCycle[\s\S]*transform: scale\(var\(--screensaver-end-scale\)\)/);
+  assert.match(cssText, /screensaverSftsLogoCycle[\s\S]*40%[\s\S]*transform: scale\(2\.5\)/);
+  assert.match(cssText, /screensaverSportsLogoCycle[\s\S]*49\.99%[\s\S]*opacity: 0[\s\S]*50%[\s\S]*99\.99%[\s\S]*opacity: 1/);
   assert.match(cssText, /\.controlGrid button[\s\S]*cursor: pointer/);
   assert.match(cssText, /\.controlGrid\s*\{[^}]*grid-template-columns:\s*repeat\(6, 1fr\)/);
   assert.match(cssText, /\.controlGrid \.secondaryControl\s*\{[^}]*grid-column:\s*span 3/);
