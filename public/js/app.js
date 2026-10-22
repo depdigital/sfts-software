@@ -2053,7 +2053,7 @@ function renderManualCategoryReport() {
     <section class="categoryReportParticipants"><h3>PARTICIPANTS (${manualParticipants(records).size})</h3><table><thead><tr><th>PLACE</th><th>PLAYER</th><th>CLUB</th><th>STATE</th><th>DISTRICT</th><th>BOUTS</th></tr></thead><tbody>${participantRows || '<tr><td colspan="6">NO PARTICIPANTS RECORDED</td></tr>'}</tbody></table></section>
     <section class="categoryReportBoutSummary"><h3>BOUT SUMMARY</h3><table><thead><tr><th>OFFICIAL BOUT</th><th>SFTS MATCH</th><th>STAGE</th><th>RED / AFFILIATION</th><th>BLUE / AFFILIATION</th><th>ROUND SCORES</th><th>ROUND WINS</th><th>WINNER</th><th>DEFEATED</th><th>RESULT</th><th>START / END</th></tr></thead><tbody>${boutRows || '<tr><td colspan="11">NO COMPLETED BOUTS RECORDED</td></tr>'}</tbody></table></section>
     <div class="categoryReportAudit"><h2>FULL MATCH AUDIT</h2>${audit || "<p>NO COMPLETED BOUTS RECORDED</p>"}</div>
-    <footer class="categoryReportSignatures"><span>TECHNICAL OFFICIAL</span><span>REFEREE CHAIR</span><span>FEDERATION REPRESENTATIVE</span></footer>`;
+    <footer class="categoryReportSignatures"><span>TECHNICAL OFFICIAL</span><span>ARENA INCHARGE</span><span>ORGANIZER</span></footer>`;
   updateManualResultsControls(category, records);
 }
 

@@ -265,7 +265,7 @@ function drawTable(doc, fonts, { headers, rows, widths, pageOptions, fontSize = 
 function drawSignatures(doc, fonts, pageOptions) {
   ensureSpace(doc, fonts, 70, pageOptions);
   doc.moveDown(1.6);
-  const labels = ['TECHNICAL OFFICIAL', 'REFEREE CHAIR', 'FEDERATION REPRESENTATIVE'];
+  const labels = ['TECHNICAL OFFICIAL', 'ARENA INCHARGE', 'ORGANIZER'];
   const gap = 24;
   const width = (doc.page.width - PAGE_MARGIN * 2 - gap * 2) / 3;
   const y = doc.y + 24;

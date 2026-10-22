@@ -1053,6 +1053,8 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   const appScript = await appScriptResponse.text();
   assert.match(appScript, /window\.saveManualCategoryPdfToUsb = saveManualCategoryPdfToUsb;/);
   assert.match(appScript, /window\.refreshManualPdfUsbStatus = refreshManualPdfUsbStatus;/);
+  assert.match(appScript, /<span>TECHNICAL OFFICIAL<\/span><span>ARENA INCHARGE<\/span><span>ORGANIZER<\/span>/);
+  assert.doesNotMatch(appScript, /REFEREE CHAIR|FEDERATION REPRESENTATIVE/);
   assert.doesNotMatch(appScript, /window\.printManualCategory/);
   assert.match(html, /onclick="correctSelectedGamjeom\('ADD'\)">ADD MISSED GAM-JEOM<\/button>/);
   assert.match(html, /onclick="correctSelectedGamjeom\('REMOVE'\)">REMOVE WRONG GAM-JEOM<\/button>/);

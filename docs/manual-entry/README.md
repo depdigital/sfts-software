@@ -208,7 +208,7 @@ Before saving:
 7. Select **SAVE PDF TO USB**.
 8. Wait for the saved filename to appear, then select **UNMOUNT USB SAFELY** before removing the drive.
 
-The system writes the PDF directly to the USB drive with a unique filename. It does not open a browser print dialog or reveal File Explorer. The PDF includes signature spaces for the Technical Official, Referee Chair, and Federation Representative.
+The system writes the PDF directly to the USB drive with a unique filename. It does not open a browser print dialog or reveal File Explorer. The PDF includes signature spaces for the Technical Official, Arena Incharge, and Organizer.
 
 ## Common messages
 
