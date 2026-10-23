@@ -15,6 +15,7 @@ let currentRoundRecord = null;
 let audioCtx;
 let announcementAudio = null;
 const pointSoundPlayers = new Map();
+let roundOverSoundPlayer = null;
 let powerAction = "";
 let powerActionScheduled = false;
 let powerDeadlineAt = 0;
@@ -54,6 +55,7 @@ const POINT_SOUND_URLS = Object.freeze({
   2: "/samples/chest_kick_sample.wav",
   3: "/samples/head_kick_sample.wav",
 });
+const ROUND_OVER_SOUND_URL = "/samples/round_over.wav";
 
 const $ = (id) => document.getElementById(id);
 
@@ -217,6 +219,7 @@ function connectSocket() {
 }
 connectSocket();
 preloadPointSounds();
+roundOverSound()?.load();
 
 function toggleScreensaver() {
   const screenSaver = $("screensaver");
@@ -3195,10 +3198,34 @@ function playPointSound(scoreEvent) {
     playPointBeep(basePoints);
   }
 }
-function playWhistle() {
+function playFallbackWhistle() {
   beep(1500, 0.65, "square", 0.11);
   setTimeout(() => beep(1750, 0.65, "square", 0.11), 650);
   setTimeout(() => beep(1500, 0.65, "square", 0.11), 1300);
+}
+function roundOverSound() {
+  if (roundOverSoundPlayer) return roundOverSoundPlayer;
+  if (typeof Audio !== "function") return null;
+  roundOverSoundPlayer = new Audio(ROUND_OVER_SOUND_URL);
+  roundOverSoundPlayer.preload = "auto";
+  return roundOverSoundPlayer;
+}
+function playWhistle() {
+  const player = roundOverSound();
+  if (!player) {
+    playFallbackWhistle();
+    return;
+  }
+  try {
+    player.pause();
+    player.currentTime = 0;
+    const playPromise = player.play();
+    if (playPromise && typeof playPromise.catch === "function") {
+      playPromise.catch(() => playFallbackWhistle());
+    }
+  } catch {
+    playFallbackWhistle();
+  }
 }
 
 function escapeHtml(text) {
