@@ -690,7 +690,107 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   assert.equal(technicalHeadState.match.red.stats.plus3, 0);
   assert.equal(technicalHeadState.remoteButtons[0], 'RED_TECHNICAL_3');
   assert.deepEqual(technicalHeadState.remoteScoreHighlights.RED, [1]);
+  technicalRemote.send(JSON.stringify({
+    type: 'remote_event', deviceId: 'C1', sessionId: 'test-session-c1', sequence: 5, button: 'BLUE_1'
+  }));
+  assert.equal(
+    (await waitForMessage(technicalRemote, message => message.type === 'remote_event_ack' && message.sequence === 5)).reason,
+    'POINT_AWARDED'
+  );
+  await waitForMessage(host, message => message.type === 'state' && message.match.blue.score === 1);
+  technicalRemote.send(JSON.stringify({
+    type: 'remote_event', deviceId: 'C1', sessionId: 'test-session-c1', sequence: 6, button: 'BLUE_1'
+  }));
+  const rapidRepeatAck = await waitForMessage(technicalRemote, message => message.type === 'remote_event_ack' && message.sequence === 6);
+  assert.equal(rapidRepeatAck.reason, 'POINT_AWARDED');
+  assert.equal((await waitForMessage(host, message => message.type === 'scoreUpdate' &&
+    message.blueScore === 2)).blueScore, 2);
+  await waitForMessage(host, message => message.type === 'state' && message.match.blue.score === 2);
+  technicalRemote.send(JSON.stringify({
+    type: 'remote_event', deviceId: 'C1', sessionId: 'test-session-c1', sequence: 6, button: 'BLUE_1'
+  }));
+  assert.deepEqual(
+    await waitForMessage(technicalRemote, message => message.type === 'remote_event_ack' && message.sequence === 6),
+    rapidRepeatAck
+  );
   technicalRemote.close();
+  await waitForMessage(host, message => message.type === 'state' && message.remotes?.find(remoteStatus => (
+    remoteStatus.deviceId === 'C1' && remoteStatus.connected === false
+  )));
+  const versionTwoRemote = await connect();
+  versionTwoRemote.send(JSON.stringify({
+    type: 'remote_hello', protocolVersion: 2, deviceId: 'C1', sessionId: 'test-session-c1-v2', firmware: 'test-v2'
+  }));
+  assert.equal((await waitForMessage(versionTwoRemote, message => message.type === 'remote_ready')).protocolVersion, 2);
+  await waitForMessage(versionTwoRemote, message => message.type === 'remote_state');
+  versionTwoRemote.send(JSON.stringify({
+    type: 'remote_status', deviceId: 'C1', sessionId: 'test-session-c1-v2',
+    rssi: -61, battery: 74, outboxDepth: 2, droppedInputs: 0,
+    droppedEvents: 1, retryCount: 3, reconnectCount: 2, lastAckSequence: 6
+  }));
+  await waitForMessage(versionTwoRemote, message => message.type === 'remote_status_ack');
+  const deliveryState = await waitForMessage(host, message => message.type === 'state' &&
+    message.remotes?.find(remoteStatus => remoteStatus.deviceId === 'C1')?.outboxDepth === 2);
+  assert.equal(deliveryState.remotes.find(remoteStatus => remoteStatus.deviceId === 'C1').droppedEvents, 1);
+  assert.equal(deliveryState.remotes.find(remoteStatus => remoteStatus.deviceId === 'C1').protocolVersion, 2);
+  versionTwoRemote.send(JSON.stringify({
+    type: 'remote_event', deviceId: 'C1', sessionId: 'test-session-c1-v2', sequence: 1,
+    button: 'BLUE_TECHNICAL_2', ageMs: 0
+  }));
+  assert.equal(
+    (await waitForMessage(versionTwoRemote, message => message.type === 'remote_event_ack' && message.sequence === 1)).reason,
+    'POINT_AWARDED'
+  );
+  await waitForMessage(host, message => message.type === 'state' && message.match.blue.score === 6);
+  versionTwoRemote.send(JSON.stringify({
+    type: 'remote_event', deviceId: 'C1', sessionId: 'test-session-c1-v2', sequence: 2,
+    button: 'BLUE_1', ageMs: 2501
+  }));
+  const expiredAck = await waitForMessage(versionTwoRemote, message => message.type === 'remote_event_ack' && message.sequence === 2);
+  assert.equal(expiredAck.reason, 'EVENT_EXPIRED');
+  assert.equal((await waitForMessage(host, message => message.type === 'remoteRejected' &&
+    message.corner === 1 && message.sequence === 2)).reason, 'EVENT_EXPIRED');
+  versionTwoRemote.send(JSON.stringify({
+    type: 'remote_event', deviceId: 'C1', sessionId: 'test-session-c1-v2', sequence: 2,
+    button: 'BLUE_1', ageMs: 0
+  }));
+  assert.deepEqual(
+    await waitForMessage(versionTwoRemote, message => message.type === 'remote_event_ack' && message.sequence === 2),
+    expiredAck
+  );
+  versionTwoRemote.send(JSON.stringify({
+    type: 'remote_event', deviceId: 'C1', sessionId: 'test-session-c1-v2', sequence: 4,
+    button: 'BLUE_1', ageMs: 0
+  }));
+  assert.equal(
+    (await waitForMessage(versionTwoRemote, message => message.type === 'remote_event_ack' && message.sequence === 4)).reason,
+    'POINT_AWARDED'
+  );
+  versionTwoRemote.send(JSON.stringify({
+    type: 'remote_event', deviceId: 'C1', sessionId: 'test-session-c1-v2', sequence: 3,
+    button: 'BLUE_1', ageMs: 0
+  }));
+  assert.equal(
+    (await waitForMessage(versionTwoRemote, message => message.type === 'remote_event_ack' && message.sequence === 3)).reason,
+    'POINT_AWARDED'
+  );
+  await waitForMessage(host, message => message.type === 'state' && message.match.blue.score === 8);
+  const replacementRemote = await connect();
+  replacementRemote.send(JSON.stringify({
+    type: 'remote_hello', protocolVersion: 2, deviceId: 'C1', sessionId: 'test-session-c1-reboot', firmware: 'test-v2'
+  }));
+  assert.equal((await waitForMessage(replacementRemote, message => message.type === 'remote_ready')).sessionId, 'test-session-c1-reboot');
+  await waitForMessage(replacementRemote, message => message.type === 'remote_state');
+  replacementRemote.send(JSON.stringify({
+    type: 'remote_event', deviceId: 'C1', sessionId: 'test-session-c1-reboot', sequence: 1,
+    button: 'BLUE_1', ageMs: 0
+  }));
+  assert.equal(
+    (await waitForMessage(replacementRemote, message => message.type === 'remote_event_ack' && message.sequence === 1)).reason,
+    'POINT_AWARDED'
+  );
+  await waitForMessage(host, message => message.type === 'state' && message.match.blue.score === 9);
+  replacementRemote.close();
   await waitForMessage(host, message => message.type === 'state' && message.remotes?.find(remoteStatus => (
     remoteStatus.deviceId === 'C1' && remoteStatus.connected === false
   )));

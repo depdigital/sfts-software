@@ -140,13 +140,19 @@ set SFTS_REMOTE_TOKEN_C4=private-token-for-c4
 npm start
 ```
 
-The remote sends `RED_1`, `RED_2`, `RED_3`, `RED_TECHNICAL`, `BLUE_1`, `BLUE_2`, `BLUE_3`, `BLUE_TECHNICAL`, or `CANCEL`. It also sends its Wi-Fi RSSI and battery percentage in a `remote_status` message. The `TECHNICAL` button is a modifier: press it with the same corner's +2 or +3 within one second to award +4 or +6. `TECHNICAL` with +1 is rejected, and a technical press by itself awards no points. The server sends an acknowledgement for every event. Retrying the same sequence number does not score twice.
+The current C1 firmware uses remote protocol v2. Each physical scoring press is queued with a sequence number and its capture age, sent promptly, and retried until the server acknowledges it. The server accepts distinct rapid presses, including identical scores less than 750 ms apart, while a retry of the same sequence cannot score twice. Events older than 2.5 seconds are discarded rather than applied to a later match state. The server also accepts protocol v1 during the transition, but the v2 firmware and server should be deployed together.
+
+The scoring buttons send `RED_1`, `RED_2`, `RED_3`, `BLUE_1`, `BLUE_2`, and `BLUE_3`. For a technical score, press or hold the same side's `TECHNICAL` button and press +2 or +3 within one second; firmware v2 sends one atomic `RED_TECHNICAL_2/3` or `BLUE_TECHNICAL_2/3` event. A technical press alone awards no points, and technical +1 is not a scoring input. Legacy firmware may still send a separate technical modifier, which the server supports during migration.
+
+The remote reports Wi-Fi RSSI, battery, queued-event count, retry count, and dropped-input/event counters in `remote_status`. The operator's corner card shows these delivery indicators and the last event reason. A rejected event also produces a dashboard notice. A connected remote or green LED alone does not prove that a point was awarded; confirm the score and watch for dropped counts.
 
 For local development only, unpaired remotes can be allowed with `SFTS_ALLOW_UNPAIRED_REMOTES=true`. Do not use that setting during a real event.
 
 Use **SETTINGS → REMOTE SETTINGS** to choose 1–4 active remotes and check all eight buttons on each enabled corner. The required matching vote count is 1, 2, 2, or 3 for modes 1, 2, 3, or 4. Test mode pauses the timer, clears pending votes, and does not change the score.
 
 Each corner card shows `CONNECTED` or `DISCONNECTED`, the latest RSSI in dBm, and the latest battery percentage. A remote that has never reported telemetry shows `—` for that value.
+
+For one-remote use, select mode 1 before scoring. With the match running, verify repeated identical +1/+2/+3 taps less than 750 ms apart, mixed-side taps, a short tap, technical +2/+3, technical +1 rejection, and a disconnect/reconnect. Every accepted press should change the score exactly once; `QUEUED` should return to 0 and `DROPPED` should stay at 0. The four-remote voting and near-simultaneous-incident cases require a separate physical test with all four devices before an event.
 
 ## Tournament workflow
 

@@ -110,6 +110,19 @@ function connectSocket() {
       if (!$("scheduleModal").classList.contains("hidden"))
         renderSchedule(msg.tournament);
     }
+    if (msg.type === "scoreUpdate" && lastState?.matchNo === msg.matchNo && lastState.round === msg.round) {
+      lastState.red.score = msg.redScore;
+      lastState.blue.score = msg.blueScore;
+      $("redScore").textContent = msg.redScore;
+      $("blueScore").textContent = msg.blueScore;
+    }
+    if (msg.type === "timerUpdate" && lastState?.matchNo === msg.matchNo &&
+        lastState.round === msg.round && lastState.phase === msg.phase) {
+      renderTimerUpdate(msg);
+    }
+    if (msg.type === "remoteRejected") {
+      toast(`C${msg.corner} PRESS REJECTED: ${msg.reason || "UNKNOWN REASON"}`);
+    }
     if (msg.type === "error") {
       if (["MATCH_IN_PROGRESS", "INVALID_PRACTICE_PLAYER"].includes(msg.code)) practiceLoadPending = false;
       if (manualBoutSavePending) {
@@ -367,6 +380,19 @@ function renderState(match) {
   if (match.phase !== "MATCH_END") {
     $("winnerSlide").classList.add("hidden");
   }
+}
+
+function renderTimerUpdate(update) {
+  lastState.timerMs = update.timerMs;
+  lastState.running = update.running;
+  lastState.kyeShi = update.kyeShi;
+  $("timer").textContent = formatTime(update.timerMs, update.phase === "ROUND");
+  $("timer").classList.toggle(
+    "timerWarning",
+    update.phase === "ROUND" && update.timerMs > 0 && update.timerMs <= 10000,
+  );
+  if (update.phase === "BREAK") $("breakTimeText").textContent = `BREAK ${formatTime(update.timerMs, false)}`;
+  if (update.kyeShi?.active) renderKyeShi(update.kyeShi, lastState);
 }
 
 function renderScoringControls() {
@@ -3048,7 +3074,13 @@ function renderRemoteStatuses(remotes, activeRemoteCount = lastState?.remoteCoun
     const battery = Number.isFinite(status?.battery)
       ? `${status.battery}%`
       : "—";
-    info.textContent = `${connected ? "CONNECTED" : "DISCONNECTED"} · RSSI ${rssi} · BATTERY ${battery}`;
+    const delivery = Number.isInteger(status?.outboxDepth)
+      ? ` · QUEUED ${status.outboxDepth} · RETRIES ${status.retryCount ?? 0} · DROPPED ${(status.droppedInputs ?? 0) + (status.droppedEvents ?? 0)}`
+      : "";
+    const lastEvent = status?.lastEventReason && status.lastEventReason !== "POINT_AWARDED"
+      ? ` · LAST ${status.lastEventReason}`
+      : "";
+    info.textContent = `${connected ? "CONNECTED" : "DISCONNECTED"} · RSSI ${rssi} · BATTERY ${battery}${delivery}${lastEvent}`;
     info.classList.toggle("connected", connected);
     info.classList.toggle("disconnected", !connected);
   }

@@ -63,12 +63,14 @@ const MAX_BUFFERED_BYTES = 1024 * 1024;
 const MAX_IMPORT_BYTES = 4 * 1024 * 1024;
 const MAX_TOURNAMENT_PLAYERS = 500;
 const MAX_SCHEDULE_BOUTS = 5000;
-const REMOTE_PROTOCOL_VERSION = 1;
+const REMOTE_PROTOCOL_VERSION = 2;
 const REMOTE_IDS = new Set(['C1', 'C2', 'C3', 'C4']);
 const REMOTE_ACK_CACHE_SIZE = 100;
 const WS_MESSAGE_LIMIT = 120;
 const WS_MESSAGE_WINDOW_MS = 1000;
 const VOTE_SETTLE_MS = 750;
+const VOTE_WINDOW_MS = 750;
+const REMOTE_EVENT_MAX_AGE_MS = 2500;
 const COALESCED_HOST_ACTIONS = new Set([
   'point', 'headPoint', 'technicalPoint', 'gamjeom', 'editScore', 'editGamjeom', 'editRoundTieStats',
   'correctScoringAction', 'correctGamjeom', 'advancedScoreCorrection'
@@ -704,6 +706,15 @@ const remoteStatuses = new Map([...REMOTE_IDS].map(deviceId => [deviceId, {
   connected: false,
   rssi: null,
   battery: null,
+  outboxDepth: null,
+  droppedInputs: null,
+  droppedEvents: null,
+  retryCount: null,
+  reconnectCount: null,
+  lastAckSequence: null,
+  protocolVersion: null,
+  lastEventReason: null,
+  lastEventSequence: null,
   lastSeenAt: null
 }]));
 const remoteTechnicalPending = new Map();
@@ -1024,6 +1035,19 @@ function emit(message) {
   for (const ws of wss.clients) {
     if (ws.role === 'host' || ws.role === 'referee') sendText(ws, text, 'broadcast');
   }
+}
+
+function sendTimerUpdate() {
+  emit({
+    type: 'timerUpdate',
+    matchNo: match.matchNo,
+    round: match.round,
+    phase: match.phase,
+    timerMs: Math.max(0, Math.ceil(match.timerMs)),
+    running: match.running,
+    kyeShi: match.kyeShi
+  });
+  lastStateAt = Date.now();
 }
 
 function sendError(ws, code, message) {
@@ -2594,6 +2618,10 @@ function normalizeBattery(value) {
   return Number.isFinite(battery) && battery >= 0 && battery <= 100 ? Math.round(battery) : null;
 }
 
+function normalizeRemoteCounter(value) {
+  return Number.isSafeInteger(value) && value >= 0 && value <= 0xffffffff ? value : null;
+}
+
 function clearRemoteCombination(corner) {
   const pending = remoteTechnicalPending.get(corner);
   if (pending?.timer) clearTimeout(pending.timer);
@@ -2729,11 +2757,14 @@ function updateRemoteStatus(ws, fields = {}, broadcast = true) {
   if (ws.remoteSession) ws.remoteSession.lastSeenAt = status.lastSeenAt;
   if (Object.prototype.hasOwnProperty.call(fields, 'rssi')) status.rssi = normalizeRssi(fields.rssi);
   if (Object.prototype.hasOwnProperty.call(fields, 'battery')) status.battery = normalizeBattery(fields.battery);
+  for (const field of ['outboxDepth', 'droppedInputs', 'droppedEvents', 'retryCount', 'reconnectCount', 'lastAckSequence']) {
+    if (Object.prototype.hasOwnProperty.call(fields, field)) status[field] = normalizeRemoteCounter(fields[field]);
+  }
   if (broadcast) state();
 }
 
 function handleRemoteStatus(ws, msg) {
-  if (ws.role !== 'remote' || !ws.remoteSession) {
+  if (ws.role !== 'remote' || !ws.remoteSession || remoteSockets.get(ws.deviceId) !== ws) {
     sendError(ws, 'REMOTE_NOT_AUTHENTICATED', 'Send remote_hello before remote_status');
     return;
   }
@@ -2755,11 +2786,27 @@ function handleRemoteStatus(ws, msg) {
   const telemetry = {};
   if (hasRssi) telemetry.rssi = rssi;
   if (hasBattery) telemetry.battery = battery;
+  for (const field of ['outboxDepth', 'droppedInputs', 'droppedEvents', 'retryCount', 'reconnectCount', 'lastAckSequence']) {
+    if (!Object.prototype.hasOwnProperty.call(msg, field)) continue;
+    const value = normalizeRemoteCounter(msg[field]);
+    if (value === null) {
+      sendError(ws, 'INVALID_TELEMETRY', `${field} must be a non-negative counter`);
+      return;
+    }
+    telemetry[field] = value;
+  }
   updateRemoteStatus(ws, telemetry);
   send(ws, { type: 'remote_status_ack', deviceId: ws.deviceId, sessionId: ws.sessionId, accepted: true });
 }
 
 function remoteButton(button) {
+  const combined = /^((?:RED|BLUE))_TECHNICAL_([23])$/.exec(String(button || '').toUpperCase());
+  if (combined) {
+    const basePoints = Number(combined[2]);
+    const points = technicalPointsFor(basePoints);
+    if (points === null) return null;
+    return { player: combined[1], points, basePoints, technical: true, combined: true, button: `${combined[1]}_TECHNICAL_${basePoints}` };
+  }
   const matchButton = /^((?:RED|BLUE))_(TECHNICAL|\d+)$/.exec(String(button || '').toUpperCase());
   if (!matchButton) return null;
   if (matchButton[2] === 'TECHNICAL') {
@@ -2797,6 +2844,14 @@ function remoteAck(ws, sequence, details) {
     ...details
   };
   send(ws, ack);
+  const status = remoteStatuses.get(ws.deviceId);
+  if (status) {
+    status.lastEventReason = details.reason || null;
+    status.lastEventSequence = sequence;
+  }
+  if (details.accepted === false) {
+    emit({ type: 'remoteRejected', corner: ws.corner, sequence, reason: details.reason });
+  }
   return ack;
 }
 
@@ -3816,7 +3871,9 @@ function evaluateVotes() {
           .filter(corner => Number.isInteger(corner) && corner >= 1 && corner <= MAX_ACTIVE_REMOTES)
           .sort((a, b) => a - b);
         const technical = Boolean(winningVote?.technical);
-        voteSettleGuard = { player, points, technical, expiresAt: Date.now() + VOTE_SETTLE_MS };
+        voteSettleGuard = match.remoteCount > 1
+          ? { player, points, technical, corners: winningCorners, expiresAt: Date.now() + VOTE_SETTLE_MS }
+          : null;
         addPoint(player, points, technical ? 'referee-technical' : 'referee', !technical);
         if (technical) addTechnicalStat(player, winningVote.basePoints);
         match.votes = {};
@@ -3831,6 +3888,13 @@ function evaluateVotes() {
           requiredVotes,
           corners: winningCorners
         };
+        emit({
+          type: 'scoreUpdate',
+          matchNo: match.matchNo,
+          round: match.round,
+          redScore: match.red.score,
+          blueScore: match.blue.score
+        });
         state(true, false);
         emit({ type: 'award', ...result });
         return result;
@@ -3841,17 +3905,36 @@ function evaluateVotes() {
   return { awarded: false };
 }
 
+function expirePendingVotes(now = Date.now()) {
+  let expired = false;
+  for (const [corner, vote] of Object.entries(match.votes)) {
+    if (Number.isFinite(vote.occurredAt) && now - vote.occurredAt > VOTE_WINDOW_MS) {
+      delete match.votes[corner];
+      expired = true;
+    }
+  }
+  if (expired) state();
+}
+
 function recordRefereeVote(corner, vote) {
+  const now = Date.now();
+  const occurredAt = Number.isFinite(vote.occurredAt) ? vote.occurredAt : now;
+  for (const [pendingCorner, pendingVote] of Object.entries(match.votes)) {
+    if (!Number.isFinite(pendingVote.occurredAt) || Math.abs(occurredAt - pendingVote.occurredAt) > VOTE_WINDOW_MS) {
+      delete match.votes[pendingCorner];
+    }
+  }
   if (voteSettleGuard) {
-    if (Date.now() >= voteSettleGuard.expiresAt) {
+    if (now >= voteSettleGuard.expiresAt) {
       voteSettleGuard = null;
     } else if (vote.player === voteSettleGuard.player && vote.points === voteSettleGuard.points &&
-      Boolean(vote.technical) === Boolean(voteSettleGuard.technical)) {
-      return { awarded: false, ignored: true, count: 3 };
+      Boolean(vote.technical) === Boolean(voteSettleGuard.technical) &&
+      !voteSettleGuard.corners.includes(corner)) {
+      return { awarded: false, ignored: true, count: voteSettleGuard.corners.length };
     }
   }
   if (vote.button) showLastRemoteButton(corner, vote.button);
-  match.votes[corner] = vote;
+  match.votes[corner] = { ...vote, occurredAt };
   const count = Object.values(match.votes)
     .filter(item => item.player === vote.player && item.points === vote.points).length;
   const outcome = evaluateVotes();
@@ -3890,6 +3973,7 @@ function setRemoteCount(value) {
   }
   match.remoteCount = remoteCount;
   match.votes = {};
+  clearVoteSettleGuard();
   clearRemoteScoreHighlights();
   if (match.test.active) {
     match.test.presses = {};
@@ -3922,8 +4006,8 @@ function handleRemoteHello(ws, msg) {
     sendError(ws, 'INVALID_DEVICE', 'Device ID must be C1, C2, C3, or C4');
     return;
   }
-  if (protocolVersion !== REMOTE_PROTOCOL_VERSION) {
-    sendError(ws, 'UNSUPPORTED_PROTOCOL', `Expected remote protocol v${REMOTE_PROTOCOL_VERSION}`);
+  if (protocolVersion !== 1 && protocolVersion !== REMOTE_PROTOCOL_VERSION) {
+    sendError(ws, 'UNSUPPORTED_PROTOCOL', 'Expected remote protocol v1 or v2');
     return;
   }
   if (!validRemoteSessionId(sessionId)) {
@@ -3959,8 +4043,9 @@ function handleRemoteHello(ws, msg) {
   }
   const existing = remoteSockets.get(deviceId);
   if (existing && existing !== ws && existing.readyState === 1) {
-    sendError(ws, 'DEVICE_BUSY', `${deviceId} is already connected`);
-    return;
+    // A newly authenticated connection replaces the old transport. Its
+    // session ID still determines whether replay state is retained.
+    existing.terminate();
   }
 
   const corner = Number(deviceId.slice(1));
@@ -3975,14 +4060,16 @@ function handleRemoteHello(ws, msg) {
   ws.corner = corner;
   ws.sessionId = sessionId;
   ws.firmware = String(msg.firmware || '').slice(0, 32);
+  ws.protocolVersion = protocolVersion;
   ws.remoteSession = session;
   remoteSockets.set(deviceId, ws);
   remoteSessions.set(deviceId, session);
+  remoteStatuses.get(deviceId).protocolVersion = protocolVersion;
   updateRemoteStatus(ws, helloTelemetry, false);
 
   send(ws, {
     type: 'remote_ready',
-    protocolVersion: REMOTE_PROTOCOL_VERSION,
+    protocolVersion,
     deviceId,
     corner,
     sessionId
@@ -3992,7 +4079,7 @@ function handleRemoteHello(ws, msg) {
 }
 
 function handleRemoteEvent(ws, msg) {
-  if (ws.role !== 'remote' || !ws.remoteSession) {
+  if (ws.role !== 'remote' || !ws.remoteSession || remoteSockets.get(ws.deviceId) !== ws) {
     sendError(ws, 'REMOTE_NOT_AUTHENTICATED', 'Send remote_hello before remote_event');
     return;
   }
@@ -4008,7 +4095,6 @@ function handleRemoteEvent(ws, msg) {
     sendError(ws, 'INVALID_SEQUENCE', 'Event sequence must be a positive safe integer');
     return;
   }
-
   // Events are application-level liveness signals too. This keeps a remote
   // that is actively delivering input from being marked stale between status
   // messages.
@@ -4020,12 +4106,21 @@ function handleRemoteEvent(ws, msg) {
     send(ws, previousAck);
     return;
   }
-  if (sequence <= session.lastSequence) {
+  // Firmware may have sent a later event while an earlier send failed. Accept
+  // the earlier sequence inside the acknowledgement window exactly once.
+  if (sequence <= session.lastSequence - REMOTE_ACK_CACHE_SIZE) {
     const ack = remoteAck(ws, sequence, { accepted: false, reason: 'SEQUENCE_REPLAY' });
     rememberRemoteAck(session, sequence, ack);
     return;
   }
-  session.lastSequence = sequence;
+  session.lastSequence = Math.max(session.lastSequence, sequence);
+  const eventAgeMs = msg.ageMs === undefined && ws.protocolVersion === 1 ? 0 : msg.ageMs;
+  if (!Number.isSafeInteger(eventAgeMs) || eventAgeMs < 0 || eventAgeMs > REMOTE_EVENT_MAX_AGE_MS) {
+    const ack = remoteAck(ws, sequence, { accepted: false, reason: 'EVENT_EXPIRED', awarded: false });
+    rememberRemoteAck(session, sequence, ack);
+    return;
+  }
+  const occurredAt = Date.now() - eventAgeMs;
 
   const button = String(msg.button || '').toUpperCase();
   if (ws.corner > match.remoteCount) {
@@ -4084,6 +4179,17 @@ function handleRemoteEvent(ws, msg) {
 
   showLastRemoteButton(ws.corner, vote.button);
 
+  if (vote.combined) {
+    clearRemoteCombination(ws.corner);
+    recordCornerRefereePress(
+      ws.corner,
+      cornerRefereeButtonLabel(vote.player, vote.basePoints, true),
+      vote.points
+    );
+    completeRemoteVote(ws, sequence, { ...vote, occurredAt });
+    return;
+  }
+
   if (vote.technical) {
     const base = remoteLastBasePress.get(ws.corner);
     const existingVote = match.votes[ws.corner];
@@ -4100,7 +4206,8 @@ function handleRemoteEvent(ws, msg) {
         points: technicalPointsFor(base.points),
         basePoints: base.points,
         technical: true,
-        button: vote.button
+        button: vote.button,
+        occurredAt
       });
       return;
     }
@@ -4125,7 +4232,8 @@ function handleRemoteEvent(ws, msg) {
         points: technicalPoints,
         basePoints: vote.points,
         technical: true,
-        button: `${vote.player}_TECHNICAL_${vote.points}`
+        button: `${vote.player}_TECHNICAL_${vote.points}`,
+        occurredAt
       });
       return;
     }
@@ -4148,7 +4256,8 @@ function handleRemoteEvent(ws, msg) {
   const outcome = completeRemoteVote(ws, sequence, {
     ...vote,
     basePoints: vote.points,
-    technical: false
+    technical: false,
+    occurredAt
   });
   if (technicalPointsFor(vote.points) !== null && !outcome.awarded) {
     rememberBasePress(ws.corner, vote, historyEntry);
@@ -4198,7 +4307,7 @@ wss.on('connection', ws => {
       return;
     }
     if (msg.type === 'remote_ping') {
-      if (ws.role === 'remote') {
+      if (ws.role === 'remote' && remoteSockets.get(ws.deviceId) === ws) {
         const hasTelemetry = Object.prototype.hasOwnProperty.call(msg, 'rssi') || Object.prototype.hasOwnProperty.call(msg, 'battery');
         updateRemoteStatus(ws, hasTelemetry ? msg : {}, hasTelemetry);
         send(ws, { type: 'remote_pong', deviceId: ws.deviceId });
@@ -4610,11 +4719,12 @@ wss.on('connection', ws => {
 
 setInterval(() => {
   const changed = syncTimer();
+  expirePendingVotes();
   const displayInterval = match.kyeShi.active ||
     (match.phase === 'ROUND' && match.running && match.timerMs <= 10_000)
     ? TIMER_DISPLAY_UPDATE_MS
     : 900;
-  if (changed && Date.now() - lastStateAt >= displayInterval) state();
+  if (changed && Date.now() - lastStateAt >= displayInterval) sendTimerUpdate();
   if (match.running && Date.now() - lastTimerPersistAt >= 10_000) persistState();
 }, TIMER_TICK_MS);
 
