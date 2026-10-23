@@ -790,6 +790,26 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
     'POINT_AWARDED'
   );
   await waitForMessage(host, message => message.type === 'state' && message.match.blue.score === 9);
+  host.send(JSON.stringify({ type: 'host', action: 'testStart' }));
+  await waitForMessage(host, message => message.type === 'state' && message.match.test.active);
+  replacementRemote.send(JSON.stringify({
+    type: 'remote_event', deviceId: 'C1', sessionId: 'test-session-c1-reboot', sequence: 2,
+    button: 'RED_TECHNICAL', ageMs: 0
+  }));
+  assert.equal((await waitForMessage(replacementRemote, message =>
+    message.type === 'remote_event_ack' && message.sequence === 2)).reason, 'TEST_PRESS_RECORDED');
+  assert.equal((await waitForMessage(host, message => message.type === 'testPress' &&
+    message.button === 'RED_TECHNICAL')).points, null);
+  replacementRemote.send(JSON.stringify({
+    type: 'remote_event', deviceId: 'C1', sessionId: 'test-session-c1-reboot', sequence: 3,
+    button: 'RED_TECHNICAL_3', ageMs: 0
+  }));
+  assert.equal((await waitForMessage(host, message => message.type === 'testPress' &&
+    message.button === 'RED_TECHNICAL_3')).points, 6);
+  await waitForMessage(host, message => message.type === 'state' &&
+    message.match.test.presses['1-RED_TECHNICAL_3'] && message.match.blue.score === 9);
+  host.send(JSON.stringify({ type: 'host', action: 'testStop' }));
+  await waitForMessage(host, message => message.type === 'state' && !message.match.test.active);
   replacementRemote.close();
   await waitForMessage(host, message => message.type === 'state' && message.remotes?.find(remoteStatus => (
     remoteStatus.deviceId === 'C1' && remoteStatus.connected === false

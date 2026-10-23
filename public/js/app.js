@@ -3100,8 +3100,14 @@ function markTest(corner, player, points, button = "") {
   const joy = $(`joy${corner}`);
   if (!joy) return;
   const buttonId = button || `${player}_${points}`;
-  const item = joy.querySelector(`[data-key="${buttonId.replace("_", "-")}"]`);
-  if (item) item.classList.add(player === "RED" ? "litRed" : "litBlue");
+  const combined = /^(RED|BLUE)_TECHNICAL_([23])$/.exec(buttonId);
+  const keys = combined
+    ? [`${combined[1]}-TECHNICAL`, `${combined[1]}-${combined[2]}`]
+    : [buttonId.replace("_", "-")];
+  for (const key of keys) {
+    const item = joy.querySelector(`[data-key="${key}"]`);
+    if (item) item.classList.add(player === "RED" ? "litRed" : "litBlue");
+  }
   const all = [
     "RED-1",
     "RED-2",
