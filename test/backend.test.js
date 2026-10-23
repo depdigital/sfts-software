@@ -314,7 +314,11 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   };
   host.on('message', captureFirstScoreOrder);
   host.send(JSON.stringify({ type: 'host', action: 'headPoint', player: 'RED' }));
-  await waitForMessage(host, message => message.type === 'scoreSound' && message.player === 'RED' && message.points === 3);
+  const normalHeadSound = await waitForMessage(
+    host,
+    message => message.type === 'scoreSound' && message.player === 'RED' && message.points === 3
+  );
+  assert.equal(normalHeadSound.basePoints, 3);
   const manualRedHead = await waitForMessage(host, message => (
     message.type === 'state' && message.match.red.score === 3 && message.match.red.stats.plus3 === 1
   ));
@@ -328,14 +332,22 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   ));
   assert.equal(manualBlueHead.match.blue.score, 3);
   host.send(JSON.stringify({ type: 'host', action: 'technicalPoint', player: 'RED', basePoints: 2 }));
-  await waitForMessage(host, message => message.type === 'scoreSound' && message.player === 'RED' && message.points === 4);
+  const technicalChestSound = await waitForMessage(
+    host,
+    message => message.type === 'scoreSound' && message.player === 'RED' && message.points === 4
+  );
+  assert.equal(technicalChestSound.basePoints, 2);
   const manualRedTechnicalChest = await waitForMessage(host, message => (
     message.type === 'state' && message.match.red.score === 7 &&
     message.match.red.stats.plus2 === 0 && message.match.red.stats.technicalChest === 1
   ));
   assert.equal(manualRedTechnicalChest.match.operatorHistory.at(-1).action, 'TECHNICAL CHEST KICK');
   host.send(JSON.stringify({ type: 'host', action: 'technicalPoint', player: 'BLUE', basePoints: 3 }));
-  await waitForMessage(host, message => message.type === 'scoreSound' && message.player === 'BLUE' && message.points === 6);
+  const technicalHeadSound = await waitForMessage(
+    host,
+    message => message.type === 'scoreSound' && message.player === 'BLUE' && message.points === 6
+  );
+  assert.equal(technicalHeadSound.basePoints, 3);
   const manualBlueTechnicalHead = await waitForMessage(host, message => (
     message.type === 'state' && message.match.blue.score === 9 &&
     message.match.blue.stats.plus3 === 1 && message.match.blue.stats.technicalHead === 1
@@ -664,6 +676,11 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   }));
   const technicalVote = await waitForMessage(technicalRemote, message => message.type === 'remote_event_ack' && message.sequence === 2);
   assert.equal(technicalVote.technical, true);
+  const remoteTechnicalChestSound = await waitForMessage(
+    host,
+    message => message.type === 'scoreSound' && message.player === 'RED' && message.points === 4
+  );
+  assert.equal(remoteTechnicalChestSound.basePoints, 2);
   await waitForMessage(host, message => message.type === 'award' && message.player === 'RED' && message.points === 4);
   const technicalChestState = await waitForMessage(host, message => (
     message.type === 'state' && message.match.red.stats.technicalChest === 1 &&
@@ -1171,6 +1188,15 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   const appScriptResponse = await fetch(`http://127.0.0.1:${port}/js/app.js`);
   assert.equal(appScriptResponse.status, 200);
   const appScript = await appScriptResponse.text();
+  assert.match(appScript, /\/samples\/punch_sample\.wav/);
+  assert.match(appScript, /\/samples\/chest_kick_sample\.wav/);
+  assert.match(appScript, /\/samples\/head_kick_sample\.wav/);
+  for (const sample of ['punch_sample.wav', 'chest_kick_sample.wav', 'head_kick_sample.wav']) {
+    const response = await fetch(`http://127.0.0.1:${port}/samples/${sample}`);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-type'), /audio\/wav/);
+    assert.ok((await response.arrayBuffer()).byteLength > 44);
+  }
   assert.match(appScript, /window\.saveManualCategoryPdfToUsb = saveManualCategoryPdfToUsb;/);
   assert.match(appScript, /window\.refreshManualPdfUsbStatus = refreshManualPdfUsbStatus;/);
   assert.match(appScript, /<span>TECHNICAL OFFICIAL<\/span><span>ARENA INCHARGE<\/span><span>ORGANIZER<\/span>/);

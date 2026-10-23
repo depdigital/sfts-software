@@ -14,6 +14,7 @@ let historyCache = [];
 let currentRoundRecord = null;
 let audioCtx;
 let announcementAudio = null;
+const pointSoundPlayers = new Map();
 let powerAction = "";
 let powerActionScheduled = false;
 let powerDeadlineAt = 0;
@@ -48,6 +49,11 @@ let launchBrandingTimers = [];
 const REMOTE_SCORE_TRANSITION_MS = 300;
 const LAUNCH_TITLE_SEQUENCE_MS = 6200;
 const LAUNCH_LOGO_SEQUENCE_MS = 6000;
+const POINT_SOUND_URLS = Object.freeze({
+  1: "/samples/punch_sample.wav",
+  2: "/samples/chest_kick_sample.wav",
+  3: "/samples/head_kick_sample.wav",
+});
 
 const $ = (id) => document.getElementById(id);
 
@@ -167,7 +173,7 @@ function connectSocket() {
     if (msg.type === "award") {
       toast(`MAJORITY ${msg.player} +${msg.points} (${msg.count}/4)`);
     }
-    if (msg.type === "scoreSound") playPointSound(msg.points);
+    if (msg.type === "scoreSound") playPointSound(msg);
     if (msg.type === "roundEndSound") playWhistle();
     if (msg.type === "roundEnd") showRoundSummary(msg.record);
     if (msg.type === "kyeShiLimit") {
@@ -210,6 +216,7 @@ function connectSocket() {
   ws.onerror = () => {};
 }
 connectSocket();
+preloadPointSounds();
 
 function toggleScreensaver() {
   const screenSaver = $("screensaver");
@@ -3147,10 +3154,46 @@ function beep(freq, dur, type = "sine", gain = 0.15) {
     osc.stop(audioCtx.currentTime + dur + 0.02);
   } catch (e) {}
 }
-function playPointSound(points) {
+function playPointBeep(points) {
   if (points === 1) beep(620, 0.13, "square");
   if (points === 2) beep(800, 0.18, "square");
   if (points === 3) beep(980, 0.24, "square");
+}
+function pointSoundPlayer(basePoints) {
+  if (pointSoundPlayers.has(basePoints)) return pointSoundPlayers.get(basePoints);
+  const url = POINT_SOUND_URLS[basePoints];
+  if (!url || typeof Audio !== "function") return null;
+  const player = new Audio(url);
+  player.preload = "auto";
+  pointSoundPlayers.set(basePoints, player);
+  return player;
+}
+function preloadPointSounds() {
+  for (const basePoints of Object.keys(POINT_SOUND_URLS).map(Number)) {
+    pointSoundPlayer(basePoints)?.load();
+  }
+}
+function playPointSound(scoreEvent) {
+  if (scoreEvent?.source === "gamjeom") {
+    playPointBeep(Number(scoreEvent.points));
+    return;
+  }
+  const basePoints = Number(scoreEvent?.basePoints ?? scoreEvent?.points);
+  const player = pointSoundPlayer(basePoints);
+  if (!player) {
+    playPointBeep(basePoints);
+    return;
+  }
+  try {
+    player.pause();
+    player.currentTime = 0;
+    const playPromise = player.play();
+    if (playPromise && typeof playPromise.catch === "function") {
+      playPromise.catch(() => playPointBeep(basePoints));
+    }
+  } catch {
+    playPointBeep(basePoints);
+  }
 }
 function playWhistle() {
   beep(1500, 0.65, "square", 0.11);

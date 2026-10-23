@@ -101,10 +101,12 @@ server.headersTimeout = 10_000;
 server.keepAliveTimeout = 5_000;
 const wss = new WebSocketServer({ server, maxPayload: MAX_WS_PAYLOAD });
 const publicDir = path.join(PROJECT_ROOT, 'public');
+const samplesDir = path.join(PROJECT_ROOT, 'samples');
 const tts = createTts();
 const persistence = createPersistence();
 const manualArchive = createManualArchive({ dataDir: persistence.dataDir });
 const hostAccessToken = String(process.env.SFTS_HOST_TOKEN || '').trim() || crypto.randomBytes(24).toString('hex');
+app.use('/samples', express.static(samplesDir, { index: false }));
 app.use(express.static(publicDir));
 
 app.get('/api/tts/audio/:file', (req, res) => {
@@ -3141,7 +3143,7 @@ function checkPointGap() {
   }
 }
 
-function addPoint(player, points, source = "manual", countAsHit = true, allowPaused = false) {
+function addPoint(player, points, source = "manual", countAsHit = true, allowPaused = false, basePoints = points) {
   const technicalAward = source === 'referee-technical' && rules.scoring.technicalInput.enabled &&
     Object.values(rules.scoring.technicalInput.pointsByBasePoints).includes(points);
   const canScore = allowPaused ? operatorScoringIsAllowed() : scoringIsAllowed();
@@ -3150,7 +3152,7 @@ function addPoint(player, points, source = "manual", countAsHit = true, allowPau
   if (countAsHit) addHitStat(player, points);
   // Queue sound after the authoritative score state has been broadcast. This keeps
   // a slow first-time browser audio initialization off the visible score path.
-  queueMicrotask(() => emit({ type: 'scoreSound', player, points, source }));
+  queueMicrotask(() => emit({ type: 'scoreSound', player, points, basePoints, source }));
   checkPointGap();
   return true;
 }
@@ -3171,7 +3173,7 @@ function addTechnicalPoint(player, basePoints) {
   side(player).score += points;
   addTechnicalStat(player, basePoints);
   recordOperatorAction(`TECHNICAL ${basePoints === 2 ? 'CHEST' : 'HEAD'} KICK`, player, previous, side(player).score);
-  queueMicrotask(() => emit({ type: 'scoreSound', player, points, source: 'referee-technical' }));
+  queueMicrotask(() => emit({ type: 'scoreSound', player, points, basePoints, source: 'referee-technical' }));
   checkPointGap();
   return { ok: true, points, basePoints, technical: true };
 }
@@ -3874,7 +3876,14 @@ function evaluateVotes() {
         voteSettleGuard = match.remoteCount > 1
           ? { player, points, technical, corners: winningCorners, expiresAt: Date.now() + VOTE_SETTLE_MS }
           : null;
-        addPoint(player, points, technical ? 'referee-technical' : 'referee', !technical);
+        addPoint(
+          player,
+          points,
+          technical ? 'referee-technical' : 'referee',
+          !technical,
+          false,
+          winningVote.basePoints || points
+        );
         if (technical) addTechnicalStat(player, winningVote.basePoints);
         match.votes = {};
         showRemoteScoreHighlight(player, winningCorners, points);
