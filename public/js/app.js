@@ -16,6 +16,7 @@ let audioCtx;
 let announcementAudio = null;
 const pointSoundPlayers = new Map();
 let roundOverSoundPlayer = null;
+let screensaverSoundPlayer = null;
 let powerAction = "";
 let powerActionScheduled = false;
 let powerDeadlineAt = 0;
@@ -56,6 +57,7 @@ const POINT_SOUND_URLS = Object.freeze({
   3: "/samples/head_kick_sample.wav",
 });
 const ROUND_OVER_SOUND_URL = "/samples/round_over.wav";
+const SCREENSAVER_SOUND_URL = "/samples/ss-track.wav";
 
 const $ = (id) => document.getElementById(id);
 
@@ -220,6 +222,30 @@ function connectSocket() {
 connectSocket();
 preloadPointSounds();
 roundOverSound()?.load();
+screensaverSound()?.load();
+
+function screensaverSound() {
+  if (screensaverSoundPlayer) return screensaverSoundPlayer;
+  if (typeof Audio !== "function") return null;
+  screensaverSoundPlayer = new Audio(SCREENSAVER_SOUND_URL);
+  screensaverSoundPlayer.preload = "auto";
+  screensaverSoundPlayer.loop = true;
+  return screensaverSoundPlayer;
+}
+
+function setScreensaverSoundPlaying(playing) {
+  const player = screensaverSound();
+  if (!player) return;
+  player.pause();
+  player.currentTime = 0;
+  if (!playing) return;
+  try {
+    const playPromise = player.play();
+    if (playPromise && typeof playPromise.catch === "function") {
+      playPromise.catch(() => {});
+    }
+  } catch {}
+}
 
 function toggleScreensaver() {
   const screenSaver = $("screensaver");
@@ -227,6 +253,7 @@ function toggleScreensaver() {
   const visible = !screenSaver.classList.contains("visible");
   screenSaver.classList.toggle("visible", visible);
   screenSaver.setAttribute("aria-hidden", String(!visible));
+  setScreensaverSoundPlaying(visible);
 }
 
 document.addEventListener("keydown", (event) => {

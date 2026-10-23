@@ -1192,7 +1192,10 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(appScript, /\/samples\/chest_kick_sample\.wav/);
   assert.match(appScript, /\/samples\/head_kick_sample\.wav/);
   assert.match(appScript, /\/samples\/round_over\.wav/);
-  for (const sample of ['punch_sample.wav', 'chest_kick_sample.wav', 'head_kick_sample.wav', 'round_over.wav']) {
+  assert.match(appScript, /\/samples\/ss-track\.wav/);
+  assert.match(appScript, /screensaverSoundPlayer\.loop = true/);
+  assert.match(appScript, /setScreensaverSoundPlaying\(visible\)/);
+  for (const sample of ['punch_sample.wav', 'chest_kick_sample.wav', 'head_kick_sample.wav', 'round_over.wav', 'ss-track.wav']) {
     const response = await fetch(`http://127.0.0.1:${port}/samples/${sample}`);
     assert.equal(response.status, 200);
     assert.match(response.headers.get('content-type'), /audio\/wav/);
