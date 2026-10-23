@@ -17,6 +17,8 @@ let announcementAudio = null;
 const pointSoundPlayers = new Map();
 let roundOverSoundPlayer = null;
 let screensaverSoundPlayer = null;
+let automaticScreensaverBreakKey = "";
+let automaticScreensaverStarted = false;
 let powerAction = "";
 let powerActionScheduled = false;
 let powerDeadlineAt = 0;
@@ -58,6 +60,8 @@ const POINT_SOUND_URLS = Object.freeze({
 });
 const ROUND_OVER_SOUND_URL = "/samples/round_over.wav";
 const SCREENSAVER_SOUND_URL = "/samples/ss-track.wav";
+const AUTOMATIC_SCREENSAVER_BREAK_MS = 35_000;
+const AUTOMATIC_SCREENSAVER_DELAY_MS = 15_000;
 
 const $ = (id) => document.getElementById(id);
 
@@ -88,6 +92,7 @@ function connectSocket() {
         toast("RECOVERED AFTER UNEXPECTED SHUTDOWN - VERIFY MATCH STATE");
       }
       lastState = msg.match;
+      syncAutomaticBreakScreensaver(msg.match);
       lastRemoteButtons = Array.isArray(msg.remoteButtons)
         ? msg.remoteButtons
         : [];
@@ -247,13 +252,55 @@ function setScreensaverSoundPlaying(playing) {
   } catch {}
 }
 
+function setScreensaverVisible(visible) {
+  const screenSaver = $("screensaver");
+  if (!screenSaver) return;
+  screenSaver.classList.toggle("visible", visible);
+  screenSaver.setAttribute("aria-hidden", String(!visible));
+  setScreensaverSoundPlaying(visible);
+}
+
 function toggleScreensaver() {
   const screenSaver = $("screensaver");
   if (!screenSaver) return;
   const visible = !screenSaver.classList.contains("visible");
-  screenSaver.classList.toggle("visible", visible);
-  screenSaver.setAttribute("aria-hidden", String(!visible));
-  setScreensaverSoundPlaying(visible);
+  setScreensaverVisible(visible);
+}
+
+function automaticBreakKey(match) {
+  if (
+    role !== "host" ||
+    match?.phase !== "BREAK" ||
+    Number(match.breakMs) !== AUTOMATIC_SCREENSAVER_BREAK_MS
+  ) return "";
+  return `${match.matchNo}:${match.round}:${match.breakTarget || "REGULAR"}`;
+}
+
+function syncAutomaticBreakScreensaver(match) {
+  const breakKey = automaticBreakKey(match);
+  if (!breakKey) {
+    if (automaticScreensaverStarted) setScreensaverVisible(false);
+    automaticScreensaverBreakKey = "";
+    automaticScreensaverStarted = false;
+    return;
+  }
+
+  if (automaticScreensaverBreakKey !== breakKey) {
+    if (automaticScreensaverStarted) setScreensaverVisible(false);
+    automaticScreensaverBreakKey = breakKey;
+    automaticScreensaverStarted = false;
+  }
+
+  const timerMs = Number(match.timerMs);
+  if (timerMs <= 0) {
+    if (automaticScreensaverStarted) setScreensaverVisible(false);
+    return;
+  }
+  const showAtMs = AUTOMATIC_SCREENSAVER_BREAK_MS - AUTOMATIC_SCREENSAVER_DELAY_MS;
+  if (!automaticScreensaverStarted && timerMs <= showAtMs) {
+    automaticScreensaverStarted = true;
+    setScreensaverVisible(true);
+  }
 }
 
 document.addEventListener("keydown", (event) => {
@@ -423,6 +470,7 @@ function renderTimerUpdate(update) {
   lastState.timerMs = update.timerMs;
   lastState.running = update.running;
   lastState.kyeShi = update.kyeShi;
+  syncAutomaticBreakScreensaver(lastState);
   $("timer").textContent = formatTime(update.timerMs, update.phase === "ROUND");
   $("timer").classList.toggle(
     "timerWarning",
