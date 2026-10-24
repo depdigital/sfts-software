@@ -41,7 +41,7 @@ export function createNetworkGuard({ port }) {
   const authentications = createRateLimiter({ capacity: 40, refillPerSecond: 2 });
   const hostname = os.hostname().toLowerCase();
 
-  function trustedRequest(req) {
+  function trustedRequest(req, { websocket = false } = {}) {
     try {
       const host = req.headers.host;
       if (typeof host !== 'string' || !host || /[\s/@\\]/.test(host)) return false;
@@ -52,8 +52,13 @@ export function createNetworkGuard({ port }) {
       if (![local, '127.0.0.1', '::1', 'localhost', hostname, `${hostname}.local`].includes(hostName)) return false;
       const origin = req.headers.origin;
       // Browsers must use the same origin as the endpoint. Native ESP32 clients
-      // omit Origin and still authenticate with their device credentials.
-      if (origin !== undefined && origin !== target.origin) return false;
+      // normally omit Origin. Links2004 WebSockets 2.7.2 instead defaults to
+      // Origin: file:// and the arduino subprotocol. Admit only that exact
+      // WebSocket transport combination; server.js confines it to token-
+      // authenticated remote roles. HTTP and opaque browser origins stay denied.
+      const arduinoOrigin = websocket && origin === 'file://' &&
+        String(req.headers['sec-websocket-protocol'] || '').split(',').some(value => value.trim() === 'arduino');
+      if (origin !== undefined && origin !== target.origin && !arduinoOrigin) return false;
       return true;
     } catch {
       return false;

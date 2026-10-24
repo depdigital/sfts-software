@@ -13,7 +13,7 @@ The assessment considers authentication/origin isolation, input and file validat
 | Finding | Implemented control | Pi 3 impact |
 | --- | --- | --- |
 | Known dependency advisories | Express 4.22.3, ws 8.22.0, patched transitive packages, official SheetJS 0.20.3 with lockfile integrity | No new framework; removes obsolete SheetJS helper dependencies |
-| Foreign browser origins and DNS rebinding | Check actual Host/port and exact browser Origin on HTTP and WebSocket upgrades; native clients without Origin still require their tokens | Small constant checks; no DNS requests |
+| Foreign browser origins and DNS rebinding | Check actual Host/port and exact browser Origin on HTTP and WebSocket upgrades; native clients without Origin still require their tokens. Explicit Links2004 `arduino` WebSockets may use `Origin: file://` and are restricted to remote authentication, never host/referee roles | Small constant checks; no DNS requests |
 | Connection and request exhaustion | 32 WebSockets, 24 external slots, eight external connections per source IP, local host reservation, 64 TCP sockets, 10-second authentication deadline, bounded token buckets, message and byte limits | Fixed caps instead of growing maps/queues |
 | Malformed fields could throw out of a WebSocket handler | Catch invalid field coercions, validate message type, reject unknown host actions, use safe integers for scores | Keeps malformed requests from taking down scoring |
 | Blocking spreadsheet/PDF processing | One on-demand worker; 128 MB old-generation heap, 16 MB young-generation heap, 30-second job deadline, no job backlog, exits after 15 seconds idle | File libraries are not loaded into the scoring thread and are released when idle |
@@ -33,7 +33,7 @@ Worker heap limits do **not** cap the entire Node process or Chromium/Piper RAM.
 
 ## Verification evidence
 
-- **All 43 automated tests pass**, covering scoring, timer/phase guards, majority/replay behavior, rule packs and ties, tournament formats, manual results, templates/exports, restart persistence, request boundaries, malformed coercions, compact state caching, file-worker formats/limits, speech limits, and storage failure/recovery.
+- **All 46 automated tests pass**, covering scoring, timer/phase guards, majority/replay behavior, rule packs and ties, tournament formats, manual results, templates/exports, restart persistence, request boundaries, malformed coercions, compact state caching, file-worker formats/limits, speech limits, storage failure/recovery, and the Arduino firmware handshake with production token authentication.
 - Dependency audit after updates: **zero known npm vulnerabilities**. This is a dated advisory check, not proof that dependencies have no undiscovered flaws.
 - JavaScript syntax and Git whitespace validation pass. Installer/restart scripts pass Bash syntax validation with the Windows checkout's CRLF endings normalized in memory.
 - A connected browser was unavailable, so visual/browser integration and actual Raspberry Pi testing remain unverified. Automated tests cover the cache merge and negotiated wire protocol.
@@ -77,6 +77,8 @@ The benchmark uses an unused port and temporary state, never the event server's 
 Suggested acceptance criteria for the Pi 3 are zero unacknowledged benchmark inputs, no OOM/restarts, no sustained swapping, stable timer/display behavior, and responsive operator controls during file exports and announcements. A p99 acknowledgement target below 50 ms is a useful local acceptance target, not a measured Pi result. Follow with a long event rehearsal including USB removal, server/browser recovery, Piper announcements, and the largest real category report.
 
 ## Remaining limits
+
+Compatibility correction: C1 uses Links2004 WebSockets 2.7.2, whose default handshake includes `Origin: file://` and `Sec-WebSocket-Protocol: arduino`. The initial hardened guard incorrectly assumed native ESP32 clients omitted Origin and returned HTTP 403 before `remote_hello`. The backend now accepts that exact combination only for WebSocket upgrades, retains Host/port validation and remote token checks, and prevents Arduino transports from taking host/referee roles. HTTP requests, opaque `null` browser origins and foreign browser origins remain rejected. This fix does not require firmware changes or reflashing. The library behavior was verified against the installed 2.7.2 source and its upstream tagged source.
 
 - HTTP/WebSocket LAN transport is unencrypted. Remote credentials are visible to a party who can capture that LAN traffic. Public internet or shared untrusted Wi-Fi deployment needs a different security design.
 - Kiosk loopback/Origin authorization assumes the OS account and local machine remain trusted. A local native process can forge Origin; this is not protection against an OS account compromise.

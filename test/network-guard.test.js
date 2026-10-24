@@ -17,6 +17,19 @@ test('rate buckets reject floods, refill, and expire keys without growing unboun
   assert.equal(limiter.take('three'), true);
 });
 
+test('Links2004 file origin is allowed only for the explicit Arduino WebSocket transport', () => {
+  const guard = createNetworkGuard({ port: 8080 });
+  const req = {
+    headers: { host: '192.168.50.102:8080', origin: 'file://', 'sec-websocket-protocol': 'arduino' },
+    socket: { localAddress: '::ffff:192.168.50.102' }
+  };
+  assert.equal(guard.trustedRequest(req, { websocket: true }), true);
+  assert.equal(guard.trustedRequest(req), false, 'HTTP must still reject the file origin');
+  assert.equal(guard.trustedRequest({ ...req, headers: { ...req.headers, 'sec-websocket-protocol': '' } }, { websocket: true }), false);
+  assert.equal(guard.trustedRequest({ ...req, headers: { ...req.headers, origin: 'null' } }, { websocket: true }), false);
+  assert.equal(guard.trustedRequest({ ...req, headers: { ...req.headers, origin: 'https://attacker.invalid' } }, { websocket: true }), false);
+});
+
 test('only local server hosts and exact same-origin browser requests are admitted', () => {
   const guard = createNetworkGuard({ port: 8080 });
   const req = (host, origin) => ({ headers: { host, ...(origin === undefined ? {} : { origin }) }, socket: { localAddress: '::ffff:192.168.50.102' } });

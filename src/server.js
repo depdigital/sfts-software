@@ -130,7 +130,7 @@ server.on('upgrade', (request, socket, head) => {
   const reject = status => {
     socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
   };
-  if (!networkGuard.trustedRequest(request)) return reject('403 Forbidden');
+  if (!networkGuard.trustedRequest(request, { websocket: true })) return reject('403 Forbidden');
   // Reserve capacity for the local host even if LAN clients fill their quota.
   if (wss.clients.size >= 32 || (!local && externalCount >= 24) || peerCount >= (local ? 24 : 8) || !networkGuard.upgrades.take(peer)) {
     return reject('429 Too Many Requests');
@@ -4373,6 +4373,7 @@ wss.on('connection', (ws, request) => {
   ws.remoteSession = null;
   ws.hostToken = null;
   ws.requestOrigin = String(request.headers.origin || '');
+  ws.arduinoTransport = String(request.headers['sec-websocket-protocol'] || '').split(',').some(value => value.trim() === 'arduino');
   ws.peerAddress = normalizeAddress(request.socket.remoteAddress || '');
   const byteLimit = createRateLimiter({ capacity: 256 * 1024, refillPerSecond: 128 * 1024, maxKeys: 1 });
   ws.authTimer = setTimeout(() => {
@@ -4434,6 +4435,10 @@ wss.on('connection', (ws, request) => {
       return;
     }
     if (msg.type === 'role') {
+      if (ws.arduinoTransport) {
+        sendError(ws, 'REMOTE_ONLY_CONNECTION', 'Arduino connections must authenticate with remote_hello');
+        return;
+      }
       if (ws.role !== 'unknown') {
         sendError(ws, 'ROLE_ALREADY_ASSIGNED', 'This connection already has a role');
         return;
