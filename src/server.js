@@ -458,8 +458,7 @@ function fixtureFromParsed(parsed, automatic) {
   return result;
 }
 
-function workbookCategoryStatus(fixture) {
-  const category = manualCompetition.categories.find(item => item.id === fixture.categoryId);
+function workbookCategoryStatus(fixture, category) {
   if (category?.status === 'FINALIZED') return 'FINALIZED';
   if (fixture.recoveryError) return 'REVIEW REQUIRED';
   if (fixture.schedule.every(bout => ['COMPLETED', 'BYE'].includes(bout.status))) return 'COMPLETED';
@@ -468,13 +467,22 @@ function workbookCategoryStatus(fixture) {
 
 function fixtureWorkbookState(workbook = importedWorkbook, preview = false) {
   if (!workbook) return null;
+  const archivedCategories = new Map(manualCompetition.categories.map(category => [category.id, category]));
+  const completedBouts = new Map(workbook.categories.filter(item => item.fixture.categoryId).map(({ fixture }) => [
+    fixture.categoryId, new Set(archivedCategories.get(fixture.categoryId)?.matchRecordIds || [])
+  ]));
+  for (const records of [manualMatchRecords, matchHistory]) for (const record of records) {
+    if (record.id) completedBouts.get(record.manualBout?.categoryId)?.add(record.id);
+  }
   return {
     version: 1, sourceDigest: workbook.sourceDigest, selectedKey: workbook.selectedKey,
     categories: workbook.categories.map(({ key, fixture }) => ({
       key, event: fixture.event, competitorCount: fixture.players.length,
+      categoryId: fixture.categoryId,
+      completedBoutCount: completedBouts.get(fixture.categoryId)?.size || 0,
       byeCount: fixture.schedule.filter(bout => bout.status === 'BYE').length,
       matchCount: fixture.schedule.filter(bout => bout.status !== 'BYE').length,
-      status: workbookCategoryStatus(fixture), ...(preview ? { fixture } : {})
+      status: workbookCategoryStatus(fixture, archivedCategories.get(fixture.categoryId)), ...(preview ? { fixture } : {})
     }))
   };
 }
@@ -1623,14 +1631,28 @@ function manualCategoryDeleteConfirmation(category, completedBoutCount) {
   return '';
 }
 
-function deleteManualCategory(categoryId, { deleteRecords = false, confirmation = '' } = {}) {
+function removeImportedCategoryFixtures(categoryId, categoryKey = null) {
+  if (importedWorkbook) {
+    importedWorkbook.categories = importedWorkbook.categories.filter(item => item.key !== categoryKey && (!categoryId || item.fixture.categoryId !== categoryId));
+    if (!importedWorkbook.categories.length) {
+      importedWorkbook = null;
+      tournament = makeTournament();
+    } else if (!importedWorkbook.categories.some(item => item.key === importedWorkbook.selectedKey)) {
+      const selected = importedWorkbook.categories[0];
+      importedWorkbook.selectedKey = selected.key;
+      tournament = selected.fixture;
+    }
+  } else if (categoryKey === 'single' || (categoryId && tournament.categoryId === categoryId)) tournament = makeTournament();
+}
+
+function deleteManualCategory(categoryId, { deleteRecords = false, confirmation = '', allowFinishedMatch = false } = {}) {
   const id = String(categoryId || '').trim();
   const index = manualCompetition.categories.findIndex(category => category.id === id);
   if (index < 0) {
     return { ok: false, code: 'MANUAL_CATEGORY_NOT_FOUND', message: 'Manual category not found' };
   }
   const category = manualCompetition.categories[index];
-  if (match.manualBout?.categoryId === id) {
+  if (match.manualBout?.categoryId === id && !(allowFinishedMatch && match.phase === 'MATCH_END' && !tournament.activeBoutNo)) {
     return { ok: false, code: 'MANUAL_CATEGORY_IN_USE', message: 'This category is currently loaded on the scoreboard' };
   }
   const completedRecordIds = manualCategoryCompletedRecordIds(category);
@@ -1655,7 +1677,9 @@ function deleteManualCategory(categoryId, { deleteRecords = false, confirmation 
   matchHistory = matchHistory.filter(record => record.manualBout?.categoryId !== id);
   manualCompetition.categories.splice(index, 1);
   if (manualCompetition.activeCategoryId === id) manualCompetition.activeCategoryId = null;
+  removeImportedCategoryFixtures(id);
   persistManualArchive();
+  if (allowFinishedMatch && match.manualBout?.categoryId === id) newMatch({ clearPlayers: true });
   return {
     ok: true,
     deletedManualRecords: manualRecordCountBefore - manualMatchRecords.length,
@@ -2388,6 +2412,22 @@ app.post('/api/tournament/category', requireHostRequest, express.json({ limit: '
   tournament = selected.fixture;
   state(true);
   res.json({ ok: true, tournament: deep(tournament), workbook: fixtureWorkbookState() });
+});
+
+app.post('/api/tournament/category/delete', requireHostRequest, express.json({ limit: '2kb', inflate: false }), (req, res) => {
+  if (tournamentMatchIsBusy() || practiceMatchIsBusy()) return res.status(409).json({ ok: false, message: 'Finish or reset the current match before deleting a category.' });
+  const selected = importedWorkbook && importedWorkbook.sourceDigest === req.body?.workbookId
+    ? importedWorkbook.categories.find(item => item.key === req.body?.categoryKey)
+    : !importedWorkbook && tournament.event && tournament.sourceDigest === req.body?.workbookId && req.body?.categoryKey === 'single' ? { key: 'single', fixture: tournament } : null;
+  if (!selected) return res.status(404).json({ ok: false, message: 'This category is no longer available. Reopen Data Import and select it again.' });
+  if (selected.fixture.categoryId) {
+    const result = deleteManualCategory(selected.fixture.categoryId, {
+      deleteRecords: req.body?.deleteRecords === true, confirmation: req.body?.confirmation, allowFinishedMatch: true
+    });
+    if (!result.ok) return res.status(400).json({ ...result, message: result.message });
+  } else removeImportedCategoryFixtures(null, selected.key);
+  state(true);
+  res.json({ ok: true, tournament: deep(tournament), workbook: fixtureWorkbookState(), message: 'CATEGORY AND ITS SAVED MATCHES DELETED' });
 });
 
 app.get('/api/tournament/schedule.xlsx', requireHostRequest, async (req, res, next) => {

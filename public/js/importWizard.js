@@ -4,10 +4,12 @@ let importRequestBusy = false;
 let pendingImportedLoad = null;
 let selectedImportCategoryKey = '';
 let importSelectionSequence = 0;
+let importedCategoryDeleteTarget = null;
+let importedCategoryDeleteBusy = false;
 const importSelectorMarkup = new Map();
 
 function importSelectionLocked() {
-  return Boolean(importRequestBusy || pendingImportedLoad || lastTournament?.activeBoutNo ||
+  return Boolean(importRequestBusy || importedCategoryDeleteBusy || pendingImportedLoad || lastTournament?.activeBoutNo ||
     (lastState && lastState.phase !== 'MATCH_END' && (lastState.running || lastState.roundStarted ||
       lastState.phase === 'BREAK' || lastState.phase === 'TIE_DECISION' || lastState.test?.active ||
       lastState.red?.score || lastState.blue?.score || lastState.red?.gamjeom || lastState.blue?.gamjeom ||
@@ -18,12 +20,14 @@ function importCategoryEntries() {
   const workbook = pendingImportReview?.workbook || lastFixtureWorkbook;
   if (workbook) return workbook.categories;
   const fixture = pendingImportReview?.fixture || lastTournament;
-  return fixture?.event ? [{ key: 'single', event: fixture.event, fixture, status: '' }] : [];
+  return fixture?.event ? [{ key: 'single', event: fixture.event, fixture, categoryId: fixture.categoryId, status: '' }] : [];
 }
 
 function renderImportCategorySelectors() {
   const entries = importCategoryEntries();
   $('importCategoryPicker').classList.toggle('hidden', !entries.length || importWizardStep < 2);
+  $('importDeleteCategoryButton').classList.toggle('hidden', !entries.length || Boolean(pendingImportReview && !pendingImportReview.existing));
+  $('importDeleteCategoryButton').disabled = importSelectionLocked();
   if (!entries.length) return;
   const selected = entries.find(item => item.key === selectedImportCategoryKey) || entries[0];
   selectedImportCategoryKey = selected.key;
@@ -125,6 +129,80 @@ function prepareAnotherCategory() {
   setImportStep(2);
 }
 
+function openImportedCategoryDelete() {
+  if (importSelectionLocked()) { importWizardError('Finish or reset the current match before deleting a category.'); return; }
+  if (pendingImportReview && !pendingImportReview.existing) return;
+  const selected = importCategoryEntries().find(item => item.key === selectedImportCategoryKey);
+  if (!selected || !hostToken) return;
+  const fixture = selected.fixture || pendingImportReview?.fixture || lastTournament;
+  const category = lastManualCompetition.categories.find(item => item.id === (selected.categoryId || fixture.categoryId));
+  const count = selected.completedBoutCount ?? category?.matchRecordIds?.length ?? 0;
+  const confirmation = count ? `DELETE ${count} BOUT${count === 1 ? '' : 'S'}` : (selected.status === 'FINALIZED' || category?.status === 'FINALIZED') ? 'DELETE FINALIZED CATEGORY' : '';
+  importedCategoryDeleteTarget = { workbookId: lastFixtureWorkbook?.sourceDigest || fixture.sourceDigest, categoryKey: selected.key, confirmation };
+  $('importDeleteCategoryMessage').textContent = count
+    ? `This will permanently delete this category, its bracket, all ${count} saved bout record${count === 1 ? '' : 's'} and their match-history entries. This cannot be undone.`
+    : 'This will permanently remove this category and its bracket from Data Import. This cannot be undone.';
+  const event = selected.event;
+  $('importDeleteCategorySummary').textContent = `${event.eventName} · ${event.divisionLabel || event.division} · ${event.gender} · ${event.categoryGroup || event.weightCategory}`;
+  $('importDeleteConfirmationField').classList.toggle('hidden', !confirmation);
+  $('importDeleteConfirmationLabel').textContent = confirmation ? `TYPE ${confirmation} TO CONFIRM` : '';
+  $('importDeleteConfirmation').value = '';
+  $('importDeleteCategoryError').textContent = '';
+  $('importDeleteCategoryError').classList.add('hidden');
+  $('importDeleteCategoryModal').classList.remove('hidden');
+  updateImportedCategoryDeleteConfirmation();
+  if (confirmation) $('importDeleteConfirmation').focus?.();
+}
+
+function closeImportedCategoryDelete() {
+  if (importedCategoryDeleteBusy) return;
+  importedCategoryDeleteTarget = null;
+  $('importDeleteCategoryModal').classList.add('hidden');
+  $('importDeleteConfirmation').value = '';
+}
+
+function updateImportedCategoryDeleteConfirmation() {
+  const expected = importedCategoryDeleteTarget?.confirmation || '';
+  $('importConfirmDeleteCategoryButton').disabled = importedCategoryDeleteBusy || !importedCategoryDeleteTarget || Boolean(expected && $('importDeleteConfirmation').value.trim().toUpperCase() !== expected);
+}
+
+async function confirmImportedCategoryDelete() {
+  const target = importedCategoryDeleteTarget;
+  if (!target || importSelectionLocked()) return;
+  if (target.confirmation && $('importDeleteConfirmation').value.trim().toUpperCase() !== target.confirmation) {
+    updateImportedCategoryDeleteConfirmation();
+    return;
+  }
+  importedCategoryDeleteBusy = true;
+  updateImportedCategoryDeleteConfirmation();
+  renderImportWizard();
+  try {
+    const response = await fetch('/api/tournament/category/delete', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-SFTS-Host-Token': hostToken },
+      body: JSON.stringify({ ...target, deleteRecords: Boolean(target.confirmation) })
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.message || 'COULD NOT DELETE CATEGORY');
+    lastTournament = result.tournament;
+    lastFixtureWorkbook = result.workbook || null;
+    pendingImportReview = null;
+    selectedImportCategoryKey = lastFixtureWorkbook?.selectedKey || '';
+    importSelectionSequence += 1;
+    importedCategoryDeleteBusy = false;
+    closeImportedCategoryDelete();
+    renderTournament(lastTournament);
+    setImportStep(lastTournament?.event ? lastTournament.schedule.every(bout => ['COMPLETED', 'BYE'].includes(bout.status)) ? 4 : 3 : 0);
+    toast(result.message || 'CATEGORY AND ITS SAVED MATCHES DELETED');
+  } catch (error) {
+    $('importDeleteCategoryError').textContent = error.message;
+    $('importDeleteCategoryError').classList.remove('hidden');
+  } finally {
+    importedCategoryDeleteBusy = false;
+    updateImportedCategoryDeleteConfirmation();
+    renderImportWizard();
+  }
+}
+
 function importPlayerCard(player, label) {
   return `<div><b>${label}</b><strong>${escapeHtml(player?.playerName || 'BYE')}</strong><span>${escapeHtml(player?.club || 'Advances without a match')}</span></div>`;
 }
@@ -132,6 +210,7 @@ function importPlayerCard(player, label) {
 function renderImportWizard() {
   const modal = $('dataImportModal');
   if (!modal || modal.classList.contains('hidden')) return;
+  if (importWizardStep >= 3 && !lastTournament?.event) importWizardStep = 0;
   for (let step = 0; step < 5; step += 1) {
     $(`importStep${step}`).classList.toggle('hidden', step !== importWizardStep);
     const marker = $('importWizardSteps').children[step];
@@ -283,7 +362,7 @@ function returnToImportedScoreboard() {
 }
 
 function handleImportedState(match) {
-  if (pendingImportReview?.existing && pendingImportReview.workbook.sourceDigest !== lastFixtureWorkbook?.sourceDigest) {
+  if (pendingImportReview?.existing && (pendingImportReview.workbook.sourceDigest !== lastFixtureWorkbook?.sourceDigest || !lastFixtureWorkbook?.categories.some(item => item.key === selectedImportCategoryKey))) {
     pendingImportReview = null;
     selectedImportCategoryKey = lastFixtureWorkbook?.selectedKey || '';
     importSelectionSequence += 1;

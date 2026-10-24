@@ -54,6 +54,10 @@ Reading a file displays dependent **Division → Gender → Category** dropdowns
 
 After import, **Select Another Category** uses the stored workbook. Selecting a dropdown previews that category; **Start Category**, **Continue Category** or **View Category Results** activates it. No file upload or USB reread is required. Dropdowns are disabled while a match is loaded or underway, and the server also rejects category switching until it is finished or reset. Completed and finalized categories remain visible for reviewing results.
 
+**Delete Category** beside the selectors removes the selected stored category, its entire bracket, its archived bout records and its match-history entries. This is available after import, including for completed and finalized categories. The confirmation dialog identifies the category; saved bouts require typing `DELETE N BOUTS` (or `DELETE 1 BOUT`) using the displayed count, as in manual entry. A finalized category with no bout records requires `DELETE FINALIZED CATEGORY`. A loaded or underway match must be finished or reset first.
+
+Deleting the selected category selects another remaining category. Deleting the final category returns Data Import to Event setup. Progress in other categories is retained, and removal is persisted across restarts. Deleting a saved category from manual entry also removes its imported bracket. No source Excel/USB file is edited; explicitly importing that file again can restore its category fixtures, but permanently deleted results are not restored.
+
 ## Match card
 
 The next card shows stage, match number within that round, bout reference and both competitors. Choose **Load Next Match**, then score normally. After the winner screen, **Continue Category** returns to the cards. A recovered loaded match offers **Return to Scoreboard**.
@@ -77,5 +81,7 @@ Importing another tournament file replaces the available category list while ret
 New wizard imports send `autoAdvance: true` in the event metadata. Desktop review uses `/api/tournament/import?preview=true`, then commits with `X-SFTS-Import-Digest` and the selected `X-SFTS-Import-Category`. USB review uses `preview: true` alongside `fileName` and `event`, then commits with `digest` and `categoryKey`. Both require the normal host session and the same bounded file worker. No server-side draft queue or polling timer is added.
 
 Preview responses include `workbook.categories` with per-category fixture details. Committed responses and full WebSocket states supply category summaries (`workbook` in HTTP responses, `fixtureWorkbook` in state). `GET /api/tournament/category/:key?workbookId=...` reviews a stored category; `POST /api/tournament/category` with `workbookId` and `categoryKey` selects it. These endpoints require host authentication and reject stale workbook selections. Only the active fixture and small category summaries are broadcast; inactive full brackets remain on the server.
+
+`POST /api/tournament/category/delete` takes `workbookId`, `categoryKey`, `deleteRecords` and `confirmation`, using the normal host token. Stale selections, busy matches and incorrect/missing confirmations are rejected without deleting data. Category summaries include `categoryId` and `completedBoutCount` for the deletion dialog.
 
 Older integrations without `autoAdvance` retain explicit-match-list behavior. The automatic mode updates an ordered, bounded list when a result/load/correction changes; it does not run bracket calculations on the scoring timer. The isolated desktop/Pi workload check can be run with `node tools/backend-benchmark.js --opening-fixture`. Desktop results are not a Pi hardware certification.

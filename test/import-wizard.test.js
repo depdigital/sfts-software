@@ -219,3 +219,48 @@ test('Continue Category returns to the decision cards while manual entry retains
   context.startNewMatch();
   assert.equal(actions[0].action, 'newMatch');
 });
+
+test('imported category deletion confirms saved bouts, protects loaded matches and clears the final category', async () => {
+  const { context, get, fixture, requests } = await wizard();
+  fixture.categoryId = 'saved-category';
+  context.lastTournament = fixture;
+  context.lastFixtureWorkbook = {
+    sourceDigest: 'reviewed-file', selectedKey: 'selected-category',
+    categories: [{ key: 'selected-category', event: fixture.event, categoryId: fixture.categoryId, completedBoutCount: 1, status: 'IN PROGRESS' }]
+  };
+  context.lastState = { phase: 'MATCH_END', manualBout: { categoryId: fixture.categoryId } };
+  context.resumeImportedCategory();
+  assert.equal(get('importDeleteCategoryButton').classList.contains('hidden'), false);
+  fixture.activeBoutNo = 1;
+  context.openImportedCategoryDelete();
+  assert.equal(get('importDeleteCategoryModal').classList.contains('hidden'), true);
+  assert.match(get('importWizardError').textContent, /Finish or reset/);
+  fixture.activeBoutNo = null;
+  context.openImportedCategoryDelete();
+  assert.equal(get('importDeleteCategoryModal').classList.contains('hidden'), false);
+  assert.match(get('importDeleteCategorySummary').textContent, /SENIOR.*MALE.*FLYWEIGHT/);
+  assert.match(get('importDeleteConfirmationLabel').textContent, /DELETE 1 BOUT/);
+  assert.equal(get('importConfirmDeleteCategoryButton').disabled, true);
+  await context.confirmImportedCategoryDelete();
+  assert.equal(requests.length, 0);
+  context.closeImportedCategoryDelete();
+  assert.equal(get('importDeleteCategoryModal').classList.contains('hidden'), true);
+  context.openImportedCategoryDelete();
+  get('importDeleteConfirmation').value = 'DELETE 1 BOUT';
+  context.updateImportedCategoryDeleteConfirmation();
+  assert.equal(get('importConfirmDeleteCategoryButton').disabled, false);
+  context.fetch = async (url, options) => {
+    requests.push({ url, options });
+    const emptyTournament = { schedule: [], players: [], activeBoutNo: null };
+    context.lastTournament = emptyTournament;
+    context.lastFixtureWorkbook = null;
+    context.handleImportedState({ manualBout: null });
+    return { ok: true, json: async () => ({ ok: true, tournament: emptyTournament, workbook: null }) };
+  };
+  await context.confirmImportedCategoryDelete();
+  assert.equal(requests[0].url, '/api/tournament/category/delete');
+  assert.deepEqual(JSON.parse(requests[0].options.body), { workbookId: 'reviewed-file', categoryKey: 'selected-category', confirmation: 'DELETE 1 BOUT', deleteRecords: true });
+  assert.equal(get('importDeleteCategoryModal').classList.contains('hidden'), true);
+  assert.equal(context.lastFixtureWorkbook, null);
+  assert.deepEqual(visibleSteps(get), [0]);
+});

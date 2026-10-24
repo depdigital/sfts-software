@@ -1351,7 +1351,7 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(jsText, /function manualCategoryDeleteConfirmationPhrase\(category\)/);
   assert.match(jsText, /deleteRecords: Boolean\(confirmation\)/);
   assert.match(serverSource, /function correctScoringAction\(player, direction, actionKey\)/);
-  assert.match(serverSource, /function deleteManualCategory\(categoryId, \{ deleteRecords = false, confirmation = '' \} = \{\}\)/);
+  assert.match(serverSource, /function deleteManualCategory\(categoryId, \{ deleteRecords = false, confirmation = '', allowFinishedMatch = false \} = \{\}\)/);
   assert.match(serverSource, /MANUAL_CATEGORY_DELETE_CONFIRMATION_REQUIRED/);
   assert.match(serverSource, /SCORING_ACTION_CORRECTION/);
   assert.match(serverSource, /CORRECTION_REASON_REQUIRED/);

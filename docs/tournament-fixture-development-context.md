@@ -162,6 +162,8 @@ Maintain source-bout links internally to render the full bracket. The export ada
 
 SFTS runs one selected category at a time and retains all imported categories on the server. Dependent division, gender and category dropdowns let the operator review and start or continue a category without rereading the file. Completed and finalized categories remain available for results review. Finish or reset any loaded or underway match before switching categories. Restart retains every category's progress and pauses the selected loaded match. The workbook is not a multi-arena event scheduler.
 
+Operators can permanently delete a stored category from Data Import with the same bout-count confirmation used in manual entry. This removes its bracket, archived results and match-history entries while preserving other categories, and the removal survives restart. A live match must be finished or reset first. Deleting the last category returns to Event setup. The source workbook is not modified, so a later explicit reimport can reintroduce its fixtures without restoring deleted results.
+
 The built-in Data Import wizard uses `autoAdvance: true`, validates and previews the complete file, then confirms it with a file/event digest and the selected category key. A draw stops advancement until a winner is decided. Results can be corrected only while the category is open and dependent matches have not been loaded or completed. Finalized categories remain in combined files when their recorded matches agree, but reject additional scoring. Invalid categories reject the entire file before it replaces the stored tournament.
 
 Template export is USB-only through **SAVE TEMPLATE TO USB** on the Event card. There is no browser template download.

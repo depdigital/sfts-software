@@ -695,6 +695,7 @@
             <label><span id="importCategoryLabel">WEIGHT CATEGORY</span><select id="importWeightCategory" onchange="changeImportCategory('category')"></select></label>
           </div>
           <p id="importCategoryLockHint" class="manualHint hidden">Finish or reset the current match before switching categories.</p>
+          <div class="manualActions"><button id="importDeleteCategoryButton" class="manualDangerButton hidden" onclick="openImportedCategoryDelete()">DELETE CATEGORY</button></div>
         </section>
         <section id="importStep0" class="manualWizardPanel">
           <h3>ENTER THE EVENT</h3><p>Enter these details manually. They apply to every category in the imported file.</p>
@@ -741,6 +742,23 @@
           <div class="manualActions"><button onclick="openManualCategoryResults(true)">REVIEW, FINALIZE &amp; EXPORT PDF</button><button onclick="setImportStep(3)">BACK TO MATCHES</button><button onclick="prepareAnotherCategory()">SELECT ANOTHER CATEGORY</button><button onclick="setImportStep(0)">IMPORT ANOTHER TOURNAMENT</button></div>
         </section>
         <div id="tournamentImportStatus" class="tournamentImportStatus">NO CATEGORY FIXTURE IMPORTED</div>
+      </div>
+    </section>
+
+    <section id="importDeleteCategoryModal" class="overlay hidden">
+      <div class="modalCard smallModal manualDeleteCategoryModal">
+        <h2>DELETE IMPORTED CATEGORY?</h2>
+        <p id="importDeleteCategoryMessage"></p>
+        <div id="importDeleteCategorySummary" class="manualDeleteCategorySummary"></div>
+        <label id="importDeleteConfirmationField" class="manualDeleteCategoryConfirmation hidden">
+          <span id="importDeleteConfirmationLabel"></span>
+          <input id="importDeleteConfirmation" autocomplete="off" spellcheck="false" oninput="updateImportedCategoryDeleteConfirmation()" />
+        </label>
+        <p id="importDeleteCategoryError" class="manualEntryError hidden" role="alert"></p>
+        <div class="manualDeleteCategoryActions">
+          <button onclick="closeImportedCategoryDelete()">CANCEL</button>
+          <button id="importConfirmDeleteCategoryButton" class="manualDangerSolidButton" onclick="confirmImportedCategoryDelete()">DELETE PERMANENTLY</button>
+        </div>
       </div>
     </section>
 
