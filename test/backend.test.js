@@ -1404,7 +1404,7 @@ test('kiosk deployment blocks browser escapes and installs recovery controls', a
 
   const policy = JSON.parse(policyTemplate.replaceAll('@PORT@', '8080'));
   assert.deepEqual(policy.URLBlocklist, ['*']);
-  assert.ok(policy.URLAllowlist.includes('http://127.0.0.1:8080/*'));
+  assert.ok(policy.URLAllowlist.includes('http://127.0.0.1:8080'));
   assert.equal(policy.NewTabPageLocation, 'http://127.0.0.1:8080/');
   assert.equal(policy.DeveloperToolsAvailability, 2);
   assert.equal(policy.IncognitoModeAvailability, 1);

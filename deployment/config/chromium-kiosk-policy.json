@@ -3,8 +3,8 @@
     "*"
   ],
   "URLAllowlist": [
-    "http://127.0.0.1:@PORT@/*",
-    "ws://127.0.0.1:@PORT@/*",
+    "http://127.0.0.1:@PORT@",
+    "ws://127.0.0.1:@PORT@",
     "blob:*"
   ],
   "HomepageLocation": "http://127.0.0.1:@PORT@/",
