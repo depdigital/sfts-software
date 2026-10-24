@@ -1975,9 +1975,40 @@ button {
 .manualActions button {
   margin: 0;
 }
-.dataImportModal > .playerSettingsGrid,
-.dataImportModal > .playersAnnounceButton {
-  display: none;
+.importWizardSteps {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.dataImportModal .manualWizardPanel {
+  min-height: 240px;
+}
+.importMatchSides {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 14px 0;
+}
+.importMatchSides > div {
+  padding: 16px;
+  border-radius: 10px;
+  background: #721719;
+}
+.importMatchSides > div + div { background: #075b82; }
+.importMatchSides strong, .importMatchSides span {
+  display: block;
+  margin-top: 6px;
+}
+.importMatchSides strong {
+  font-size: 22px;
+  overflow-wrap: anywhere;
+}
+.importProgress {
+  color: #91bbff;
+  font-size: 18px;
+  font-weight: 900;
+}
+.dataImportModal .scheduleTable {
+  max-height: 240px;
+  overflow: auto;
 }
 .categoryPrintReport {
   margin-top: 16px;

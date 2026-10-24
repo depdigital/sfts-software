@@ -682,237 +682,59 @@
 
     <section id="dataImportModal" class="overlay hidden">
       <div class="modalCard playerSettingsModal dataImportModal">
-        <h2>DATA IMPORT</h2>
-        <section class="manualSection">
-          <h3>EVENT &amp; CATEGORY</h3>
-          <div class="manualFieldGrid">
+        <header class="manualWizardHeader"><div><h2>DATA IMPORT</h2><p>Import the opening fixture once. Continue this category on the scoreboard.</p></div><button onclick="backFromDataImport()">EXIT</button></header>
+        <ol id="importWizardSteps" class="manualWizardSteps importWizardSteps" aria-label="Category import progress">
+          <li><b>1</b><span>EVENT</span></li><li><b>2</b><span>FILE</span></li><li><b>3</b><span>REVIEW</span></li><li><b>4</b><span>MATCHES</span></li><li><b>5</b><span>RESULTS</span></li>
+        </ol>
+        <p id="importWizardError" class="manualEntryError hidden" role="alert"></p>
+        <section id="importStep0" class="manualWizardPanel">
+          <h3>ENTER THE EVENT</h3><p>These details apply to this category.</p>
+          <div class="manualSection"><div class="manualFieldGrid">
             <label>TOURNAMENT NAME<input id="importEventName" maxlength="96" autocomplete="off" /></label>
             <label>DATE<input id="importEventDate" type="date" /></label>
             <label>VENUE<input id="importVenue" maxlength="128" autocomplete="off" /></label>
             <label>ARENA NO.<input id="importArenaNumber" type="number" min="1" max="999" /></label>
             <label>COMPETITION<select id="importCompetition"><option>KYORUGI</option><option>FRESHER KYORUGI</option></select></label>
+          </div></div>
+          <div class="manualActions"><button onclick="importEventNext()">NEXT: CHOOSE FILE</button><button id="importResumeButton" onclick="resumeImportedCategory()">RESUME CURRENT CATEGORY</button></div>
+        </section>
+        <section id="importStep1" class="manualWizardPanel hidden">
+          <h3>CHOOSE THE OPENING FIXTURE</h3><p>One division, gender and category per file. Include every competitor and each BYE position.</p>
+          <div id="nativeTournamentImport">
+            <input id="playerSheetFile" class="playerSettingsInput" type="file" accept=".xlsx,.xls,.csv" />
+            <div class="tournamentImportActions"><button onclick="uploadPlayerSheet()">REVIEW FIXTURE</button><button onclick="downloadPlayerTemplate()">DOWNLOAD TEMPLATE</button></div>
+          </div>
+          <div id="usbTournamentImport" class="hidden">
+            <div class="usbImportToolbar"><div id="usbDriveStatus" class="usbDriveStatus">USB NOT CHECKED</div><div class="usbDeviceActions"><button onclick="refreshUsbFiles()">REFRESH USB</button><button onclick="unmountUsb()">UNMOUNT USB SAFELY</button></div></div>
+            <label class="usbFileLabel">USB FIXTURE FILES<select id="usbFileSelect" class="playerSettingsSelect" disabled><option value="">REFRESH USB TO LIST FILES</option></select></label>
+            <div class="tournamentImportActions"><button id="usbImportButton" onclick="importUsbFile()" disabled>REVIEW FIXTURE</button><button onclick="savePlayerTemplateToUsb()">SAVE TEMPLATE TO USB</button></div>
+          </div>
+          <button onclick="setImportStep(0)">BACK: EVENT</button>
+        </section>
+        <section id="importStep2" class="manualWizardPanel hidden">
+          <h3>REVIEW BEFORE STARTING</h3><p>Check the category, HONG/CHUNG assignments and BYEs. Adjacent match winners meet in the next round.</p>
+          <div class="manualSection"><div class="manualFieldGrid">
             <label>DIVISION<input id="importDivision" readonly placeholder="FROM FILE" /></label>
             <label>GENDER<input id="importGender" readonly placeholder="FROM FILE" /></label>
             <label><span id="importCategoryLabel">WEIGHT CATEGORY</span><input id="importWeightCategory" readonly placeholder="FROM FILE" /></label>
-          </div>
-          <p id="importCategorySummary" class="manualHint">Division, gender and weight category will be read from the file.</p>
+          </div><p id="importCategorySummary" class="manualHint"></p><p id="importReviewSummary"></p></div>
+          <div id="importReviewTable" class="scheduleTable"></div>
+          <div class="manualActions"><button id="importStartButton" onclick="startImportedCategory()">CONFIRM &amp; START CATEGORY</button><button onclick="setImportStep(1)">BACK: CHOOSE FILE</button></div>
         </section>
-        <div class="playerSettingsGrid">
-          <div class="playerSettingsPanel redPlayerPanel">
-            <h3>HONG</h3>
-            <label
-              >PLAYER NAME
-              <input
-                id="playerRedName"
-                class="playerSettingsInput"
-                maxlength="24"
-                autocomplete="off"
-              />
-            </label>
-            <label
-              >WEIGHT CATEGORY
-              <input
-                id="playerRedWeight"
-                class="playerSettingsInput"
-                maxlength="32"
-                placeholder="Example: -58 kg"
-                autocomplete="off"
-              />
-            </label>
-            <label
-              >STATE CODE
-              <select id="playerRedStateCode" class="playerSettingsSelect">
-                <option value="">SELECT CODE</option>
-                <option value="AN">AN — Andaman and Nicobar Islands</option>
-                <option value="AP">AP — Andhra Pradesh</option>
-                <option value="AR">AR — Arunachal Pradesh</option>
-                <option value="AS">AS — Assam</option>
-                <option value="BR">BR — Bihar</option>
-                <option value="CH">CH — Chandigarh</option>
-                <option value="CG">CG — Chhattisgarh</option>
-                <option value="DD">
-                  DD — Dadra and Nagar Haveli and Daman and Diu
-                </option>
-                <option value="DL">DL — Delhi</option>
-                <option value="DN">
-                  DN — Dadra and Nagar Haveli (legacy code)
-                </option>
-                <option value="GA">GA — Goa</option>
-                <option value="GJ">GJ — Gujarat</option>
-                <option value="HR">HR — Haryana</option>
-                <option value="HP">HP — Himachal Pradesh</option>
-                <option value="JK">JK — Jammu and Kashmir</option>
-                <option value="JH">JH — Jharkhand</option>
-                <option value="KA">KA — Karnataka</option>
-                <option value="KL">KL — Kerala</option>
-                <option value="LA">LA — Ladakh</option>
-                <option value="LD">LD — Lakshadweep</option>
-                <option value="MP">MP — Madhya Pradesh</option>
-                <option value="MH">MH — Maharashtra</option>
-                <option value="MN">MN — Manipur</option>
-                <option value="ML">ML — Meghalaya</option>
-                <option value="MZ">MZ — Mizoram</option>
-                <option value="NL">NL — Nagaland</option>
-                <option value="OD">OD — Odisha</option>
-                <option value="PB">PB — Punjab</option>
-                <option value="PY">PY — Puducherry</option>
-                <option value="RJ">RJ — Rajasthan</option>
-                <option value="SK">SK — Sikkim</option>
-                <option value="TN">TN — Tamil Nadu</option>
-                <option value="TS">TS — Telangana</option>
-                <option value="TR">TR — Tripura</option>
-                <option value="UK">UK — Uttarakhand</option>
-                <option value="UP">UP — Uttar Pradesh</option>
-                <option value="WB">WB — West Bengal</option>
-              </select>
-            </label>
-            <label
-              >DISTRICT
-              <input
-                id="playerRedDistrict"
-                class="playerSettingsInput"
-                maxlength="48"
-                placeholder="Enter district"
-                autocomplete="address-level2"
-              />
-            </label>
-          </div>
-
-          <div class="playerSettingsPanel bluePlayerPanel">
-            <h3>CHUNG</h3>
-            <label
-              >PLAYER NAME
-              <input
-                id="playerBlueName"
-                class="playerSettingsInput"
-                maxlength="24"
-                autocomplete="off"
-              />
-            </label>
-            <label
-              >WEIGHT CATEGORY
-              <input
-                id="playerBlueWeight"
-                class="playerSettingsInput"
-                maxlength="32"
-                placeholder="Example: 68 kg"
-                autocomplete="off"
-              />
-            </label>
-            <label
-              >STATE CODE
-              <select id="playerBlueStateCode" class="playerSettingsSelect">
-                <option value="">SELECT CODE</option>
-                <option value="AN">AN — Andaman and Nicobar Islands</option>
-                <option value="AP">AP — Andhra Pradesh</option>
-                <option value="AR">AR — Arunachal Pradesh</option>
-                <option value="AS">AS — Assam</option>
-                <option value="BR">BR — Bihar</option>
-                <option value="CH">CH — Chandigarh</option>
-                <option value="CG">CG — Chhattisgarh</option>
-                <option value="DD">
-                  DD — Dadra and Nagar Haveli and Daman and Diu
-                </option>
-                <option value="DL">DL — Delhi</option>
-                <option value="DN">
-                  DN — Dadra and Nagar Haveli (legacy code)
-                </option>
-                <option value="GA">GA — Goa</option>
-                <option value="GJ">GJ — Gujarat</option>
-                <option value="HR">HR — Haryana</option>
-                <option value="HP">HP — Himachal Pradesh</option>
-                <option value="JK">JK — Jammu and Kashmir</option>
-                <option value="JH">JH — Jharkhand</option>
-                <option value="KA">KA — Karnataka</option>
-                <option value="KL">KL — Kerala</option>
-                <option value="LA">LA — Ladakh</option>
-                <option value="LD">LD — Lakshadweep</option>
-                <option value="MP">MP — Madhya Pradesh</option>
-                <option value="MH">MH — Maharashtra</option>
-                <option value="MN">MN — Manipur</option>
-                <option value="ML">ML — Meghalaya</option>
-                <option value="MZ">MZ — Mizoram</option>
-                <option value="NL">NL — Nagaland</option>
-                <option value="OD">OD — Odisha</option>
-                <option value="PB">PB — Punjab</option>
-                <option value="PY">PY — Puducherry</option>
-                <option value="RJ">RJ — Rajasthan</option>
-                <option value="SK">SK — Sikkim</option>
-                <option value="TN">TN — Tamil Nadu</option>
-                <option value="TS">TS — Telangana</option>
-                <option value="TR">TR — Tripura</option>
-                <option value="UK">UK — Uttarakhand</option>
-                <option value="UP">UP — Uttar Pradesh</option>
-                <option value="WB">WB — West Bengal</option>
-              </select>
-            </label>
-            <label
-              >DISTRICT
-              <input
-                id="playerBlueDistrict"
-                class="playerSettingsInput"
-                maxlength="48"
-                placeholder="Enter district"
-                autocomplete="address-level2"
-              />
-            </label>
-          </div>
-        </div>
-        <button class="playersAnnounceButton" onclick="announceManualPlayers()">
-          ANNOUNCE RED VS BLUE
-        </button>
-        <section class="tournamentImportPanel">
-          <h3>CATEGORY MATCH FILE</h3>
-          <p>One category per file. Include bout number, stage and the assigned HONG/CHUNG competitors. Matches keep the file's order.</p>
-          <div id="nativeTournamentImport">
-            <input
-              id="playerSheetFile"
-              class="playerSettingsInput"
-              type="file"
-              accept=".xlsx,.xls,.csv"
-            />
-            <div class="tournamentImportActions">
-              <button onclick="uploadPlayerSheet()">
-                IMPORT MATCHES
-              </button>
-              <button onclick="downloadPlayerTemplate()">
-                DOWNLOAD TEMPLATE
-              </button>
-            </div>
-          </div>
-          <div id="usbTournamentImport" class="hidden">
-            <div class="usbImportToolbar">
-              <div id="usbDriveStatus" class="usbDriveStatus">USB NOT CHECKED</div>
-              <div class="usbDeviceActions">
-                <button onclick="refreshUsbFiles()">REFRESH USB</button>
-                <button onclick="unmountUsb()">UNMOUNT USB SAFELY</button>
-              </div>
-            </div>
-            <label class="usbFileLabel">
-              USB MATCH FILES
-              <select id="usbFileSelect" class="playerSettingsSelect" disabled>
-                <option value="">REFRESH USB TO LIST FILES</option>
-              </select>
-            </label>
-            <div class="tournamentImportActions">
-              <button id="usbImportButton" onclick="importUsbFile()" disabled>
-                IMPORT MATCHES
-              </button>
-              <button onclick="savePlayerTemplateToUsb()">
-                SAVE TEMPLATE TO USB
-              </button>
-            </div>
-          </div>
-          <div class="tournamentImportActions scheduleViewAction">
-            <button onclick="openSchedule()">VIEW IMPORTED MATCHES</button>
-            <button onclick="openManualCategoryResults(true)">CATEGORY RESULTS</button>
-          </div>
-          <div id="tournamentImportStatus" class="tournamentImportStatus">
-            NO CATEGORY MATCH FILE IMPORTED
-          </div>
+        <section id="importStep3" class="manualWizardPanel hidden">
+          <div id="importRunCard" class="manualSection"></div>
+          <section id="importCorrectionPanel" class="manualSection hidden">
+            <h3>REVIEW A RECORDED WINNER</h3><label>COMPLETED MATCH<select id="importCorrectBout" onchange="renderImportCorrection()"></select></label>
+            <p id="importCorrectionHint" class="manualHint"></p>
+            <div class="manualActions"><button id="importCorrectRed" onclick="correctImportedResult('RED')">HONG WON</button><button id="importCorrectBlue" onclick="correctImportedResult('BLUE')">CHUNG WON</button></div>
+          </section>
+          <div class="manualActions"><button onclick="openSchedule()">VIEW ALL MATCHES</button><button onclick="setImportStep(4)">CATEGORY RESULTS</button><button onclick="prepareAnotherCategory()">IMPORT ANOTHER CATEGORY</button></div>
         </section>
-        <button class="hidden" onclick="savePlayerSettings()">SAVE PLAYER SETTINGS</button>
-        <button onclick="backFromDataImport()">BACK</button>
+        <section id="importStep4" class="manualWizardPanel hidden">
+          <h3>CATEGORY RESULTS</h3><div id="importResultsCard" class="manualSection"></div>
+          <div class="manualActions"><button onclick="openManualCategoryResults(true)">REVIEW, FINALIZE &amp; EXPORT PDF</button><button onclick="setImportStep(3)">BACK TO MATCHES</button><button onclick="prepareAnotherCategory()">IMPORT ANOTHER CATEGORY</button></div>
+        </section>
+        <div id="tournamentImportStatus" class="tournamentImportStatus">NO CATEGORY FIXTURE IMPORTED</div>
       </div>
     </section>
 
@@ -1046,7 +868,7 @@
       <div id="winnerNameText" class="winnerNameText">PLAYER NAME</div>
       <div class="winnerWord">WINNER</div>
       <div id="winnerReasonText" class="winnerReasonText"></div>
-      <button class="newMatchButton" onclick="startNewMatch()">
+      <button id="winnerContinueButton" class="newMatchButton" onclick="startNewMatch()">
         NEW MATCH
       </button>
     </section>
@@ -1170,6 +992,7 @@
     </section>
 
     <script src="/js/state.js"></script>
+    <script src="/js/importWizard.js"></script>
     <script src="/js/app.js"></script>
   </body>
 </html>

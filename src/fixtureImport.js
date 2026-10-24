@@ -4,7 +4,7 @@ export const FIXTURE_HEADERS = [
   'Chung Name', 'Chung Club', 'Chung State Code', 'Chung District'
 ];
 
-export function parseFixtureRows(rows, { categoryFromInput, playerDetails, event, maxBouts = 500 }) {
+export function parseFixtureRows(rows, { categoryFromInput, playerDetails, event, maxBouts = 500, openingFixture = false }) {
   const errors = [];
   const headers = (rows[0] || []).map(value => String(value).toLowerCase().replace(/[^a-z0-9]/g, ''));
   const aliases = {
@@ -49,12 +49,18 @@ export function parseFixtureRows(rows, { categoryFromInput, playerDetails, event
     const players = {};
     for (const [side, prefix] of [['RED', 'hong'], ['BLUE', 'chung']]) {
       const details = { playerName: get(`${prefix}name`), club: get(`${prefix}club`), stateCode: get(`${prefix}statecode`), district: get(`${prefix}district`) };
+      if (openingFixture && (!details.playerName || details.playerName.toUpperCase() === 'BYE')) {
+        if (details.club || details.stateCode || details.district) fail(`${side} BYE must not contain club, state or district details`);
+        players[side] = null;
+        continue;
+      }
       if (details.playerName.length > 64 || details.club.length > 64 || details.stateCode.length > 2 || details.district.length > 48) fail(`${side} player detail exceeds the supported length`);
       if (/^(?:(?:BYE|TBD|TBA)$|WINNER(?:\s+OF)?\s+(?:BOUT|MATCH|SF|QF|R\d))/i.test(details.playerName)) fail(`${side} must name an actual competitor; BYEs and unresolved winner placeholders are not supported`);
       players[side] = playerDetails(details, side);
       if (players[side].error) fail(players[side].error);
     }
-    if (players.RED.playerName?.toUpperCase() === players.BLUE.playerName?.toUpperCase() && players.RED.club?.toUpperCase() === players.BLUE.club?.toUpperCase()) fail('HONG and CHUNG must be different competitors');
+    if (!players.RED && !players.BLUE) fail('A match must contain at least one competitor');
+    if (players.RED && players.BLUE && players.RED.playerName?.toUpperCase() === players.BLUE.playerName?.toUpperCase() && players.RED.club?.toUpperCase() === players.BLUE.club?.toUpperCase()) fail('HONG and CHUNG must be different competitors');
     bouts.push({ officialBoutNo, stage, ...players });
   }
   return { category, bouts, errors: errors.slice(0, 30) };

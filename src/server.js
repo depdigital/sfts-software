@@ -9,6 +9,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { WebSocketServer } from "ws";
 import { FIXTURE_HEADERS, parseFixtureRows } from './fixtureImport.js';
+import { buildFixtureProgression, refreshFixtureProgression, isAutomaticFixture, nextFixtureBout, fixtureDescendants, participantKey } from './fixtureProgression.js';
 import { createFileJobs } from './fileJobs.js';
 import { createRemoteTestTracker } from './remoteTest.js';
 import { readBoundedFile } from './safeFiles.js';
@@ -87,7 +88,7 @@ const HOST_ACTIONS = new Set([
   'setArenaNumber', 'announcePlayers', 'name', 'advancedScoreCorrection', 'editScore', 'editGamjeom',
   'editRoundTieStats', 'correctScoringAction', 'correctGamjeom', 'point', 'technicalPoint', 'headPoint',
   'gamjeom', 'nextRound', 'resetMatch', 'newMatch', 'nextManualBout', 'loadBout', 'announceBout',
-  'resolveTie', 'setRemoteMode', 'testStart', 'testStop'
+  'resolveTie', 'correctImportedWinner', 'setRemoteMode', 'testStart', 'testStop'
 ]);
 let TECHNICAL_COMBO_WINDOW_MS = rules.scoring.technicalInput.windowMilliseconds;
 let MIN_ACTIVE_REMOTES = rules.voting.minimumActiveRemotes;
@@ -388,40 +389,58 @@ class TournamentImportError extends Error {
   }
 }
 
+function validateCompletedFixtureBout(bout, record) {
+  if (record.manualBout.stage !== bout.stage || ['RED', 'BLUE'].some(side => {
+    const recorded = record[side.toLowerCase()];
+    return !bout[side] || recorded.playerName !== bout[side].playerName || recorded.club !== bout[side].club;
+  })) throw new TournamentImportError(`Completed bout ${bout.officialBoutNo} has different competitors or stage; its saved result cannot be replaced`);
+}
+
 async function importFixture(buffer, event) {
   let rows;
   try { rows = await fileJobs.run('readPlayers', buffer); }
   catch (error) { throw new TournamentImportError(`The file is not a readable Excel or CSV file: ${error.message}`); }
-  const parsed = parseFixtureRows(rows, { event, categoryFromInput: manualCategoryFromInput, playerDetails: manualPlayerDetails });
+  const automatic = event?.autoAdvance === true;
+  const parsed = parseFixtureRows(rows, { event, maxBouts: automatic ? 256 : 500, openingFixture: automatic, categoryFromInput: manualCategoryFromInput, playerDetails: manualPlayerDetails });
   if (parsed.errors.length) throw new TournamentImportError('The match file could not be imported', parsed.errors);
   const category = manualCompetition.categories.find(item => manualCategoryIdentity(item) === manualCategoryIdentity(parsed.category));
   if (category?.status === 'FINALIZED') throw new TournamentImportError('This category is finalized and cannot accept another import');
   const result = { ...makeTournament(), generatedAt: new Date().toISOString(), event: parsed.category, categoryId: category?.id || null };
+  if (automatic) result.progressionMode = 'OPENING_FIXTURE';
   const { division, gender, weightCategory, categoryGroup } = parsed.category;
   const profile = { division, gender, weightCategory, categoryGroup };
-  const completedRecords = new Map(manualMatchRecords.filter(record => category && record.manualBout?.categoryId === category.id).map(record => [String(record.manualBout.officialBoutNo).toUpperCase(), record]));
+  const records = new Map(manualMatchRecords.filter(record => category && record.manualBout?.categoryId === category.id).map(record => [String(record.manualBout.officialBoutNo).toUpperCase(), record]));
   const players = new Map();
   const playerId = details => {
-    const key = `${details.playerName.toUpperCase()}|${details.club.toUpperCase()}`;
+    if (!details) return null;
+    const key = participantKey(details);
     if (!players.has(key)) players.set(key, { id: `P${players.size + 1}`, name: details.playerName, ...details, ...profile });
     return players.get(key).id;
   };
-  result.schedule = parsed.bouts.map((bout, index) => {
-    const completed = completedRecords.get(bout.officialBoutNo.toUpperCase());
-    if (completed && (completed.manualBout.stage !== bout.stage || ['RED', 'BLUE'].some(side => {
-      const recorded = completed[side.toLowerCase()];
-      return recorded.playerName !== bout[side].playerName || recorded.club !== bout[side].club;
-    }))) throw new TournamentImportError(`Completed bout ${bout.officialBoutNo} has different competitors or stage; its saved result cannot be replaced`);
-    return {
-      ...bout, ...profile, boutNo: index + 1, groupId: '', round: 1,
-      redPlayerId: playerId(bout.RED), bluePlayerId: playerId(bout.BLUE),
-      redPlayerName: bout.RED.playerName, bluePlayerName: bout.BLUE.playerName,
-      status: completed ? 'COMPLETED' : 'SCHEDULED', winner: completed?.winner || null,
-      winnerName: completed?.winnerName || null,
-      announcement: scheduleAnnouncement({ redPlayerName: bout.RED.playerName, bluePlayerName: bout.BLUE.playerName })
-    };
-  });
+  result.schedule = parsed.bouts.map((bout, index) => ({
+    ...bout, ...profile, boutNo: index + 1, groupId: '', round: 1,
+    redPlayerId: playerId(bout.RED), bluePlayerId: playerId(bout.BLUE),
+    redPlayerName: bout.RED?.playerName || 'BYE', bluePlayerName: bout.BLUE?.playerName || 'BYE',
+    status: 'SCHEDULED', winner: null, winnerName: null,
+    announcement: scheduleAnnouncement({ redPlayerName: bout.RED?.playerName || 'BYE', bluePlayerName: bout.BLUE?.playerName || 'BYE' })
+  }));
   result.players = [...players.values()];
+  if (automatic) {
+    try { buildFixtureProgression(result); }
+    catch (error) { throw new TournamentImportError(error.message); }
+    refreshFixtureProgression(result, { records, validateRecord: validateCompletedFixtureBout });
+  } else {
+    for (const bout of result.schedule) {
+      const completed = records.get(bout.officialBoutNo.toUpperCase());
+      if (completed) {
+        validateCompletedFixtureBout(bout, completed);
+        bout.status = 'COMPLETED';
+        bout.winner = completed.winner;
+        bout.winnerName = completed.winnerName;
+      }
+    }
+  }
+  result.sourceDigest = crypto.createHash('sha256').update(buffer).update(JSON.stringify({ ...parsed.category, automatic })).digest('hex');
   return result;
 }
 
@@ -431,6 +450,12 @@ function importEventHeader(req) {
     if (encoded.length > 4096) throw new Error();
     return JSON.parse(decodeURIComponent(encoded));
   } catch { throw new TournamentImportError('Enter tournament name, date, venue, arena and competition before importing'); }
+}
+
+function requireFixtureReview(imported, digest) {
+  if (isAutomaticFixture(imported) && digest !== imported.sourceDigest) {
+    throw new TournamentImportError('Review this opening fixture before starting. If the file or event details changed, review it again');
+  }
 }
 
 let match = makeMatch();
@@ -677,6 +702,27 @@ manualCompetition.categories = manualCompetition.categories.filter(category => (
 manualMatchRecords = manualMatchRecords.filter(record => (
   record && typeof record === 'object' && record.manualBout?.categoryId
 ));
+if (isAutomaticFixture(tournament) && tournament.categoryId) {
+  const category = manualCompetition.categories.find(item => item.id === tournament.categoryId);
+  const known = new Set(manualMatchRecords.map(record => record.id));
+  let recovered = false;
+  if (category) for (const record of matchHistory) {
+    if (record.manualBout?.categoryId !== category.id || known.has(record.id)) continue;
+    manualMatchRecords.push(deep(record));
+    if (!category.matchRecordIds.includes(record.id)) category.matchRecordIds.push(record.id);
+    known.add(record.id);
+    recovered = true;
+  }
+  try {
+    const records = new Map(manualMatchRecords.filter(record => record.manualBout?.categoryId === tournament.categoryId).map(record => [String(record.manualBout.officialBoutNo).toUpperCase(), record]));
+    refreshFixtureProgression(tournament, { records, validateRecord: validateCompletedFixtureBout });
+    if (tournament.schedule.find(bout => bout.boutNo === tournament.activeBoutNo)?.status !== 'IN_PROGRESS') tournament.activeBoutNo = null;
+  } catch (error) {
+    tournament.recoveryError = 'Saved fixture and results disagree. Review or reimport the category before continuing';
+    console.error(`Could not reconcile category progression: ${error.message}`);
+  }
+  if (recovered) { applyAutomaticManualPlacements(category); persistManualArchive(); }
+}
 normalizeManualCategoryPlacementState();
 persistenceReady = true;
 // Mark the running server as unclean until it reaches a deliberate shutdown.
@@ -1178,8 +1224,8 @@ function tournamentScheduleRows() {
   if (tournament.format === 'IMPORTED_MATCHES') return tournament.schedule.map(bout => ({
     'Bout Number': bout.officialBoutNo, Stage: bout.stage, Division: bout.division, Gender: bout.gender,
     'Weight Category': bout.weightCategory, Group: bout.categoryGroup,
-    'Hong Name': bout.RED.playerName, 'Hong Club': bout.RED.club, 'Hong State Code': bout.RED.stateCode, 'Hong District': bout.RED.district,
-    'Chung Name': bout.BLUE.playerName, 'Chung Club': bout.BLUE.club, 'Chung State Code': bout.BLUE.stateCode, 'Chung District': bout.BLUE.district,
+    'Hong Name': bout.RED?.playerName || bout.redPlayerName || 'BYE', 'Hong Club': bout.RED?.club || '', 'Hong State Code': bout.RED?.stateCode || '', 'Hong District': bout.RED?.district || '',
+    'Chung Name': bout.BLUE?.playerName || bout.bluePlayerName || 'BYE', 'Chung Club': bout.BLUE?.club || '', 'Chung State Code': bout.BLUE?.stateCode || '', 'Chung District': bout.BLUE?.district || '',
     Status: bout.status, Winner: bout.winnerName || ''
   }));
   const bouts = tournament.schedule.map(bout => ({
@@ -1649,6 +1695,7 @@ function normalizeManualCategoryPlacementState() {
 function saveManualCategoryPlacements(categoryId, placements, finalize = false) {
   const category = manualCompetition.categories.find(item => item.id === String(categoryId || ''));
   if (!category) return { ok: false, code: 'MANUAL_CATEGORY_NOT_FOUND', message: 'Manual category not found' };
+  if (finalize && isAutomaticFixture(tournament) && tournament.categoryId === category.id && tournament.schedule.some(bout => !['COMPLETED', 'BYE'].includes(bout.status))) return { ok: false, code: 'CATEGORY_IN_PROGRESS', message: 'Complete the category matches and confirm every winner before finalizing' };
   if (category.status === 'FINALIZED') return { ok: false, code: 'MANUAL_CATEGORY_FINALIZED', message: 'This category is already finalized' };
   if (!placements || typeof placements !== 'object' || Array.isArray(placements)) {
     return { ok: false, code: 'INVALID_PLACEMENTS', message: 'Category placements are required' };
@@ -1773,7 +1820,10 @@ function refreshTournamentGroupResults(tournamentState, group, groupBouts) {
 }
 
 function refreshTournamentBracket(tournamentState = tournament) {
-  if (tournamentState.format === 'IMPORTED_MATCHES') return;
+  if (tournamentState.format === 'IMPORTED_MATCHES') {
+    refreshFixtureProgression(tournamentState);
+    return;
+  }
   tournamentState.placementPolicy ||= deep(rules.tournament.placements);
   for (const bout of tournamentState.schedule) {
     for (const playerSide of ['red', 'blue']) {
@@ -1832,7 +1882,9 @@ function refreshTournamentBracket(tournamentState = tournament) {
 
 function loadTournamentBout(bout) {
   if (tournament.format === 'IMPORTED_MATCHES') {
+    if (tournament.recoveryError) return { ok: false, code: 'FIXTURE_RECOVERY_REVIEW', message: tournament.recoveryError };
     if (tournamentMatchIsBusy() || practiceMatchIsBusy()) return { ok: false, code: 'MATCH_BUSY', message: 'Finish or reset the current match before loading an imported bout' };
+    if (isAutomaticFixture(tournament) && nextFixtureBout(tournament)?.boutNo !== bout.boutNo) return { ok: false, code: 'BOUT_OUT_OF_ORDER', message: 'Load the next available match in this category' };
     if (bout.status !== 'SCHEDULED') return { ok: false, code: 'BOUT_UNAVAILABLE', message: 'This bout is already completed' };
     const category = tournament.categoryId ? manualCompetition.categories.find(item => item.id === tournament.categoryId) : null;
     if (tournament.categoryId && !category) return { ok: false, code: 'MANUAL_CATEGORY_NOT_FOUND', message: 'This category was deleted; import the file again' };
@@ -1848,6 +1900,7 @@ function loadTournamentBout(bout) {
     match.manualBout.importedBoutNo = bout.boutNo;
     bout.status = 'IN_PROGRESS';
     tournament.activeBoutNo = bout.boutNo;
+    refreshFixtureProgression(tournament);
     clearAllRemoteCombinations();
     clearLastRemoteButtons();
     clearRemoteScoreHighlights();
@@ -1900,10 +1953,11 @@ function completeTournamentBout(winner) {
   const bout = findTournamentBout(tournament.activeBoutNo);
   if (!bout) return;
   if (tournament.format === 'IMPORTED_MATCHES') {
-    bout.status = 'COMPLETED';
+    bout.status = isAutomaticFixture(tournament) && !winner ? 'TIE_PENDING' : 'COMPLETED';
     bout.winner = winner;
     bout.winnerName = winner ? playerDisplayName(side(winner)) : 'DRAW';
     tournament.activeBoutNo = null;
+    refreshFixtureProgression(tournament);
     return { completed: true };
   }
   if (!winner) {
@@ -1922,6 +1976,37 @@ function completeTournamentBout(winner) {
   tournament.activeBoutNo = null;
   refreshTournamentBracket();
   return { completed: true };
+}
+
+function correctImportedWinner(boutNo, winner) {
+  const bout = findTournamentBout(boutNo);
+  if (!isAutomaticFixture(tournament) || !bout || !['COMPLETED', 'TIE_PENDING'].includes(bout.status) || !['RED', 'BLUE'].includes(winner)) return { ok: false, code: 'WINNER_CORRECTION_UNAVAILABLE', message: 'Select a finished imported match and its correct winner' };
+  const category = manualCompetition.categories.find(item => item.id === tournament.categoryId);
+  if (!category || category.status === 'FINALIZED') return { ok: false, code: 'MANUAL_CATEGORY_FINALIZED', message: 'This category is missing or finalized' };
+  if (fixtureDescendants(tournament, bout.boutNo).some(item => ['IN_PROGRESS', 'COMPLETED', 'TIE_PENDING'].includes(item.status))) return { ok: false, code: 'FOLLOWING_MATCH_STARTED', message: 'The winner is locked because a dependent match has already been loaded or completed. Reset an unstarted dependent match before correcting it' };
+  const record = manualMatchRecords.find(item => item.manualBout?.categoryId === category.id && String(item.manualBout.officialBoutNo).toUpperCase() === bout.officialBoutNo.toUpperCase());
+  if (!record) return { ok: false, code: 'MATCH_RECORD_NOT_FOUND', message: 'The saved match record could not be found' };
+  if (record.winner === winner) return { ok: true };
+  const previousWinner = record.winner;
+  record.winner = winner;
+  record.winnerName = playerDisplayName(record[winner.toLowerCase()]);
+  record.defeatedName = playerDisplayName(record[other(winner).toLowerCase()]);
+  record.reason = 'WINNER CORRECTED BY OPERATOR';
+  record.operatorHistory ||= [];
+  record.operatorHistory.push({ id: crypto.randomUUID(), matchNo: record.matchNo, arenaNumber: record.arenaNumber, round: record.rounds?.at(-1)?.round || 1, timerMs: 0, action: 'WINNER CORRECTION', player: winner, from: previousWinner || 'DRAW', to: winner, recordedAt: new Date().toISOString() });
+  const recent = matchHistory.find(item => item.id === record.id);
+  if (recent) Object.assign(recent, deep(record));
+  bout.winner = winner;
+  bout.winnerName = bout[winner].playerName;
+  bout.status = 'COMPLETED';
+  refreshFixtureProgression(tournament);
+  applyAutomaticManualPlacements(category);
+  if (match.manualBout?.categoryId === category.id && match.manualBout.importedBoutNo === bout.boutNo && match.phase === 'MATCH_END') {
+    match.matchWinner = winner;
+    match.matchReason = record.reason;
+  }
+  persistManualArchive();
+  return { ok: true };
 }
 
 function resolveTournamentTie(bout, winner) {
@@ -2023,15 +2108,16 @@ async function createPlayerTemplateBuffer() {
 
   const instructions = [
     ['SFTS CATEGORY MATCH IMPORT'],
-    ['Matches', 'The first worksheet supplies explicit matches in row order. One division, gender and category per file. Replace the example row.'],
+    ['Matches', 'Supply the OPENING ROUND ONLY, in fixture position order. One division, gender and category per file. Replace the example row. SFTS builds the later rounds.'],
     ['Event details', 'Enter tournament name, date, venue, arena and competition in SFTS before importing.'],
     ['Required', 'Bout Number, Stage, Division, Gender, Weight Category (or Group), Hong Name, Hong Club, Chung Name, Chung Club.'],
     ['Optional', 'Hong/Chung State Code and District. State codes must be valid Indian state codes.'],
-    ['Stage', 'PRELIMINARY, QUARTERFINAL, SEMIFINAL, FINAL. Required for the shared manual category results.'],
+    ['Stage', 'Use the same stage on all opening rows: 1 row FINAL, 2 SEMIFINAL, 4 QUARTERFINAL, 8 or more PRELIMINARY. Row counts include BYE positions.'],
     ['Sides', 'Hong is RED; Chung is BLUE. Supply actual competitors from the fixture software.'],
-    ['Progression', 'SFTS does not create brackets, BYEs or resolve winner placeholders. Import an updated file when later-round competitors are known.'],
+    ['BYEs', 'Put BYE (or leave the name blank) on the empty side, and leave its club, state and district blank. Include BYE rows so the opening row count is a power of two. Each competitor appears once.'],
+    ['Progression', 'Adjacent row winners meet next: row 1 winner is HONG, row 2 winner is CHUNG. No reshuffle. SFTS continues locally through the final.'],
     ['Results', 'Completed official bout numbers retain their results; their sides and stages cannot be changed.'],
-    ['Limits', 'Maximum 500 match rows; 4 MB file. Only the first worksheet is read.']
+    ['Limits', 'Maximum 256 opening positions / 512 competitors and 4 MB. At least two actual competitors. Only the first worksheet is read.']
   ];
   const output = await fileJobs.run('workbook', { sheets: [
     { name: 'Matches', rows: [playerHeaders, ...playerExamples], cols: playerCols, filter: `A1:N${playerExamples.length + 1}` },
@@ -2204,6 +2290,8 @@ app.post('/api/usb/import', requireHostRequest, express.json({ limit: '8kb', inf
       const filePath = await selectedUsbFile(context, req.body?.fileName);
       const imported = await importFixture(await readBoundedFile(filePath, MAX_IMPORT_BYTES), req.body?.event);
       if (!hostRequestAuthorized(req) || tournamentMatchIsBusy() || practiceMatchIsBusy() || rules !== importRules) throw new Error('Match, host session or rules changed; retry the import');
+      if (req.body?.preview === true) return { ok: true, preview: true, tournament: deep(imported) };
+      requireFixtureReview(imported, req.body?.digest);
       tournament = imported;
       state(true);
       return { ok: true, tournament: deep(tournament) };
@@ -2258,6 +2346,11 @@ app.post('/api/tournament/import', requireHostRequest, express.raw({ type: '*/*'
     const importRules = rules;
     const imported = await importFixture(buffer, importEventHeader(req));
     if (!hostRequestAuthorized(req) || tournamentMatchIsBusy() || practiceMatchIsBusy() || rules !== importRules) throw new Error('Match, host session or rules changed; retry the import');
+    if (req.query.preview === 'true') {
+      res.json({ ok: true, preview: true, tournament: imported });
+      return;
+    }
+    requireFixtureReview(imported, req.get('X-SFTS-Import-Digest'));
     tournament = imported;
     state(true);
     res.json({ ok: true, tournament: deep(tournament) });
@@ -4497,6 +4590,10 @@ wss.on('connection', (ws, request) => {
         }
         state(true);
         return;
+      }
+      if (msg.action === 'correctImportedWinner') {
+        const result = correctImportedWinner(msg.boutNo, String(msg.winner || '').toUpperCase());
+        if (!result.ok) { sendError(ws, result.code, result.message); return; }
       }
       if (msg.action === 'setRemoteMode') {
         const result = setRemoteCount(msg.count);

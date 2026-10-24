@@ -153,6 +153,7 @@ function connectSocket() {
         renderManualCategoryOptions();
       }
       handleManualEntryState(msg.match);
+      if (typeof handleImportedState === "function") handleImportedState(msg.match);
       if (!statePatch && !$('manualCategoryResultsModal')?.classList.contains('hidden')) renderManualCategoryReport();
       if (!statePatch && !$("scheduleModal").classList.contains("hidden"))
         renderSchedule(msg.tournament);
@@ -172,6 +173,7 @@ function connectSocket() {
       toast(`C${msg.corner} PRESS REJECTED: ${msg.reason || "UNKNOWN REASON"}`);
     }
     if (msg.type === "error") {
+      if (typeof importedRequestFailed === "function") importedRequestFailed(msg.message || "REQUEST FAILED");
       if (["MATCH_IN_PROGRESS", "INVALID_PRACTICE_PLAYER"].includes(msg.code)) practiceLoadPending = false;
       if (manualBoutSavePending) {
         manualBoutSavePending = null;
@@ -251,6 +253,7 @@ function connectSocket() {
   };
   socket.onclose = () => {
     if (ws !== socket) return;
+    if (typeof importedRequestFailed === "function") importedRequestFailed("Connection lost. Wait for reconnection before loading a match.");
     remoteStatusSnapshot = null;
     role = "unknown";
     hostToken = "";
@@ -1215,6 +1218,10 @@ function openDataImport() {
   renderTournament(lastTournament);
   renderUsbImportMode();
   $("dataImportModal").classList.remove("hidden");
+  if (!$("importEventDate").value) $("importEventDate").value = new Date().toISOString().slice(0, 10);
+  if (pendingImportReview) setImportStep(2);
+  else if (lastTournament?.event) resumeImportedCategory();
+  else setImportStep(0);
   if (usbImportOnly) void refreshUsbFiles();
 }
 
@@ -2259,6 +2266,10 @@ async function refreshManualRecords(categoryId = "") {
 }
 
 async function openManualCategoryResults(fromImport = false) {
+  if (fromImport === true && !lastManualCompetition.categories.some(category => category.id === lastTournament?.categoryId)) {
+    importWizardError("Load a match in this category before opening its results.");
+    return;
+  }
   manualResultsFromImport = fromImport === true;
   if (manualResultsFromImport) {
     $("dataImportModal").classList.add("hidden");
@@ -2281,6 +2292,7 @@ async function openManualCategoryResults(fromImport = false) {
 function closeManualCategoryResults() {
   $("manualCategoryResultsModal").classList.add("hidden");
   $(manualResultsFromImport ? "dataImportModal" : "manualEntryModal").classList.remove("hidden");
+  if (manualResultsFromImport) renderImportWizard();
 }
 
 async function saveManualPlacements(finalize = false) {
@@ -2381,49 +2393,7 @@ async function saveManualCategoryPdfToUsb() {
     renderManualCategoryReport();
   }
 }
-function savePlayerSettings() {
-  send({
-    type: "host",
-    action: "playerSettings",
-    players: {
-      RED: {
-        playerName: $("playerRedName").value,
-        weightCategory: $("playerRedWeight").value,
-        stateCode: $("playerRedStateCode").value,
-        district: $("playerRedDistrict").value,
-      },
-      BLUE: {
-        playerName: $("playerBlueName").value,
-        weightCategory: $("playerBlueWeight").value,
-        stateCode: $("playerBlueStateCode").value,
-        district: $("playerBlueDistrict").value,
-      },
-    },
-  });
-  closePlayerSettings();
-}
 
-function announceManualPlayers() {
-  const details = {
-    RED: {
-      playerName: $("playerRedName").value,
-      weightCategory: $("playerRedWeight").value,
-      stateCode: $("playerRedStateCode").value,
-      district: $("playerRedDistrict").value,
-    },
-    BLUE: {
-      playerName: $("playerBlueName").value,
-      weightCategory: $("playerBlueWeight").value,
-      stateCode: $("playerBlueStateCode").value,
-      district: $("playerBlueDistrict").value,
-    },
-  };
-  if (!details.RED.playerName.trim() || !details.BLUE.playerName.trim()) {
-    toast("ENTER BOTH PLAYER NAMES FIRST");
-    return;
-  }
-  send({ type: "host", action: "announcePlayers", details });
-}
 
 function renderTournament(tournament) {
   const status = $("tournamentImportStatus");
@@ -2436,6 +2406,7 @@ function renderTournament(tournament) {
     $("importCategoryLabel").textContent = event?.categoryGroup ? "CATEGORY GROUP" : "WEIGHT CATEGORY";
     $("importCategorySummary").textContent = event ? `${event.divisionLabel || event.division} · ${event.gender} · ${event.categoryGroup || event.weightCategory}` : "Division, gender and weight category will be read from the file.";
     status.textContent = event ? `${tournament.schedule.length} MATCHES · ${tournament.schedule.filter(bout => bout.status === "COMPLETED").length} COMPLETED` : "NO CATEGORY MATCH FILE IMPORTED";
+    if (typeof renderImportWizard === "function") renderImportWizard();
     return;
   }
   if (!tournament || !tournament.players || !tournament.players.length) {
@@ -2660,10 +2631,12 @@ function importEventDetails() {
   const event = {
     eventName: $("importEventName").value.trim(), eventDate: $("importEventDate").value,
     venue: $("importVenue").value.trim(), arenaNumber: $("importArenaNumber").value,
-    competition: $("importCompetition").value
+    competition: $("importCompetition").value,
+    autoAdvance: true
   };
   if (Object.values(event).some(value => !value)) {
     toast("ENTER TOURNAMENT NAME, DATE, VENUE, ARENA AND COMPETITION");
+    importWizardError("Enter tournament name, date, venue, arena and competition before continuing.");
     return null;
   }
   return event;
@@ -2671,40 +2644,8 @@ function importEventDetails() {
 
 async function importUsbFile() {
   const fileName = $("usbFileSelect")?.value;
-  if (!fileName) {
-    toast("SELECT A USB FILE");
-    return;
-  }
-  if (!hostToken) {
-    toast("HOST SESSION REQUIRED");
-    return;
-  }
-  const event = importEventDetails();
-  if (!event) return;
-  const status = $("tournamentImportStatus");
-  if (status) status.textContent = "IMPORTING USB MATCH FILE...";
-  try {
-    const response = await fetch("/api/usb/import", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-SFTS-Host-Token": hostToken,
-      },
-      body: JSON.stringify({ fileName, event }),
-    });
-    const result = await response.json();
-    if (!response.ok || !result.ok) {
-      const details = result.errors?.length ? `: ${result.errors.join("; ")}` : "";
-      throw new Error(`${result.message || "USB IMPORT FAILED"}${details}`);
-    }
-    lastTournament = result.tournament;
-    renderTournament(result.tournament);
-    toast("CATEGORY MATCHES IMPORTED FROM USB");
-    openSchedule();
-  } catch (error) {
-    if (status) status.textContent = error.message || "USB IMPORT FAILED";
-    toast(error.message || "USB IMPORT FAILED");
-  }
+  if (!fileName) { importWizardError("SELECT A USB FILE"); return; }
+  await reviewImportFile({ fileName });
 }
 
 async function savePlayerTemplateToUsb() {
@@ -2749,46 +2690,9 @@ async function unmountUsb() {
 }
 
 async function uploadPlayerSheet() {
-  const input = $("playerSheetFile");
-  const file = input && input.files[0];
-  if (!file) {
-    toast("SELECT AN EXCEL FILE");
-    return;
-  }
-  if (!hostToken) {
-    toast("HOST SESSION REQUIRED");
-    return;
-  }
-  const event = importEventDetails();
-  if (!event) return;
-  const status = $("tournamentImportStatus");
-  status.textContent = "IMPORTING MATCH FILE...";
-  try {
-    const response = await fetch("/api/tournament/import", {
-      method: "POST",
-      headers: {
-        "Content-Type": file.type || "application/octet-stream",
-        "X-SFTS-Host-Token": hostToken,
-        "X-SFTS-Import-Event": encodeURIComponent(JSON.stringify(event)),
-      },
-      body: file,
-    });
-    const result = await response.json();
-    if (!response.ok || !result.ok) {
-      const details =
-        result.errors && result.errors.length
-          ? `: ${result.errors.join("; ")}`
-          : "";
-      throw new Error(`${result.message || "IMPORT FAILED"}${details}`);
-    }
-    lastTournament = result.tournament;
-    renderTournament(result.tournament);
-    toast("CATEGORY MATCHES IMPORTED");
-    openSchedule();
-  } catch (error) {
-    status.textContent = error.message || "IMPORT FAILED";
-    toast("MATCH FILE IMPORT FAILED");
-  }
+  const file = $("playerSheetFile")?.files[0];
+  if (!file) { importWizardError("SELECT AN EXCEL OR CSV FILE"); return; }
+  await reviewImportFile({ file });
 }
 
 function openSchedule() {
@@ -2878,7 +2782,14 @@ function renderSchedule(tournament) {
     const event = tournament.event;
     summary.textContent = event ? `${event.eventName} · ${event.eventDate} · ${event.venue} · ARENA ${event.arenaNumber} · ${event.competition} · ${event.divisionLabel || event.division} · ${event.gender} · ${event.categoryGroup || event.weightCategory}` : "NO CATEGORY MATCH FILE IMPORTED";
     const busy = lastState && (lastState.running || lastState.phase === "BREAK" || lastState.phase === "TIE_DECISION" || (lastState.phase === "ROUND" && (lastState.roundStarted || lastState.roundHistory?.length || lastState.red.score || lastState.blue.score || lastState.red.gamjeom || lastState.blue.gamjeom)));
-    table.innerHTML = `<table><thead><tr><th>BOUT</th><th>STAGE</th><th>HONG / RED</th><th>CHUNG / BLUE</th><th>STATUS</th><th>WINNER</th><th>ACTIONS</th></tr></thead><tbody>${(tournament.schedule || []).map(bout => `<tr><td>${escapeHtml(bout.officialBoutNo)}</td><td>${escapeHtml(bout.stage)}</td><td>${escapeHtml(bout.RED.playerName)}<br>${escapeHtml(bout.RED.club)}</td><td>${escapeHtml(bout.BLUE.playerName)}<br>${escapeHtml(bout.BLUE.club)}</td><td>${escapeHtml(bout.status)}</td><td>${escapeHtml(bout.winnerName || "—")}</td><td>${bout.status === "SCHEDULED" ? `<button onclick="loadScheduledBout(${bout.boutNo})" ${busy || tournament.activeBoutNo ? "disabled" : ""}>LOAD</button><button onclick="announceScheduledBout(${bout.boutNo})">ANNOUNCE</button>` : ""}</td></tr>`).join("")}</tbody></table>`;
+    const next = tournament.schedule.find(bout => !["COMPLETED", "BYE"].includes(bout.status));
+    const automatic = tournament.progressionMode === "OPENING_FIXTURE";
+    const rows = (tournament.schedule || []).map(bout => {
+      const loadable = bout.status === "SCHEDULED" && (!automatic || bout === next);
+      const actions = loadable ? `<button onclick="loadScheduledBout(${bout.boutNo})" ${busy || tournament.activeBoutNo ? "disabled" : ""}>LOAD</button><button onclick="announceScheduledBout(${bout.boutNo})">ANNOUNCE</button>` : "";
+      return `<tr><td>${escapeHtml(bout.officialBoutNo)}</td><td>${escapeHtml(bout.stage)}</td><td>${escapeHtml(bout.RED?.playerName || bout.redPlayerName || "BYE")}<br>${escapeHtml(bout.RED?.club || "")}</td><td>${escapeHtml(bout.BLUE?.playerName || bout.bluePlayerName || "BYE")}<br>${escapeHtml(bout.BLUE?.club || "")}</td><td>${escapeHtml(bout.status)}</td><td>${escapeHtml(bout.winnerName || "—")}</td><td>${actions}</td></tr>`;
+    });
+    table.innerHTML = `<table><thead><tr><th>BOUT</th><th>STAGE</th><th>HONG / RED</th><th>CHUNG / BLUE</th><th>STATUS</th><th>WINNER</th><th>ACTIONS</th></tr></thead><tbody>${rows.join("")}</tbody></table>`;
     return;
   }
   if (!tournament || !tournament.players || !tournament.players.length) {
@@ -2964,6 +2875,10 @@ async function resolveScheduledTie(boutNo, winner) {
 }
 
 function loadScheduledBout(boutNo) {
+  if (lastTournament?.progressionMode === "OPENING_FIXTURE") {
+    loadNextImportedBout(boutNo);
+    return;
+  }
   send({ type: "host", action: "loadBout", boutNo });
   $("scheduleModal").classList.add("hidden");
 }
@@ -3169,10 +3084,18 @@ function showWinnerSlide(winner, match) {
   const name = side.playerName || side.name;
   $("winnerNameText").textContent = name;
   $("winnerReasonText").textContent = winnerReasonDescription(match.matchReason);
+  $("winnerContinueButton").textContent = lastTournament?.progressionMode === "OPENING_FIXTURE" && match.manualBout?.importedBoutNo ? "CONTINUE CATEGORY" : "NEW MATCH";
   $("winnerSlide").classList.remove("redWinner", "blueWinner", "hidden");
   $("winnerSlide").classList.add(winner === "RED" ? "redWinner" : "blueWinner");
 }
 function startNewMatch() {
+  if (lastTournament?.progressionMode === "OPENING_FIXTURE" && lastState?.manualBout?.importedBoutNo) {
+    $("winnerSlide").classList.add("hidden");
+    $("roundOverlay").classList.add("hidden");
+    closeMatchDecision();
+    openDataImport();
+    return;
+  }
   send({ type: "host", action: "newMatch" });
   $("winnerSlide").classList.add("hidden");
   $("roundOverlay").classList.add("hidden");
@@ -3508,8 +3431,6 @@ window.saveManualCategoryPdfToUsb = saveManualCategoryPdfToUsb;
 window.manualPlacementChanged = manualPlacementChanged;
 window.updateManualResultsPrintOptions = updateManualResultsPrintOptions;
 window.toggleManualReportPreview = toggleManualReportPreview;
-window.savePlayerSettings = savePlayerSettings;
-window.announceManualPlayers = announceManualPlayers;
 window.uploadPlayerSheet = uploadPlayerSheet;
 window.downloadPlayerTemplate = downloadPlayerTemplate;
 window.refreshUsbFiles = refreshUsbFiles;

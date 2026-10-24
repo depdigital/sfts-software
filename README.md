@@ -157,38 +157,27 @@ Each corner card shows `CONNECTED` or `DISCONNECTED`, the latest RSSI in dBm, an
 
 For one-remote use, select mode 1 before scoring. With the match running, verify repeated identical +1/+2/+3 taps less than 750 ms apart, mixed-side taps, a short tap, technical +2/+3, technical +1 rejection, and a disconnect/reconnect. Every accepted press should change the score exactly once; `QUEUED` should return to 0 and `DROPPED` should stay at 0. The four-remote voting and near-simultaneous-incident cases require a separate physical test with all four devices before an event.
 
-## Category match import
+## Independent category import
 
-1. Open **PLAYER SETTINGS → DATA IMPORT**.
-2. Enter tournament name, date, venue, arena number and competition.
-3. Save the template to USB, or use a matching export from your fixture software.
-4. Select the category file and choose **IMPORT MATCHES**.
-5. Review the imported division, gender, category, bout numbers, stages and HONG/CHUNG sides.
-6. Select **LOAD** for the required match, then operate the scoreboard as with manual entry.
-7. Open **CATEGORY RESULTS** for the same placement review, finalization and PDF export used by manual entry.
+Data Import uses the same decision-card style as manual entry:
 
-SFTS preserves the supplied pairings and row order. It does not generate draws, assign BYEs, resolve winner placeholders or advance competitors. The fixture software supplies actual competitors for later rounds when known. Import an updated category file when those matches are ready.
+1. **Event:** enter tournament name, date, venue, arena and competition.
+2. **File:** select an Excel/CSV opening fixture from USB (or a desktop file during development).
+3. **Review:** check the imported division, gender, category, HONG/CHUNG sides and BYEs. Confirm before starting.
+4. **Matches:** use **LOAD NEXT MATCH**, score normally, then choose **CONTINUE CATEGORY**. SFTS advances adjacent winners locally without reshuffling.
+5. **Results:** review and finalize gold, silver and bronze through the existing manual results/PDF workflow.
 
-An import replaces the current imported match list, while completed category records remain in the shared manual results archive. Reimporting the same event/category preserves completed official bout numbers and rejects changes to their competitors or stages. Finalized categories cannot accept another import. Previously saved legacy brackets remain recoverable.
+The file supplies the **opening round only**, including every competitor and explicit BYE positions. Use the supplied `sfts-match-template.xlsx`; its Categories sheet reflects the active rulepack. Opening row counts must be a power of two: 1 FINAL, 2 SEMIFINAL, 4 QUARTERFINAL, or 8 and above PRELIMINARY. A BYE has one actual competitor and an empty/BYE opponent with no club/state/district.
 
-Import and match loading are blocked during an unfinished match, including a paused match that has already started. Finish or reset it first. Restart recovery restores the imported list, progress and loaded bout with the timer paused.
+Required columns: Bout Number, Stage, Division, Gender, the applicable Weight Category or Group, and both actual competitors' Hong/Chung Name and Club. State Code and District are optional. HONG is red; CHUNG is blue. Each competitor appears once in the opening file. Subsequent rounds and references are generated locally.
 
-## Excel / CSV match template
+A winner can be corrected with confirmation before a dependent bout is loaded; corrections update the pending match, archived result and medals with an audit entry. Draws require a winner before advancement. BYEs never create fake scored matches. At least two actual entrants are required.
 
-The first worksheet must contain one row per match, all for the same division, gender and weight category (or rulepack group). The template contains **Matches**, **Categories** and **Instructions** sheets. Event information is entered in SFTS.
+Imports and match loading cannot replace an unfinished match. Restart restores the category and loaded bout paused. Reimporting the same opening fixture preserves completed results; another category replaces the active list while keeping archived results. Previously saved explicit lists and legacy brackets remain recoverable. Manual entry retains its existing flow.
 
-```csv
-Bout Number,Stage,Division,Gender,Weight Category,Group,Hong Name,Hong Club,Hong State Code,Hong District,Chung Name,Chung Club,Chung State Code,Chung District
-SF-01,SEMIFINAL,SENIOR,MALE,FLYWEIGHT,,Arjun Mehta,Capital TKD,DL,New Delhi,Rohan Singh,Warriors TKD,UP,Noida
-```
+Supported: `.xlsx`, `.xls`, `.csv`, first worksheet only, **4 MB**, up to **512 competitors / 511 total bouts**. Existing bounded parsing and compact state updates remain in use.
 
-Bout number, stage, division, gender, the applicable category, both names and both clubs/affiliations are required. State code and district are optional. Use category names from the template's **Categories** sheet, which reflects the active rulepack. Accepted stages are **PRELIMINARY**, **QUARTERFINAL**, **SEMIFINAL** and **FINAL**. HONG means red and CHUNG means blue.
-
-Gold/silver follow the recorded final winner/loser; the two semifinal losers receive bronze through the existing manual results logic. The operator can review, override and finalize those placements.
-
-Supported files: `.xlsx`, `.xls`, `.csv`; maximum **500 matches per file / 4 MB**, with bounded spreadsheet parsing in the existing worker. The Pi uses the same restricted USB file selection. Roster-only files from the previous import flow must be re-exported in the match format.
-
-See [the fixture exporter contract](docs/category-match-import.md) for the complete field reference.
+See [the opening fixture file contract](docs/category-match-import.md) for the exact fields, BYE example, operating rules and recovery behavior.
 
 ## Saved data and safe restart
 

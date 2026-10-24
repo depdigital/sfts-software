@@ -1,5 +1,6 @@
 import { copyFile, mkdir, open, readFile, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
+import { validFixtureGraph } from './fixtureProgression.js';
 
 const SNAPSHOT_VERSION = 1;
 const DEFAULT_SAVE_DELAY_MS = 250;
@@ -80,17 +81,19 @@ function isTournamentPlacementPolicy(value) {
 
 function isTournament(value) {
   if (isObject(value) && value.format === 'IMPORTED_MATCHES' && (value.event || value.schedule?.length)) {
+    const automatic = value.progressionMode === 'OPENING_FIXTURE';
     const text = (object, key, max) => typeof object?.[key] === 'string' && object[key].length > 0 && object[key].length <= max;
     const player = value => text(value, 'playerName', 64) && text(value, 'club', 64) && typeof value.stateCode === 'string' && value.stateCode.length <= 2 && typeof value.district === 'string' && value.district.length <= 48;
     const event = value.event;
     if (!text(event, 'eventName', 96) || !text(event, 'eventDate', 10) || !text(event, 'venue', 128) || !text(event, 'arenaNumber', 3) || !['KYORUGI', 'FRESHER KYORUGI'].includes(event.competition) || !text(event, 'division', 32) || !['MALE', 'FEMALE'].includes(event.gender) || !(event.weightCategory || event.categoryGroup)) return false;
-    if (!Array.isArray(value.schedule) || value.schedule.length > 500 || !Array.isArray(value.players) || !value.players.every(isTournamentPlayer) || !Array.isArray(value.groups) || value.groups.length || !Array.isArray(value.byes) || value.byes.length) return false;
+    if (!Array.isArray(value.schedule) || value.schedule.length > (automatic ? 511 : 500) || !Array.isArray(value.players) || !value.players.every(isTournamentPlayer) || !Array.isArray(value.groups) || value.groups.length || !Array.isArray(value.byes) || value.byes.length) return false;
     const numbers = new Set();
     if (!value.schedule.every((bout, index) => {
-      if (!isObject(bout) || bout.boutNo !== index + 1 || !text(bout, 'officialBoutNo', 40) || numbers.has(bout.officialBoutNo.toUpperCase()) || !['PRELIMINARY', 'QUARTERFINAL', 'SEMIFINAL', 'FINAL'].includes(bout.stage) || !['SCHEDULED', 'IN_PROGRESS', 'COMPLETED'].includes(bout.status) || !player(bout.RED) || !player(bout.BLUE) || !(bout.winner === null || ['RED', 'BLUE'].includes(bout.winner))) return false;
+      if (!isObject(bout) || bout.boutNo !== index + 1 || !text(bout, 'officialBoutNo', 40) || numbers.has(bout.officialBoutNo.toUpperCase()) || !['PRELIMINARY', 'QUARTERFINAL', 'SEMIFINAL', 'FINAL'].includes(bout.stage) || !(automatic ? ['PENDING', 'SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'BYE', 'TIE_PENDING'] : ['SCHEDULED', 'IN_PROGRESS', 'COMPLETED']).includes(bout.status) || !(player(bout.RED) || (automatic && bout.RED === null)) || !(player(bout.BLUE) || (automatic && bout.BLUE === null)) || !(bout.winner === null || ['RED', 'BLUE'].includes(bout.winner))) return false;
       numbers.add(bout.officialBoutNo.toUpperCase());
       return ['division', 'gender', 'weightCategory', 'categoryGroup'].every(key => bout[key] === event[key]);
     })) return false;
+    if (automatic && !validFixtureGraph(value)) return false;
     return (value.categoryId === null || text(value, 'categoryId', 64)) && (value.activeBoutNo === null || value.schedule.some(bout => bout.boutNo === value.activeBoutNo && bout.status === 'IN_PROGRESS'));
   }
   if (!isObject(value) || !Array.isArray(value.players) || !value.players.every(isTournamentPlayer)) return false;

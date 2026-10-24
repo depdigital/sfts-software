@@ -101,10 +101,11 @@ function file(rows, format = 'xlsx') {
   XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet(rows), 'Matches');
   return XLSX.write(book, { type: 'buffer', bookType: format });
 }
-async function upload(token, rows, { format = 'xlsx', metadata = event } = {}) {
+async function upload(token, rows, { format = 'xlsx', metadata = event, preview = false, digest } = {}) {
   const headers = { 'Content-Type': 'application/octet-stream', 'X-SFTS-Host-Token': token };
   if (metadata) headers['X-SFTS-Import-Event'] = encodeURIComponent(JSON.stringify(metadata));
-  const response = await fetch(`http://127.0.0.1:${port}/api/tournament/import`, { method: 'POST', headers, body: file(rows, format) });
+  if (digest) headers['X-SFTS-Import-Digest'] = digest;
+  const response = await fetch(`http://127.0.0.1:${port}/api/tournament/import${preview ? '?preview=true' : ''}`, { method: 'POST', headers, body: file(rows, format) });
   return { status: response.status, body: await response.json() };
 }
 test('explicit category fixtures validate atomically and share manual results without advancement', async () => {
@@ -198,6 +199,7 @@ test('explicit category fixtures validate atomically and share manual results wi
   action('saveManualCategoryPlacements', { categoryId, placements, finalize: true });
   await waitFor(host, msg => msg.type === 'state' && msg.manualCompetition.categories.find(item => item.id === categoryId)?.status === 'FINALIZED');
   assert.equal((await upload(role.hostToken, rows)).status, 400);
+  await new Promise(resolve => { host.once('close', resolve); host.close(); });
 });
 
 test('import UI displays supplied sides safely, keeps row order and locks match loading when busy', async () => {
@@ -243,4 +245,85 @@ test('import UI displays supplied sides safely, keeps row order and locks match 
   context.renderSchedule(fixture);
   assert.match(get('scheduleTable').innerHTML, /loadScheduledBout\(1\)" disabled/);
   assert.ok(get('tournamentResultsList').innerHTML.includes('openManualCategoryResults(true)'));
+});
+test('reviewed opening fixture advances locally, corrects winners safely and retains shared medals', async () => {
+  const host = await connect();
+  host.send(JSON.stringify({ type: 'role', role: 'host', accessToken: 'fixture-host-token' }));
+  const role = await waitFor(host, msg => msg.type === 'roleAccepted');
+  await waitFor(host, msg => msg.type === 'state');
+  const metadata = { ...event, eventName: 'Independent Category', autoAdvance: true };
+  const rows = Array.from({ length: 8 }, (_, i) => fixtureRow(`PRE-${i + 1}`, 'PRELIMINARY', `A${i}`, `B${i}`));
+  const action = (action, details = {}) => host.send(JSON.stringify({ type: 'host', action, ...details }));
+  const preview = await upload(role.hostToken, rows, { metadata, preview: true });
+  assert.equal(preview.status, 200, JSON.stringify(preview.body));
+  assert.equal(preview.body.preview, true);
+  assert.equal(preview.body.tournament.schedule.length, 15);
+  action('setArenaNumber', { value: '3' });
+  const unchanged = await waitFor(host, msg => msg.type === 'state');
+  assert.notEqual(unchanged.tournament.event.eventName, metadata.eventName, 'review must not replace the running fixture');
+  assert.equal((await upload(role.hostToken, rows, { metadata })).status, 400);
+  const digest = preview.body.tournament.sourceDigest;
+  assert.equal((await upload(role.hostToken, rows, { metadata: { ...metadata, venue: 'Changed' }, digest })).status, 400);
+  const committed = await upload(role.hostToken, rows, { metadata, digest });
+  assert.equal(committed.status, 200, JSON.stringify(committed.body));
+  host.messages.length = 0;
+  const finish = async (boutNo, winner = 'RED') => {
+    action('loadBout', { boutNo });
+    const loaded = await waitFor(host, msg => msg.type === 'state' && msg.tournament.activeBoutNo === boutNo);
+    assert.equal(loaded.match.manualBout.importedBoutNo, boutNo);
+    action('manualMatchDecision', { player: winner, decision: 'RSC' });
+    await waitFor(host, msg => msg.type === 'matchEnd');
+    return waitFor(host, msg => msg.type === 'state' && msg.tournament.schedule[boutNo - 1].status === 'COMPLETED');
+  };
+  action('loadBout', { boutNo: 2 });
+  assert.equal((await waitFor(host, msg => msg.type === 'error')).code, 'BOUT_OUT_OF_ORDER');
+  await finish(1);
+  const second = await finish(2, 'BLUE');
+  assert.equal(second.tournament.schedule[8].RED.playerName, 'A0');
+  assert.equal(second.tournament.schedule[8].BLUE.playerName, 'B1');
+  action('correctImportedWinner', { boutNo: 1, winner: 'BLUE' });
+  const corrected = await waitFor(host, msg => msg.type === 'state' && msg.tournament.schedule[0].winner === 'BLUE');
+  assert.equal(corrected.tournament.schedule[8].RED.playerName, 'B0');
+  for (let boutNo = 3; boutNo <= 8; boutNo += 1) await finish(boutNo);
+  action('loadBout', { boutNo: 9 });
+  await waitFor(host, msg => msg.type === 'state' && msg.tournament.activeBoutNo === 9);
+  action('correctImportedWinner', { boutNo: 1, winner: 'RED' });
+  assert.equal((await waitFor(host, msg => msg.type === 'error')).code, 'FOLLOWING_MATCH_STARTED');
+  action('manualMatchDecision', { player: 'RED', decision: 'RSC' });
+  await waitFor(host, msg => msg.type === 'matchEnd');
+  await waitFor(host, msg => msg.type === 'state' && msg.tournament.schedule[8].status === 'COMPLETED');
+  let completed;
+  for (let boutNo = 10; boutNo <= 15; boutNo += 1) completed = await finish(boutNo);
+  const category = completed.manualCompetition.categories.find(item => item.id === completed.tournament.categoryId);
+  assert.deepEqual(Object.values(category.placements).map(player => player.playerName), ['B0', 'A4', 'A2', 'A6']);
+  const response = await fetch(`http://127.0.0.1:${port}/api/manual/categories?categoryId=${category.id}`, { headers: { 'X-SFTS-Host-Token': role.hostToken } });
+  const archive = await response.json();
+  assert.equal(archive.records.length, 15);
+  const firstRecord = archive.records.find(record => record.manualBout.officialBoutNo === 'PRE-1');
+  assert.equal(firstRecord.winner, 'BLUE');
+  assert.equal(firstRecord.operatorHistory.at(-1).action, 'WINNER CORRECTION');
+  const replay = await upload(role.hostToken, rows, { metadata, preview: true });
+  assert.equal(replay.status, 200, JSON.stringify(replay.body));
+  assert.ok(replay.body.tournament.schedule.every(bout => bout.status === 'COMPLETED'));
+  assert.equal(replay.body.tournament.schedule.at(-1).winnerName, 'B0');
+  const byeMetadata = { ...metadata, eventName: 'Three Competitor Category' };
+  const byeRows = [fixtureRow('BYE-SF1', 'SEMIFINAL', 'X', 'Y'), {
+    ...fixtureRow('BYE-SF2', 'SEMIFINAL', 'Z', 'BYE'), 'Chung Club': '', 'Chung State Code': '', 'Chung District': ''
+  }];
+  const byePreview = await upload(role.hostToken, byeRows, { metadata: byeMetadata, preview: true });
+  assert.equal(byePreview.status, 200, JSON.stringify(byePreview.body));
+  const byeCommit = await upload(role.hostToken, byeRows, { metadata: byeMetadata, digest: byePreview.body.tournament.sourceDigest });
+  assert.equal(byeCommit.status, 200);
+  assert.equal(byeCommit.body.tournament.schedule[1].status, 'BYE');
+  host.messages.length = 0;
+  const semifinal = await finish(1, 'BLUE');
+  assert.equal(semifinal.tournament.schedule[2].BLUE.playerName, 'Z');
+  action('saveManualCategoryPlacements', { categoryId: semifinal.tournament.categoryId, placements: { gold: 'Y|Y CLUB', silver: '', bronze1: '', bronze2: '' }, finalize: true });
+  assert.equal((await waitFor(host, msg => msg.type === 'error')).code, 'CATEGORY_IN_PROGRESS');
+  const byeFinal = await finish(3);
+  const byeCategory = byeFinal.manualCompetition.categories.find(item => item.id === byeFinal.tournament.categoryId);
+  assert.deepEqual(Object.values(byeCategory.placements).map(player => player?.playerName || null), ['Y', 'Z', 'X', null]);
+  const byeArchive = await fetch(`http://127.0.0.1:${port}/api/manual/categories?categoryId=${byeCategory.id}`, { headers: { 'X-SFTS-Host-Token': role.hostToken } });
+  assert.equal((await byeArchive.json()).records.length, 2, 'a BYE must not create a fake scored record');
+  host.close();
 });

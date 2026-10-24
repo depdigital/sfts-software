@@ -286,13 +286,19 @@ test('server restores match history and tournament progress after restart', asyn
     assert.equal(restored.arenaNumber, '7');
     const nextBook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(nextBook, XLSX.utils.json_to_sheet([
-      { 'Bout Number': 'RESUME-02', Stage: 'SEMIFINAL', Division: 'SENIOR', Gender: 'MALE', 'Weight Category': 'FINWEIGHT', 'Hong Name': 'Resume Red', 'Hong Club': 'Red Club', 'Chung Name': 'Resume Blue', 'Chung Club': 'Blue Club' }
+      { 'Bout Number': 'RESUME-02', Stage: 'SEMIFINAL', Division: 'SENIOR', Gender: 'MALE', 'Weight Category': 'FINWEIGHT', 'Hong Name': 'Resume Red', 'Hong Club': 'Red Club', 'Chung Name': 'Resume Blue', 'Chung Club': 'Blue Club' },
+      { 'Bout Number': 'RESUME-BYE', Stage: 'SEMIFINAL', Division: 'SENIOR', Gender: 'MALE', 'Weight Category': 'FINWEIGHT', 'Hong Name': 'Bye Player', 'Hong Club': 'Third Club', 'Chung Name': 'BYE', 'Chung Club': '' }
     ]), 'Matches');
+    const nextHeaders = {
+      'Content-Type': 'application/octet-stream', 'X-SFTS-Host-Token': restoredRole.hostToken,
+      'X-SFTS-Import-Event': encodeURIComponent(JSON.stringify({ eventName: 'Persistence Championship', eventDate: '2026-10-24', venue: 'Test Hall', arenaNumber: '7', competition: 'KYORUGI', autoAdvance: true }))
+    };
+    const nextBuffer = XLSX.write(nextBook, { type: 'buffer', bookType: 'xlsx' });
+    const preview = await fetch(`http://127.0.0.1:${port}/api/tournament/import?preview=true`, { method: 'POST', headers: nextHeaders, body: nextBuffer });
+    assert.equal(preview.status, 200);
+    const reviewed = await preview.json();
     const nextImport = await fetch(`http://127.0.0.1:${port}/api/tournament/import`, {
-      method: 'POST', headers: {
-        'Content-Type': 'application/octet-stream', 'X-SFTS-Host-Token': restoredRole.hostToken,
-        'X-SFTS-Import-Event': encodeURIComponent(JSON.stringify({ eventName: 'Persistence Championship', eventDate: '2026-10-24', venue: 'Test Hall', arenaNumber: '7', competition: 'KYORUGI' }))
-      }, body: XLSX.write(nextBook, { type: 'buffer', bookType: 'xlsx' })
+      method: 'POST', headers: { ...nextHeaders, 'X-SFTS-Import-Digest': reviewed.tournament.sourceDigest }, body: nextBuffer
     });
     assert.equal(nextImport.status, 200);
     await nextImport.arrayBuffer();
@@ -318,6 +324,10 @@ test('server restores match history and tournament progress after restart', asyn
     const resumed = await waitForMessage(resumedHost, message => message.type === 'state');
     assert.equal(resumed.tournament.activeBoutNo, 1);
     assert.equal(resumed.tournament.schedule[0].status, 'IN_PROGRESS');
+    assert.equal(resumed.tournament.progressionMode, 'OPENING_FIXTURE');
+    assert.equal(resumed.tournament.schedule[1].status, 'BYE');
+    assert.equal(resumed.tournament.schedule[2].BLUE.playerName, 'Bye Player');
+    assert.equal(resumed.tournament.schedule[2].RED, null);
     assert.equal(resumed.match.manualBout.officialBoutNo, 'RESUME-02');
     assert.equal(resumed.match.red.playerName, 'Resume Red');
     assert.equal(resumed.match.running, false);

@@ -1,44 +1,75 @@
-# Category match file contract
+# Independent category import
 
-The fixture application decides every match, side and running order. SFTS reads explicit matches and loads them through the same official bout and category-result handling as manual entry.
+Data Import is a five-card workflow: **Event → File → Review → Matches → Results**. The fixture software supplies the opening round once. SFTS continues the category locally through the final, using the normal manual-entry scoring and category result records.
 
-## Event information entered on SFTS
+## Event card
 
-Tournament name, date (`YYYY-MM-DD`), venue, arena number (`1`–`999`) and competition (`KYORUGI` or `FRESHER KYORUGI`) are entered in Data Import before importing. They apply to every row in the selected file. Division, gender and category come from the file and are shown after import.
+Enter tournament name, date (`YYYY-MM-DD`), venue, arena number (`1`–`999`) and competition (`KYORUGI` or `FRESHER KYORUGI`). Division, gender and weight category/group come from the spreadsheet.
 
-## First worksheet: Matches
+## Opening fixture file
 
-Only the first worksheet is read. The first row contains headers. Additional worksheets may contain category references and instructions. CSV uses the same headers. One file contains exactly one division/gender/category; repeat those fields on each match row. Preserve official bout/reference numbers as text, including any leading zeroes.
+Only the first worksheet is read. One file contains one division/gender/category. Supply **only the opening positions**, in fixture order, with every competitor appearing exactly once. Repeat division, gender and category on every row. Bout references should be stored as text to retain leading zeroes.
 
 | Column | Required | Values |
 | --- | --- | --- |
-| Bout Number | Yes | Unique within the file/category; at most 40 characters. Case-insensitive duplicate detection. |
-| Stage | Yes | PRELIMINARY, QUARTERFINAL, SEMIFINAL, FINAL. Spaces/hyphens in stage names are accepted. |
-| Division | Yes | Active rulepack division ID or label. |
+| Bout Number | Yes | Unique reference, at most 40 characters; case-insensitive duplicate checks. |
+| Stage | Yes | Same opening stage on every row; see the stage table below. |
+| Division | Yes | Active rulepack ID or label. |
 | Gender | Yes | MALE/M or FEMALE/F. |
-| Weight Category | For weight divisions | Active rulepack category name. Leave blank for group divisions. |
-| Group | For group divisions | Active rulepack group name. Leave blank for weight divisions. |
-| Hong Name | Yes | Actual red competitor name, at most 64 characters. |
-| Hong Club | Yes | Red club/affiliation, at most 64 characters. |
-| Hong State Code | No | Valid Indian state/UT code. |
-| Hong District | No | At most 48 characters. |
-| Chung Name | Yes | Actual blue competitor name, at most 64 characters. |
-| Chung Club | Yes | Blue club/affiliation, at most 64 characters. |
-| Chung State Code | No | Valid Indian state/UT code. |
-| Chung District | No | At most 48 characters. |
+| Weight Category | Weight divisions | Active rulepack category name; blank for group divisions. |
+| Group | Group divisions | Active rulepack group name; blank for weight divisions. |
+| Hong Name / Chung Name | Actual competitor | Red/blue player name, at most 64 characters. |
+| Hong Club / Chung Club | Actual competitor | Club/affiliation, at most 64 characters. |
+| Hong State Code / Chung State Code | No | Valid Indian state/UT code. |
+| Hong District / Chung District | No | At most 48 characters. |
 
-Header matching ignores case, spaces and punctuation. `Official Bout No`, `Bout No` or `Bout` can replace `Bout Number`. Red/Blue Name, Club, State Code and District aliases are accepted. Hong/Chung Affiliation and Red/Blue Affiliation can replace the corresponding Club header.
+For a BYE, put `BYE` or leave the name blank on the empty side. Its club, state and district must also be blank. The other side must name an actual competitor. Preserve where the fixture assigns each BYE; SFTS does not shuffle or invent BYE positions.
 
-The template downloaded or saved to USB is `sfts-match-template.xlsx`; its **Categories** sheet lists the currently supported category names. Its example match must be replaced with real event data. Files are limited to 500 matches and 4 MB; existing worker memory, ZIP expansion and column limits remain in effect.
+| Opening rows, including BYE rows | Opening stage |
+| --- | --- |
+| 1 | FINAL |
+| 2 | SEMIFINAL |
+| 4 | QUARTERFINAL |
+| 8, 16, 32, 64, 128, 256 | PRELIMINARY |
 
-## Operation and results
+Include enough BYE rows to make the opening row count a power of two. At least two actual competitors are required; single-entry direct medal allocation is outside this scored-category workflow. Maximum: **256 opening positions / 512 competitors / 511 total bouts**, and a **4 MB** source file.
 
-Rows are retained in file order, even when official bout numbers are not numerically sorted. SFTS never swaps competitors, randomizes a draw, creates a BYE, or advances a winner. Supply actual names; BYE/TBD/TBA and winner-of-bout placeholders cannot be scored as competitors. When later-round participants become known, export an updated file with their assigned sides and import it after finishing/resetting the current match.
+Example with three competitors:
 
-LOAD creates a normal official manual bout with the supplied stage and reference number. All match scoring and winner decisions use the existing manual flow. Completed matches are stored in the shared manual results archive. The recorded final winner/loser provide gold/silver, and the two recorded semifinal losers provide bronze. Category review, operator overrides, finalization and PDF/USB export are shared with manual entry.
+```csv
+Bout Number,Stage,Division,Gender,Weight Category,Group,Hong Name,Hong Club,Hong State Code,Hong District,Chung Name,Chung Club,Chung State Code,Chung District
+SF-01,SEMIFINAL,SENIOR,MALE,FLYWEIGHT,,Arjun,Capital TKD,DL,New Delhi,Rohan,Warriors TKD,UP,Noida
+SF-02,SEMIFINAL,SENIOR,MALE,FLYWEIGHT,,Vikram,Cochin Club,KL,Kochi,BYE,,,
+```
 
-A new import replaces only the currently imported list, preserving archived categories and completed bouts. The existing manual category identity uses tournament name, date, competition, division, gender and category. Completed bout references in that category are recognized on reimport; changes to their stage, competitors or clubs are rejected. Finalized categories reject further imports/loads. Loading is also checked against completed records, so a manually completed reference cannot be replayed from an older imported list.
+Vikram advances directly into the final without a scored match or fabricated match record. The SF-01 winner becomes HONG in the final; Vikram becomes CHUNG.
 
-The importer validates the complete file before changing the active list. Import and loading cannot replace an unfinished match. The imported list, completion states, category link and loaded bout are saved in the normal local snapshot; restart pauses the timer. Existing snapshots containing legacy generated brackets remain supported for recovery, but new imports cannot generate brackets.
+The downloadable/USB template remains `sfts-match-template.xlsx`. **Matches** is first, followed by **Categories** and **Instructions**. Its example row must be replaced. Header matching ignores case, spacing and punctuation. Official Bout No/Bout No/Bout, Red/Blue Name/Club/State Code/District and Hong/Chung or Red/Blue Affiliation aliases remain supported. Duplicate or ambiguous headers are rejected.
 
-The legacy `/api/tournament/import` route name is retained for compatibility with the application. Desktop uploads carry percent-encoded event JSON in `X-SFTS-Import-Event`; USB imports carry `event` alongside `fileName` in JSON. Both use the same parser and require the existing host session. Pi deployments retain USB-only import and the existing restricted file selection.
+## Review card
+
+Reading a file displays the category, event details, opening HONG/CHUNG assignments, competitor count, BYEs and total matches through the final. This is a preview: it does not replace the current category. **Confirm & Start Category** checks the file/event digest again before committing. Changing the file or event details requires a fresh review.
+
+## Match card
+
+The next card shows stage, match number within that round, bout reference and both competitors. Choose **Load Next Match**, then score normally. After the winner screen, **Continue Category** returns to the cards. A recovered loaded match offers **Return to Scoreboard**.
+
+Adjacent row winners meet without a redraw: row 1 winner becomes HONG and row 2 winner becomes CHUNG, then row 3 meets row 4, and so on. This repeats each round through quarterfinal, semifinal and final. Additional preliminary rounds are created when needed. Future references are generated deterministically, such as `AUTO-R2-001`, with collision checks.
+
+Bouts run in round/position order. A later round cannot be loaded out of order. A draw blocks advancement until its winner is confirmed. A BYE advances automatically and never changes scoreboard points or creates a scored record.
+
+**Review a Recorded Winner** allows an operator-confirmed correction while no dependent bout has been loaded/completed and the category is open. The correction updates pending competitors, medals, recent history and the archived result, and appends an audit entry. Once a dependent bout is loaded, the earlier result is locked; an unstarted loaded bout can be reset before correcting its source.
+
+## Results card and recovery
+
+Gold/silver come from the actual final winner/loser; bronze comes from the recorded semifinal losers. Review, operator placement overrides, finalization and PDF/USB export use the existing manual category results. Finalization is blocked until all category matches have completed and every winner is decided.
+
+The opening fixture, generated rounds, current bout and results are saved locally. Restart restores the tournament paused, including already advanced BYEs and winner assignments. Shared manual archive records are used to reconcile saved progression; inconsistent recovery requires review before loading. Reimporting the same opening fixture reconstructs progress from completed reference numbers and rejects changed recorded competitors/stages.
+
+Importing another category replaces the current list while retaining archived category results. Finalized categories reject further imports/loads. Existing explicit match lists and legacy generated-bracket snapshots remain recoverable, and manual-entry controls keep their original workflow.
+
+## Implementation and Pi limits
+
+New wizard imports send `autoAdvance: true` in the event metadata. Desktop review uses `/api/tournament/import?preview=true`, then commits with `X-SFTS-Import-Digest`. USB review uses `preview: true` alongside `fileName` and `event`, then commits with the returned `digest`. Both require the normal host session and the same bounded file worker. No server-side draft queue or polling timer is added.
+
+Older integrations without `autoAdvance` retain explicit-match-list behavior. The automatic mode updates an ordered, bounded list when a result/load/correction changes; it does not run bracket calculations on the scoring timer. The isolated desktop/Pi workload check can be run with `node tools/backend-benchmark.js --opening-fixture`. Desktop results are not a Pi hardware certification.
