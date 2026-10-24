@@ -10,6 +10,12 @@ data/
 logs/
 *.log
 
+# Generated development tooling and review artifacts
+/work/
+/output/pdf/*-preview.pdf
+/outputs/**/*-preview.png
+/outputs/**/*.inspect.ndjson
+
 # OS and editor files
 .DS_Store
 Thumbs.db
