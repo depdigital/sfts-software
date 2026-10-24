@@ -2,6 +2,8 @@
 
 ## Status
 
+For the current implementation brief and exact SFTS export requirements, use [Tournament fixture software development context](tournament-fixture-development-context.md). The document below preserves the earlier product exploration; its proposed full-graph export fields are not the current opening-fixture import contract.
+
 Planning context only. No fixture-generator or scoreboard-import functionality has been implemented from this document.
 
 ## Competitor Workflow Observed
