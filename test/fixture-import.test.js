@@ -7,6 +7,9 @@ import { fileURLToPath } from 'node:url';
 import WebSocket from 'ws';
 import * as XLSX from 'xlsx';
 import vm from 'node:vm';
+import { createFixtureTemplateSheets } from '../src/fixtureTemplate.js';
+import { createFileJobs } from '../src/fileJobs.js';
+import { readRulesFile } from '../src/rules.js';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dataDir = path.join(projectRoot, 'data', `fixture-import-test-${process.pid}`);
@@ -51,7 +54,17 @@ function waitFor(socket, predicate, timeoutMs = 3000) {
   });
 }
 
-before(async () => {
+async function waitForSnapshot(predicate) {
+  const deadline = Date.now() + 3000;
+  do {
+    const checkpoint = JSON.parse(await readFile(path.join(dataDir, 'sfts-state.json'), 'utf8'));
+    if (predicate(checkpoint)) return checkpoint;
+    await new Promise(resolve => setTimeout(resolve, 20));
+  } while (Date.now() < deadline);
+  assert.fail('The expected tournament checkpoint was not saved');
+}
+
+async function startFixtureServer() {
   server = spawn(process.execPath, ['src/server.js'], {
     cwd: projectRoot,
     env: {
@@ -76,7 +89,9 @@ before(async () => {
     server.stdout.on('data', onData);
     server.stderr.on('data', chunk => { output += String(chunk); });
   });
-});
+}
+
+before(startFixtureServer);
 
 after(async () => {
   for (const socket of clients) socket.close();
@@ -101,10 +116,11 @@ function file(rows, format = 'xlsx') {
   XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet(rows), 'Matches');
   return XLSX.write(book, { type: 'buffer', bookType: format });
 }
-async function upload(token, rows, { format = 'xlsx', metadata = event, preview = false, digest } = {}) {
+async function upload(token, rows, { format = 'xlsx', metadata = event, preview = false, digest, categoryKey } = {}) {
   const headers = { 'Content-Type': 'application/octet-stream', 'X-SFTS-Host-Token': token };
   if (metadata) headers['X-SFTS-Import-Event'] = encodeURIComponent(JSON.stringify(metadata));
   if (digest) headers['X-SFTS-Import-Digest'] = digest;
+  if (categoryKey) headers['X-SFTS-Import-Category'] = categoryKey;
   const response = await fetch(`http://127.0.0.1:${port}/api/tournament/import${preview ? '?preview=true' : ''}`, { method: 'POST', headers, body: file(rows, format) });
   return { status: response.status, body: await response.json() };
 }
@@ -207,7 +223,7 @@ test('import UI displays supplied sides safely, keeps row order and locks match 
     readFile(path.join(projectRoot, 'public/js/app.js'), 'utf8'),
     readFile(path.join(projectRoot, 'public/index.html'), 'utf8')
   ]);
-  for (const id of ['importDivision', 'importGender', 'importWeightCategory']) assert.ok(html.includes(`id="${id}" readonly`));
+  for (const id of ['importDivision', 'importGender', 'importWeightCategory']) assert.ok(html.includes(`<select id="${id}"`));
   const elements = new Map();
   const get = id => {
     if (!elements.has(id)) elements.set(id, { value: '', textContent: '', innerHTML: '' });
@@ -231,9 +247,8 @@ test('import UI displays supplied sides safely, keeps row order and locks match 
   };
   context.renderTournament(fixture);
   context.renderSchedule(fixture);
-  assert.equal(get('importDivision').value, 'SENIOR');
-  assert.equal(get('importGender').value, 'MALE');
-  assert.equal(get('importWeightCategory').value, 'FLYWEIGHT');
+  assert.match(get('importCategorySummary').textContent, /SENIOR.*MALE.*FLYWEIGHT/);
+  assert.match(get('tournamentImportStatus').textContent, /2 MATCHES IN CURRENT CATEGORY/);
   const table = get('scheduleTable').innerHTML;
   assert.ok(table.indexOf('SF-B') < table.indexOf('SF-A'));
   assert.ok(table.includes('&lt;script&gt;Hong&lt;/script&gt;'));
@@ -328,7 +343,7 @@ test('reviewed opening fixture advances locally, corrects winners safely and ret
   host.close();
 });
 
-test('downloaded template runs all four stages with nine competitors and seven automatic BYEs', async () => {
+test('USB template supports multiple categories and runs all four stages with nine competitors and seven automatic BYEs', async () => {
   const host = await connect();
   host.send(JSON.stringify({ type: 'role', role: 'host', accessToken: 'fixture-host-token' }));
   const role = await waitFor(host, msg => msg.type === 'roleAccepted');
@@ -339,12 +354,17 @@ test('downloaded template runs all four stages with nine competitors and seven a
     'X-SFTS-Import-Event': encodeURIComponent(JSON.stringify({ ...event, eventName: 'Template Test Tournament', autoAdvance: true }))
   };
   const download = await fetch(`http://127.0.0.1:${port}/api/tournament/template.xlsx`, { headers });
-  assert.equal(download.status, 200);
-  assert.match(download.headers.get('content-disposition'), /sfts-match-template\.xlsx/);
-  const buffer = Buffer.from(await download.arrayBuffer());
+  assert.equal(download.status, 403, 'template exports are USB-only');
+  const rules = await readRulesFile(path.join(projectRoot, 'config/rules.default.json'));
+  const jobs = createFileJobs();
+  let buffer;
+  try { buffer = Buffer.from(await jobs.run('workbook', { sheets: createFixtureTemplateSheets(rules.tournament.divisions) })); }
+  finally { await jobs.close(); }
   const workbook = XLSX.read(buffer, { type: 'buffer' });
   assert.deepEqual(workbook.SheetNames, ['Matches', 'Categories', 'Instructions']);
-  const rows = XLSX.utils.sheet_to_json(workbook.Sheets.Matches);
+  const allRows = XLSX.utils.sheet_to_json(workbook.Sheets.Matches);
+  assert.equal(allRows.length, 11);
+  const rows = allRows.filter(row => row.Stage === 'PRELIMINARY');
   assert.equal(rows.length, 8);
   const players = new Map(rows.flatMap(row => ['Hong', 'Chung']
     .filter(side => row[`${side} Name`] !== 'BYE')
@@ -363,6 +383,24 @@ test('downloaded template runs all four stages with nine competitors and seven a
   const preview = await previewResponse.json();
   assert.equal(previewResponse.status, 200, JSON.stringify(preview));
   assert.equal(preview.tournament.players.length, 9);
+  const categories = preview.workbook.categories;
+  assert.equal(categories.length, 4);
+  assert.equal(categories.reduce((total, category) => total + category.competitorCount, 0), 15);
+  assert.equal(new Set(categories.map(category => category.event.division)).size, 2);
+  const primaryDivision = categories.filter(category => category.event.division === categories[0].event.division);
+  assert.deepEqual([...new Set(primaryDivision.map(category => category.event.gender))].sort(), ['FEMALE', 'MALE']);
+  const maleCategories = primaryDivision.filter(category => category.event.gender === 'MALE');
+  assert.equal(maleCategories.length, 2, 'the category dropdown has two options within one division and gender');
+  assert.equal(new Set(maleCategories.map(category => category.event.weightCategory || category.event.categoryGroup)).size, 2);
+  for (const category of categories.slice(1)) {
+    assert.equal(category.competitorCount, 2, 'additional categories use the minimum two competitors');
+    assert.equal(category.fixture.schedule.length, 1);
+    assert.equal(category.fixture.schedule[0].stage, 'FINAL');
+    for (const player of category.fixture.players) {
+      assert.doesNotMatch(player.playerName, /Demo Player|\d/i);
+      assert.doesNotMatch(player.club, /Demo Club|\d/i);
+    }
+  }
   assert.equal(preview.tournament.schedule.filter(bout => bout.status === 'BYE').length, 7);
   assert.equal(preview.tournament.schedule.filter(bout => bout.status !== 'BYE').length, 8);
   const startResponse = await fetch(`http://127.0.0.1:${port}/api/tournament/import`, {
@@ -395,5 +433,115 @@ test('downloaded template runs all four stages with nine competitors and seven a
   const archiveResponse = await fetch(`http://127.0.0.1:${port}/api/manual/categories?categoryId=${category.id}`, { headers });
   const archive = await archiveResponse.json();
   assert.equal(archive.records.length, 8, 'BYEs advance without creating scored records');
+  host.close();
+});
+
+test('one workbook preserves interleaved category order, independent progress, finalization and loaded-match recovery', async () => {
+  // Start with a fresh HTTP rate-limit window after the import rejection tests.
+  await waitForSnapshot(snapshot => snapshot.tournament.event?.eventName === 'Template Test Tournament' && snapshot.match.phase === 'MATCH_END' && snapshot.tournament.activeBoutNo === null);
+  await new Promise(resolve => { server.once('exit', resolve); server.kill(); });
+  await startFixtureServer();
+  let host = await connect();
+  host.send(JSON.stringify({ type: 'role', role: 'host', accessToken: 'fixture-host-token' }));
+  let role = await waitFor(host, msg => msg.type === 'roleAccepted');
+  await waitFor(host, msg => msg.type === 'state');
+  const metadata = { ...event, eventName: 'Combined Tournament', autoAdvance: true };
+  const rows = [
+    fixtureRow('Z-SF', 'SEMIFINAL', 'Arjun Sen', 'Rohan Das'),
+    { ...fixtureRow('FINAL-01', 'FINAL', 'Ananya Mitra', 'Meera Sanyal'), Gender: 'FEMALE' },
+    { ...fixtureRow('A-BYE', 'SEMIFINAL', 'Kabir Roy', 'BYE'), 'Chung Club': '', 'Chung State Code': '', 'Chung District': '' },
+    { ...fixtureRow('FINAL-01', 'FINAL', 'Ishaan Ghosh', 'Vivaan Dutta', 'FINWEIGHT'), Division: 'JUNIOR' }
+  ];
+  const reviewed = await upload(role.hostToken, rows, { metadata, preview: true });
+  assert.equal(reviewed.status, 200, JSON.stringify(reviewed.body));
+  const workbook = reviewed.body.workbook;
+  assert.equal(workbook.categories.length, 3);
+  const [seniorMale, seniorFemale, juniorMale] = workbook.categories;
+  assert.deepEqual(seniorMale.fixture.schedule.slice(0, 2).map(bout => bout.officialBoutNo), ['Z-SF', 'A-BYE']);
+  assert.equal(seniorMale.fixture.schedule[2].BLUE.playerName, 'Kabir Roy');
+  assert.equal(seniorFemale.fixture.schedule[0].officialBoutNo, juniorMale.fixture.schedule[0].officialBoutNo, 'bout references are scoped to their category');
+  const commit = await upload(role.hostToken, rows, { metadata, digest: reviewed.body.tournament.sourceDigest, categoryKey: juniorMale.key });
+  assert.equal(commit.status, 200, JSON.stringify(commit.body));
+  assert.equal(commit.body.tournament.event.division, 'JUNIOR');
+  assert.equal(commit.body.workbook.selectedKey, juniorMale.key);
+  const switchCategory = async (key, workbookId = workbook.sourceDigest) => {
+    const response = await fetch(`http://127.0.0.1:${port}/api/tournament/category`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-SFTS-Host-Token': role.hostToken },
+      body: JSON.stringify({ workbookId, categoryKey: key })
+    });
+    return { status: response.status, body: await response.json() };
+  };
+  assert.equal((await switchCategory(seniorMale.key, 'stale-file')).status, 404);
+  assert.equal((await switchCategory('unknown-category')).status, 404);
+  const malformed = await upload(role.hostToken, [...rows, fixtureRow('EXTRA', 'SEMIFINAL', 'Extra Athlete', 'Other Athlete')], { metadata, preview: true });
+  assert.equal(malformed.status, 400, 'an invalid category rejects the complete workbook');
+  host.messages.length = 0;
+  const action = (action, details = {}) => host.send(JSON.stringify({ type: 'host', action, ...details }));
+  const selected = await switchCategory(seniorMale.key);
+  assert.equal(selected.status, 200);
+  assert.equal(selected.body.tournament.schedule[0].RED.playerName, 'Arjun Sen');
+  action('loadBout', { boutNo: 1 });
+  await waitFor(host, msg => msg.type === 'state' && msg.tournament.activeBoutNo === 1 && msg.match.red.playerName === 'Arjun Sen');
+  assert.equal((await switchCategory(seniorFemale.key)).status, 409, 'a loaded match blocks category switching');
+  assert.equal((await upload(role.hostToken, rows, { metadata, preview: true })).status, 409);
+  action('manualMatchDecision', { player: 'BLUE', decision: 'RSC' });
+  await waitFor(host, msg => msg.type === 'matchEnd');
+  const semifinal = await waitFor(host, msg => msg.type === 'state' && msg.tournament.schedule[0].status === 'COMPLETED');
+  const unfinishedId = semifinal.tournament.categoryId;
+  assert.equal(semifinal.tournament.schedule[2].RED.playerName, 'Rohan Das');
+  assert.equal(semifinal.tournament.schedule[2].BLUE.playerName, 'Kabir Roy');
+  assert.equal((await switchCategory(seniorFemale.key)).status, 200);
+  host.messages.length = 0;
+  action('loadBout', { boutNo: 1 });
+  await waitFor(host, msg => msg.type === 'state' && msg.match.red.playerName === 'Ananya Mitra' && msg.tournament.activeBoutNo === 1);
+  action('manualMatchDecision', { player: 'RED', decision: 'RSC' });
+  await waitFor(host, msg => msg.type === 'matchEnd');
+  const femaleFinal = await waitFor(host, msg => msg.type === 'state' && msg.tournament.schedule[0].status === 'COMPLETED');
+  const femaleCategory = femaleFinal.manualCompetition.categories.find(item => item.id === femaleFinal.tournament.categoryId);
+  action('saveManualCategoryPlacements', { categoryId: femaleCategory.id, placements: Object.fromEntries(Object.entries(femaleCategory.placements).map(([key, player]) => [key, player?.key || ''])), finalize: true });
+  await waitFor(host, msg => msg.type === 'state' && msg.fixtureWorkbook.categories.find(item => item.key === seniorFemale.key).status === 'FINALIZED');
+  assert.equal((await switchCategory(juniorMale.key)).status, 200);
+  host.messages.length = 0;
+  action('saveManualCategoryPlacements', { categoryId: unfinishedId, placements: {}, finalize: true });
+  assert.equal((await waitFor(host, msg => msg.type === 'error')).code, 'CATEGORY_IN_PROGRESS', 'inactive incomplete categories also reject finalization');
+  action('loadBout', { boutNo: 1 });
+  await waitFor(host, msg => msg.type === 'state' && msg.match.red.playerName === 'Ishaan Ghosh' && msg.tournament.activeBoutNo === 1);
+  const checkpoint = await waitForSnapshot(snapshot => snapshot.importedWorkbook?.selectedKey === juniorMale.key && snapshot.tournament.activeBoutNo === 1);
+  assert.equal(checkpoint.importedWorkbook.categories.length, 3);
+  assert.equal(checkpoint.tournament.activeBoutNo, 1);
+  host.close();
+  await new Promise(resolve => { server.once('exit', resolve); server.kill(); });
+  await startFixtureServer();
+  host = await connect();
+  host.send(JSON.stringify({ type: 'role', role: 'host', accessToken: 'fixture-host-token' }));
+  role = await waitFor(host, msg => msg.type === 'roleAccepted');
+  const restored = await waitFor(host, msg => msg.type === 'state');
+  assert.equal(restored.fixtureWorkbook.categories.length, 3);
+  assert.equal(restored.fixtureWorkbook.selectedKey, juniorMale.key);
+  assert.equal(restored.tournament.activeBoutNo, 1);
+  assert.equal(restored.match.red.playerName, 'Ishaan Ghosh');
+  assert.equal(restored.match.running, false);
+  assert.equal(restored.fixtureWorkbook.categories.find(item => item.key === seniorFemale.key).status, 'FINALIZED');
+  assert.equal((await switchCategory(seniorMale.key)).status, 409);
+  action('resetMatch');
+  await waitFor(host, msg => msg.type === 'state' && msg.tournament.activeBoutNo === null);
+  const resumed = await switchCategory(seniorMale.key);
+  assert.equal(resumed.status, 200);
+  assert.equal(resumed.body.tournament.schedule[0].status, 'COMPLETED');
+  assert.equal(resumed.body.tournament.schedule[2].RED.playerName, 'Rohan Das');
+  assert.equal(resumed.body.tournament.schedule[2].BLUE.playerName, 'Kabir Roy');
+  host.messages.length = 0;
+  action('loadBout', { boutNo: 3 });
+  await waitFor(host, msg => msg.type === 'state' && msg.tournament.activeBoutNo === 3);
+  action('manualMatchDecision', { player: 'BLUE', decision: 'RSC' });
+  await waitFor(host, msg => msg.type === 'matchEnd');
+  const completed = await waitFor(host, msg => msg.type === 'state' && msg.tournament.schedule[2].status === 'COMPLETED');
+  assert.equal(completed.manualCompetition.categories.find(item => item.id === unfinishedId).placements.gold.playerName, 'Kabir Roy');
+  const finalized = await switchCategory(seniorFemale.key);
+  assert.equal(finalized.status, 200);
+  assert.equal(finalized.body.tournament.schedule[0].status, 'COMPLETED');
+  const reimport = await upload(role.hostToken, rows, { metadata, preview: true });
+  assert.equal(reimport.status, 200, JSON.stringify(reimport.body));
+  assert.equal(reimport.body.workbook.categories.find(item => item.key === seniorFemale.key).status, 'FINALIZED');
   host.close();
 });

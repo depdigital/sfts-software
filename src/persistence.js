@@ -1,6 +1,7 @@
 import { copyFile, mkdir, open, readFile, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { validFixtureGraph } from './fixtureProgression.js';
+import { MAX_WORKBOOK_ROWS, MAX_WORKBOOK_CATEGORIES } from './fixtureImport.js';
 
 const SNAPSHOT_VERSION = 1;
 const DEFAULT_SAVE_DELAY_MS = 250;
@@ -124,12 +125,27 @@ function isTournament(value) {
   return value.activeBoutNo === null || (isNonNegativeInteger(value.activeBoutNo) && value.activeBoutNo > 0);
 }
 
+function isFixtureWorkbook(value, tournament) {
+  if (value == null) return true;
+  if (!isObject(value) || value.version !== 1 || !/^[a-f0-9]{64}$/.test(value.sourceDigest) || !Array.isArray(value.categories) || !value.categories.length || value.categories.length > MAX_WORKBOOK_CATEGORIES) return false;
+  const keys = new Set();
+  let openingRows = 0;
+  for (const item of value.categories) {
+    if (!isObject(item) || typeof item.key !== 'string' || !/^[a-f0-9]{64}$/.test(item.key) || keys.has(item.key) || item.fixture?.progressionMode !== 'OPENING_FIXTURE' || !isTournament(item.fixture) || item.fixture.sourceDigest !== value.sourceDigest || (item.key !== value.selectedKey && item.fixture.activeBoutNo !== null)) return false;
+    if (!['eventName', 'eventDate', 'venue', 'arenaNumber', 'competition'].every(key => item.fixture.event[key] === tournament.event[key])) return false;
+    keys.add(item.key);
+    openingRows += item.fixture.openingBoutCount;
+  }
+  const selected = value.categories.find(item => item.key === value.selectedKey);
+  return openingRows <= MAX_WORKBOOK_ROWS && Boolean(selected) && JSON.stringify(selected.fixture) === JSON.stringify(tournament);
+}
+
 function isSnapshot(value) {
   return Boolean(
     isObject(value) && value.version === SNAPSHOT_VERSION && typeof value.savedAt === 'string' &&
     (!Object.prototype.hasOwnProperty.call(value, 'arenaNumber') || typeof value.arenaNumber === 'string') &&
     (!Object.prototype.hasOwnProperty.call(value, 'cleanShutdown') || typeof value.cleanShutdown === 'boolean') &&
-    isMatch(value.match) && Array.isArray(value.matchHistory) && isTournament(value.tournament) &&
+    isMatch(value.match) && Array.isArray(value.matchHistory) && isTournament(value.tournament) && isFixtureWorkbook(value.importedWorkbook, value.tournament) &&
     (!Object.prototype.hasOwnProperty.call(value, 'manualCompetition') || (
       isObject(value.manualCompetition) && Array.isArray(value.manualCompetition.categories)
     )) && (!Object.prototype.hasOwnProperty.call(value, 'manualMatchRecords') || Array.isArray(value.manualMatchRecords))

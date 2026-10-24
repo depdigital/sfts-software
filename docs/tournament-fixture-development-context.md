@@ -13,7 +13,7 @@ This brief describes the implemented SFTS opening-fixture contract and a propose
 | Generate the draw using the selected, documented tournament policies. | Preserve imported opponents, sides, BYEs and row order. |
 | Assign opening Hong/Red and Chung/Blue positions. | Load and score bouts in bracket order. |
 | Show the full projected bracket for organizer review. | Advance actual winners and BYEs without a redraw. |
-| Approve and export one opening-fixture file per category. | Generate later-round bouts, track placements and retain results. |
+| Approve and export one tournament file containing every category's opening positions. | Offer division, gender and category selection, retain each bracket's progress, and generate later-round bouts and placements. |
 
 The fixture application may display the entire bracket with future winner references. Its SFTS export contains only the opening positions, including BYE rows. SFTS does not need to reconnect to the fixture application between rounds.
 
@@ -25,20 +25,20 @@ The fixture application may display the entire bracket with future winner refere
 4. Separate regular `KYORUGI` and `FRESHER KYORUGI` entries. Group within each competition by division, gender and category.
 5. Select draw policies and generate a bracket for each contested category.
 6. Review opponents, sides, seeds, BYEs and any unmet separation preferences. Allow manual adjustments before approval.
-7. Approve the draw and export its SFTS workbook. Store the approved revision and export for later reference.
-8. In SFTS, enter the matching event details, choose the file, review the bracket and confirm the category. Score and continue locally through the final.
+7. Approve the draws and export one SFTS workbook containing all categories for the selected competition. Store the approved revision and export for later reference.
+8. In SFTS, enter the event details manually, import the file, choose Division → Gender → Category, review the bracket and confirm it. Score locally through the final, or select another stored category without importing again.
 
 ## Current compatibility requirements
 
 - Initial format: single elimination, with two bronze placements derived from semifinal losers in SFTS. Other tournament formats need separate future support.
-- One exported file represents one competition, division, gender and weight category or group. Do not mix categories on the import worksheet.
+- One exported file represents one manually selected competition and may contain multiple divisions, genders and weight categories or groups on its first worksheet. Repeat the category fields on every row. SFTS groups rows by division, gender and weight category/group while preserving each group's row order.
 - Export `.xlsx` as the primary format. SFTS also accepts `.xls` and `.csv`.
 - The first worksheet must contain the import table. Use `Matches` as its name and put the column headers in row 1, without title rows above them.
 - The established template also has `Categories` and `Instructions` worksheets after `Matches`. SFTS reads only the first worksheet. Any additional sheets are reference material.
-- Export only opening positions. Each athlete appears exactly once. Do not include later-round placeholders or repeat athletes in future bouts.
+- Export only opening positions. Each athlete appears exactly once within its category. Do not include later-round placeholders or repeat athletes in future bouts.
 - Row order determines bracket connections. Bout numbers are references, not sorting instructions. Never alphabetically or numerically re-sort approved export rows.
 - Hong means Red. Chung means Blue. SFTS uses the supplied assignments without randomization.
-- Limits: 512 athletes, 256 opening rows including BYEs, 511 total bracket nodes and a 4 MB source file.
+- Limits per file: 128 categories, 4096 opening rows and 4 MB. Limits per category: 512 athletes, 256 opening rows including BYEs and 511 total bracket nodes.
 - Categories with zero or one athlete must be handled separately in the fixture application. The current scored-category import requires at least two actual competitors and does not accept a single-entry medal allocation.
 
 ## Category and event data
@@ -47,9 +47,9 @@ Use category definitions from the same active SFTS rulepack. The current templat
 
 For a weight division, export the rulepack's category name in `Weight Category` and leave `Group` blank. For a group division, export its rulepack group name in `Group` and leave `Weight Category` blank. Do not invent categories or assume weight limits are identical across genders. Normalize imported affiliation aliases for draw comparisons while preserving the approved display name.
 
-Tournament name, date, venue, arena and competition are entered separately in SFTS. Putting them on a second sheet does not populate the Event card. Supply the operator with these details alongside each export, especially the competition type, because it is not a column in the current import table.
+Tournament name, date, venue, arena and competition are entered manually in SFTS and apply to all categories in the workbook. Putting them on a second sheet does not populate the Event card. Supply the operator with these details alongside the export, especially the competition type, because it is not a column in the current import table.
 
-Use a valid date in `YYYY-MM-DD` format and an arena number from `1` to `999`. SFTS supports `KYORUGI` and `FRESHER KYORUGI` as separate competitions. Keep their athletes and exported category files separate.
+Use a valid date in `YYYY-MM-DD` format and an arena number from `1` to `999`. SFTS supports `KYORUGI` and `FRESHER KYORUGI` as separate competitions. Keep these in separate tournament files because competition remains a manual event setting.
 
 ## Exact export columns
 
@@ -57,8 +57,8 @@ Use all 14 headers below in this order. Keep bout identifiers as text so spreads
 
 | Column | Content |
 | --- | --- |
-| Bout Number | Required, unique within the file, at most 40 characters. Duplicate comparison is case-insensitive. |
-| Stage | Same opening stage on every row, including BYE rows. See the size table below. |
+| Bout Number | Required, unique within its category, at most 40 characters. Duplicate comparison is case-insensitive. |
+| Stage | Same opening stage on every row within its category, including BYE rows. See the size table below. |
 | Division | Valid active-rulepack division ID or display label. Repeat on every row. |
 | Gender | Use `MALE` or `FEMALE`. Repeat on every row. |
 | Weight Category | Required for weight divisions; otherwise blank. Repeat the category on every row. |
@@ -130,7 +130,7 @@ SM-FLY-P07,PRELIMINARY,SENIOR,MALE,FLYWEIGHT,,Dhruv Pal,Riverfront Martial Arts,
 SM-FLY-P08,PRELIMINARY,SENIOR,MALE,FLYWEIGHT,,Aditya Saha,Summit Taekwondo,WB,Nadia,BYE,,,
 ```
 
-Here, the first quarterfinal is the winner of Arjun/Rohan versus Kabir. The second is Ishaan versus Vivaan, the third is Aarav versus Neel, and the fourth is Dhruv versus Aditya. The generator chooses these positions before export; SFTS does not redraw them.
+Here, the first quarterfinal is the winner of Arjun/Rohan versus Kabir. The second is Ishaan versus Vivaan, the third is Aarav versus Neel, and the fourth is Dhruv versus Aditya. The generator chooses these positions before export; SFTS does not redraw them. Add other categories' opening rows under the same headers to build a combined tournament file. With the default rulepack, the USB template adds three two-player finals: another category under the same division and gender, a female category within that division, and a male category in another division. Its 15 fictional players across four categories exercise all three selectors independently while retaining the full-round/BYE test.
 
 ## Draw policies to define in the fixture application
 
@@ -160,34 +160,39 @@ Maintain source-bout links internally to render the full bracket. The export ada
 
 ## Import lifecycle and integration boundaries
 
-SFTS currently runs one imported category at a time. Importing another category replaces the active fixture while retaining archived category results. The workbook is not a multi-arena event scheduler.
+SFTS runs one selected category at a time and retains all imported categories on the server. Dependent division, gender and category dropdowns let the operator review and start or continue a category without rereading the file. Completed and finalized categories remain available for results review. Finish or reset any loaded or underway match before switching categories. Restart retains every category's progress and pauses the selected loaded match. The workbook is not a multi-arena event scheduler.
 
-The built-in Data Import wizard uses `autoAdvance: true`, previews the file, then confirms it with a file/event digest. A draw stops advancement until a winner is decided. Results can be corrected only while the category is open and dependent matches have not been loaded or completed. Finalized categories reject further imports.
+The built-in Data Import wizard uses `autoAdvance: true`, validates and previews the complete file, then confirms it with a file/event digest and the selected category key. A draw stops advancement until a winner is decided. Results can be corrected only while the category is open and dependent matches have not been loaded or completed. Finalized categories remain in combined files when their recorded matches agree, but reject additional scoring. Invalid categories reject the entire file before it replaces the stored tournament.
+
+Template export is USB-only through **SAVE TEMPLATE TO USB** on the Event card. There is no browser template download.
 
 Initial delivery can use workbook export and manual import, without a live API connection. If direct upload is added later, use the existing host-authenticated preview/commit flow:
 
 1. POST the file bytes to `/api/tournament/import?preview=true` with `X-SFTS-Host-Token` and `X-SFTS-Import-Event`. The latter is a URI-encoded JSON object with `eventName`, `eventDate`, `venue`, `arenaNumber`, `competition` and `autoAdvance: true`.
 2. Show the returned fixture for operator review.
-3. POST the same file and metadata to `/api/tournament/import`, adding `X-SFTS-Import-Digest` from the preview's `tournament.sourceDigest`.
+3. POST the same file and metadata to `/api/tournament/import`, adding `X-SFTS-Import-Digest` from the preview's `tournament.sourceDigest` and `X-SFTS-Import-Category` from the selected `workbook.categories[].key`.
+
+The preview's `workbook.categories` contains every category's fixture for review. After commit, responses provide small category summaries. Stored categories can be reviewed with `GET /api/tournament/category/:key?workbookId=...` and activated with `POST /api/tournament/category` using `workbookId` (the workbook source digest) and `categoryKey`. Both require the host token; selection is rejected if the workbook changed or a match is busy. Full WebSocket states include `fixtureWorkbook` summaries and only the active full fixture.
 
 Changing the file or event details requires a fresh preview. Omitting `autoAdvance: true` invokes the older explicit-match-list behavior and is unsuitable for this opening-fixture workflow. USB-only deployments use SFTS's USB import flow instead of desktop file upload. No automatic results synchronization back to the fixture application is established by this contract.
 
 ## Acceptance criteria for the first release
 
-1. An approved draw exports one compatible file per contested category, with valid rulepack values and all 14 headers.
+1. Approved draws export one compatible tournament file containing all contested categories for a competition, with valid rulepack values and all 14 headers.
 2. Every athlete appears exactly once; opponents, colors and BYEs in the file match the reviewed bracket.
 3. Re-exporting an approved revision preserves opponents, references, sides and row order.
 4. Test categories with 2, 3, 5, 8, 9, 16 and 17 athletes produce the correct opening stage, BYE count and progression. Exercise both Hong-side and Chung-side BYEs.
 5. The nine-athlete example imports into SFTS, progresses through all four stages, and produces eight scored records and the expected finalists and semifinal losers.
-6. Duplicate athletes, duplicate bout references, mixed categories, invalid categories, empty-versus-empty rows and non-power-of-two opening row counts are blocked before export.
+6. Duplicate athletes or duplicate bout references within a category, invalid categories, empty-versus-empty rows and non-power-of-two category opening row counts are blocked before export. Different categories may reuse bout references.
 7. Commas and other ordinary characters in names and clubs survive spreadsheet export/import correctly. Length limits and optional location fields follow the current contract.
 8. Zero/single-entry categories are clearly separated from scored-category exports.
 9. The projected bracket agrees with SFTS for both Hong and Chung winners. Changing opening row order changes the projected future opponents visibly before approval.
 10. The application stores approved revisions and makes it clear that changing an already scored draw is not a normal export update.
+11. A combined file with interleaved category rows retains each bracket's order. Operators can switch between unfinished categories and resume their next bouts, and a restart retains active and inactive progress and finalized results.
 
 ## Context to give a coding assistant
 
-> Build a separate Taekwondo tournament fixture application compatible with the existing SFTS scoring software. Follow this document's current import contract. The fixture application owns participant registration, category grouping, draw policies, opening opponents, Hong/Red and Chung/Blue assignments, BYEs, review and draw approval. Export one XLSX file per category with Matches as the first worksheet, the exact 14 headers, and only the ordered opening positions. SFTS builds later rounds by pairing adjacent row winners and continues scoring locally. Preserve approved pairings and row order on every export. Keep the internal bracket model structured with stable IDs, reproducible draw seeds and revisions. Start with single elimination; treat unconfirmed draw policies as configurable product decisions. Do not implement a full-graph SFTS import, automatic results synchronization or single-entry scored bouts without an explicit contract extension. Validate the nine-athlete, seven-BYE example end to end.
+> Build a separate Taekwondo tournament fixture application compatible with the existing SFTS scoring software. Follow this document's current import contract. The fixture application owns participant registration, category grouping, draw policies, opening opponents, Hong/Red and Chung/Blue assignments, BYEs, review and draw approval. Export one XLSX tournament file per competition, containing all divisions, genders and categories, with Matches as the first worksheet, the exact 14 headers, and only each category's ordered opening positions. SFTS keeps event details manual, groups rows into selectable categories, pairs adjacent winners within each category and continues scoring locally. Preserve approved pairings and row order on every export. Keep the internal bracket model structured with stable IDs, reproducible draw seeds and revisions. Start with single elimination; treat unconfirmed draw policies as configurable product decisions. Do not implement a full-graph SFTS import, automatic results synchronization or single-entry scored bouts without an explicit contract extension. Validate the nine-athlete, seven-BYE example and multi-category selection, switching and recovery end to end.
 
 ## Repository references
 

@@ -1,6 +1,7 @@
 import { parentPort } from 'node:worker_threads';
 import { createRequire } from 'node:module';
 import { inflateRawSync } from 'node:zlib';
+import { MAX_WORKBOOK_ROWS } from './fixtureImport.js';
 
 const require = createRequire(import.meta.url);
 const MAX_INPUT_BYTES = 4 * 1024 * 1024;
@@ -71,7 +72,7 @@ async function execute(type, data) {
     checkContainer(buffer);
     const workbook = XLSX.read(buffer, {
       type: 'buffer', cellFormula: false, cellNF: false, cellStyles: false,
-      bookVBA: false, dense: true, sheets: 0, sheetRows: 502
+      bookVBA: false, dense: true, sheets: 0, sheetRows: MAX_WORKBOOK_ROWS + 2
     });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     if (!sheet) throw new Error('The workbook does not contain a worksheet');

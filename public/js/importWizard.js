@@ -2,6 +2,87 @@ let importWizardStep = 0;
 let pendingImportReview = null;
 let importRequestBusy = false;
 let pendingImportedLoad = null;
+let selectedImportCategoryKey = '';
+let importSelectionSequence = 0;
+const importSelectorMarkup = new Map();
+
+function importSelectionLocked() {
+  return Boolean(importRequestBusy || pendingImportedLoad || lastTournament?.activeBoutNo ||
+    (lastState && lastState.phase !== 'MATCH_END' && (lastState.running || lastState.roundStarted ||
+      lastState.phase === 'BREAK' || lastState.phase === 'TIE_DECISION' || lastState.test?.active ||
+      lastState.red?.score || lastState.blue?.score || lastState.red?.gamjeom || lastState.blue?.gamjeom ||
+      lastState.roundHistory?.length || lastState.kyeShi?.running || lastState.kyeShi?.elapsedMs)));
+}
+
+function importCategoryEntries() {
+  const workbook = pendingImportReview?.workbook || lastFixtureWorkbook;
+  if (workbook) return workbook.categories;
+  const fixture = pendingImportReview?.fixture || lastTournament;
+  return fixture?.event ? [{ key: 'single', event: fixture.event, fixture, status: '' }] : [];
+}
+
+function renderImportCategorySelectors() {
+  const entries = importCategoryEntries();
+  $('importCategoryPicker').classList.toggle('hidden', !entries.length || importWizardStep < 2);
+  if (!entries.length) return;
+  const selected = entries.find(item => item.key === selectedImportCategoryKey) || entries[0];
+  selectedImportCategoryKey = selected.key;
+  const fill = (id, items, value) => {
+    const markup = items.map(([key, label]) => `<option value="${escapeHtml(key)}">${escapeHtml(label)}</option>`).join('');
+    if (importSelectorMarkup.get(id) !== markup) {
+      $(id).innerHTML = markup;
+      importSelectorMarkup.set(id, markup);
+    }
+    if ($(id).value !== value) $(id).value = value;
+    $(id).disabled = importSelectionLocked();
+  };
+  const divisions = [...new Map(entries.map(item => [item.event.division, item.event.divisionLabel || item.event.division]))];
+  const divisionEntries = entries.filter(item => item.event.division === selected.event.division);
+  const genders = [...new Set(divisionEntries.map(item => item.event.gender))].map(value => [value, value]);
+  const categories = divisionEntries.filter(item => item.event.gender === selected.event.gender).map(item => [item.key,
+    `${item.event.categoryGroup || item.event.weightCategory}${item.status ? ' · ' + item.status : ''}`]);
+  fill('importDivision', divisions, selected.event.division);
+  fill('importGender', genders, selected.event.gender);
+  fill('importWeightCategory', categories, selected.key);
+  $('importCategoryLabel').textContent = selected.event.categoryGroup ? 'CATEGORY GROUP' : 'WEIGHT CATEGORY';
+  $('importWorkbookSummary').textContent = `${entries.length} ${entries.length === 1 ? 'category' : 'categories'} available. Select a division, gender and category to review or continue.`;
+  $('importCategoryLockHint').classList.toggle('hidden', !importSelectionLocked());
+}
+
+async function changeImportCategory(level) {
+  if (importSelectionLocked()) { renderImportCategorySelectors(); return; }
+  const previousSelection = selectedImportCategoryKey;
+  const entries = importCategoryEntries();
+  const selected = level === 'category'
+    ? entries.find(item => item.key === $('importWeightCategory').value)
+    : entries.find(item => item.event.division === $('importDivision').value && (level === 'division' || item.event.gender === $('importGender').value));
+  if (!selected) return;
+  selectedImportCategoryKey = selected.key;
+  if (pendingImportReview && !pendingImportReview.existing) {
+    pendingImportReview.fixture = selected.fixture;
+    setImportStep(2);
+    return;
+  }
+  if (!lastFixtureWorkbook) return;
+  const sequence = ++importSelectionSequence;
+  const workbookId = lastFixtureWorkbook.sourceDigest;
+  importRequestBusy = true;
+  importWizardError();
+  renderImportWizard();
+  try {
+    const response = await fetch(`/api/tournament/category/${encodeURIComponent(selected.key)}?workbookId=${encodeURIComponent(workbookId)}`, {
+      headers: { 'X-SFTS-Host-Token': hostToken }
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.message || 'COULD NOT REVIEW CATEGORY');
+    if (sequence !== importSelectionSequence || lastFixtureWorkbook?.sourceDigest !== workbookId) return;
+    pendingImportReview = { existing: true, fixture: result.tournament, workbook: result.workbook };
+    setImportStep(2);
+  } catch (error) {
+    selectedImportCategoryKey = previousSelection;
+    importWizardError(error.message);
+  } finally { importRequestBusy = false; renderImportWizard(); }
+}
 
 function importWizardError(message = '') {
   const node = document.getElementById('importWizardError');
@@ -32,12 +113,16 @@ function importEventNext() {
 
 function resumeImportedCategory() {
   pendingImportReview = null;
+  selectedImportCategoryKey = lastFixtureWorkbook?.selectedKey || '';
   setImportStep(lastTournament?.schedule?.every(bout => ['COMPLETED', 'BYE'].includes(bout.status)) ? 4 : 3);
 }
 
 function prepareAnotherCategory() {
-  pendingImportReview = null;
-  setImportStep(0);
+  if (importSelectionLocked()) { importWizardError('Finish or reset the current match before switching categories.'); return; }
+  if (!lastFixtureWorkbook) { pendingImportReview = null; setImportStep(0); return; }
+  selectedImportCategoryKey = lastFixtureWorkbook.selectedKey;
+  pendingImportReview = { existing: true, fixture: lastTournament, workbook: lastFixtureWorkbook };
+  setImportStep(2);
 }
 
 function importPlayerCard(player, label) {
@@ -56,14 +141,14 @@ function renderImportWizard() {
     else marker.removeAttribute('aria-current');
   }
   $('importResumeButton').classList.toggle('hidden', !lastTournament?.event);
-  $('importStartButton').disabled = importRequestBusy || !pendingImportReview;
+  renderImportCategorySelectors();
+  $('importStartButton').disabled = importSelectionLocked() || !pendingImportReview;
+  const reviewedComplete = pendingImportReview?.fixture.schedule.every(bout => ['COMPLETED', 'BYE'].includes(bout.status));
+  const reviewedStarted = pendingImportReview?.fixture.schedule.some(bout => ['COMPLETED', 'TIE_PENDING'].includes(bout.status));
+  $('importStartButton').textContent = reviewedComplete ? 'VIEW CATEGORY RESULTS' : reviewedStarted ? 'CONTINUE CATEGORY' : pendingImportReview?.existing ? 'START CATEGORY' : 'CONFIRM & START CATEGORY';
   if (pendingImportReview) {
     const fixture = pendingImportReview.fixture;
     const event = fixture.event;
-    $('importDivision').value = event.divisionLabel || event.division;
-    $('importGender').value = event.gender;
-    $('importWeightCategory').value = event.categoryGroup || event.weightCategory;
-    $('importCategoryLabel').textContent = event.categoryGroup ? 'CATEGORY GROUP' : 'WEIGHT CATEGORY';
     $('importCategorySummary').textContent = `${event.eventName} · ${event.eventDate} · ${event.venue} · ARENA ${event.arenaNumber} · ${event.competition}`;
     const opening = fixture.schedule.slice(0, fixture.openingBoutCount);
     $('importReviewSummary').textContent = `${fixture.players.length} competitors · ${opening.filter(bout => bout.status === 'BYE').length} BYEs · ${fixture.schedule.filter(bout => bout.status !== 'BYE').length} matches through the final`;
@@ -111,25 +196,26 @@ async function correctImportedResult(winner) {
   send({ type: 'host', action: 'correctImportedWinner', boutNo: bout.boutNo, winner });
 }
 
-async function requestFixtureImport(source, event, preview, digest) {
+async function requestFixtureImport(source, event, preview, digest, categoryKey) {
   const headers = { 'X-SFTS-Host-Token': hostToken };
   let url;
   let body;
   if (source.fileName) {
     url = '/api/usb/import';
     headers['Content-Type'] = 'application/json';
-    body = JSON.stringify({ fileName: source.fileName, event, preview, digest });
+    body = JSON.stringify({ fileName: source.fileName, event, preview, digest, categoryKey });
   } else {
     url = `/api/tournament/import${preview ? '?preview=true' : ''}`;
     headers['Content-Type'] = source.file.type || 'application/octet-stream';
     headers['X-SFTS-Import-Event'] = encodeURIComponent(JSON.stringify(event));
     if (digest) headers['X-SFTS-Import-Digest'] = digest;
+    if (categoryKey) headers['X-SFTS-Import-Category'] = categoryKey;
     body = source.file;
   }
   const response = await fetch(url, { method: 'POST', headers, body });
   const result = await response.json();
   if (!response.ok || !result.ok) throw new Error(`${result.message || 'FIXTURE IMPORT FAILED'}${result.errors?.length ? ': ' + result.errors.join('; ') : ''}`);
-  return result.tournament;
+  return result;
 }
 
 async function reviewImportFile(source) {
@@ -138,30 +224,43 @@ async function reviewImportFile(source) {
   const event = importEventDetails();
   if (!event) return;
   importRequestBusy = true;
+  pendingImportReview = null;
   importWizardError();
-  $('tournamentImportStatus').textContent = 'READING OPENING FIXTURE…';
+  $('tournamentImportStatus').textContent = 'READING TOURNAMENT FILE…';
   try {
-    const fixture = await requestFixtureImport(source, event, true);
-    pendingImportReview = { source, event, fixture };
+    const result = await requestFixtureImport(source, event, true);
+    pendingImportReview = { source, event, fixture: result.tournament, workbook: result.workbook || null };
+    selectedImportCategoryKey = result.workbook?.selectedKey || 'single';
     setImportStep(2);
   } catch (error) { importWizardError(error.message); }
   finally { importRequestBusy = false; renderImportWizard(); }
 }
 
 async function startImportedCategory() {
-  if (importRequestBusy || !pendingImportReview) return;
+  if (importSelectionLocked() || !pendingImportReview) return;
   const review = pendingImportReview;
-  if (JSON.stringify(importEventDetails()) !== JSON.stringify(review.event)) {
+  if (!review.existing && JSON.stringify(importEventDetails()) !== JSON.stringify(review.event)) {
     importWizardError('Event details changed. Go back and review the file again.');
     return;
   }
   importRequestBusy = true;
   renderImportWizard();
   try {
-    lastTournament = await requestFixtureImport(review.source, review.event, false, review.fixture.sourceDigest);
+    let result;
+    if (review.existing) {
+      const response = await fetch('/api/tournament/category', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-SFTS-Host-Token': hostToken },
+        body: JSON.stringify({ workbookId: review.workbook.sourceDigest, categoryKey: selectedImportCategoryKey })
+      });
+      result = await response.json();
+      if (!response.ok || !result.ok) throw new Error(result.message || 'COULD NOT SELECT CATEGORY');
+    } else result = await requestFixtureImport(review.source, review.event, false, review.fixture.sourceDigest, review.workbook ? selectedImportCategoryKey : undefined);
+    lastTournament = result.tournament;
+    lastFixtureWorkbook = result.workbook || null;
     pendingImportReview = null;
     renderTournament(lastTournament);
-    setImportStep(3);
+    selectedImportCategoryKey = lastFixtureWorkbook?.selectedKey || 'single';
+    setImportStep(lastTournament.schedule.every(bout => ['COMPLETED', 'BYE'].includes(bout.status)) ? 4 : 3);
   } catch (error) { importWizardError(error.message); }
   finally { importRequestBusy = false; renderImportWizard(); }
 }
@@ -184,6 +283,12 @@ function returnToImportedScoreboard() {
 }
 
 function handleImportedState(match) {
+  if (pendingImportReview?.existing && pendingImportReview.workbook.sourceDigest !== lastFixtureWorkbook?.sourceDigest) {
+    pendingImportReview = null;
+    selectedImportCategoryKey = lastFixtureWorkbook?.selectedKey || '';
+    importSelectionSequence += 1;
+    setImportStep(lastTournament?.event ? 3 : 0);
+  }
   if (pendingImportedLoad && match.manualBout?.importedBoutNo === pendingImportedLoad && lastTournament?.activeBoutNo === pendingImportedLoad) {
     pendingImportedLoad = null;
     returnToImportedScoreboard();

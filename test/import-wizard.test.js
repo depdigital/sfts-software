@@ -48,7 +48,7 @@ async function wizard() {
   const requests = [], actions = [], openings = [];
   const context = vm.createContext({
     $: get, document: { getElementById: get }, hostToken: 'host-session', ws: { readyState: 1 }, usbImportOnly: false,
-    lastTournament: {}, lastManualCompetition: { categories: [] }, lastState: null,
+    lastTournament: {}, lastFixtureWorkbook: null, lastManualCompetition: { categories: [] }, lastState: null,
     send: action => actions.push(action), toast() {}, refreshUsbFiles() {},
     requestUserPermission: async () => true,
     renderTournament() {}, closeMatchDecision() {},
@@ -76,7 +76,8 @@ function visibleSteps(get) {
 test('decision cards validate the event and show one step at a time', async () => {
   const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
   const eventCard = html.slice(html.indexOf('<section id="importStep0"'), html.indexOf('<section id="importStep1"'));
-  assert.match(eventCard, /<button onclick="downloadPlayerTemplate\(\)">SAVE TEMPLATE TO US<\/button>/);
+  assert.match(eventCard, /<button onclick="savePlayerTemplateToUsb\(\)">SAVE TEMPLATE TO USB<\/button>/);
+  assert.ok(!html.includes('DOWNLOAD TEMPLATE'));
   const { context, get, requests } = await wizard();
   context.setImportStep(0);
   assert.deepEqual(visibleSteps(get), [0]);
@@ -134,6 +135,73 @@ test('event changes invalidate the reviewed file; USB uses the same review and d
   const commit = JSON.parse(requests[1].options.body);
   assert.equal(commit.preview, false);
   assert.equal(commit.digest, 'reviewed-file');
+});
+
+test('an invalid replacement file clears the previous review without replacing the imported tournament', async () => {
+  const { context, get, requests } = await wizard();
+  await context.reviewImportFile({ fileName: 'valid.xlsx' });
+  context.setImportStep(1);
+  context.fetch = async (url, options) => {
+    requests.push({ url, options });
+    return { ok: false, json: async () => ({ ok: false, message: 'INVALID CATEGORY' }) };
+  };
+  await context.reviewImportFile({ fileName: 'invalid.xlsx' });
+  assert.match(get('importWizardError').textContent, /INVALID CATEGORY/);
+  assert.equal(get('importStartButton').disabled, true);
+  await context.startImportedCategory();
+  assert.equal(requests.length, 2, 'a stale preview cannot be committed after the replacement failed');
+  assert.equal(context.lastTournament.event, undefined);
+});
+
+test('combined workbook filters categories, commits the selected bracket and switches without importing the file again', async () => {
+  const { context, get, fixture, requests } = await wizard();
+  const second = JSON.parse(JSON.stringify(fixture));
+  second.event = { ...second.event, division: 'JUNIOR', divisionLabel: 'JUNIOR', gender: 'FEMALE', weightCategory: 'FINWEIGHT' };
+  second.players = [{ playerName: 'Ananya Mitra', club: 'Falcon Taekwondo' }, { playerName: 'Meera Sanyal', club: 'Summit Taekwondo' }];
+  second.schedule = [{ boutNo: 1, officialBoutNo: 'JF-01', stage: 'FINAL', round: 1, RED: second.players[0], BLUE: second.players[1], status: 'SCHEDULED' }];
+  second.openingBoutCount = 1;
+  const workbook = {
+    sourceDigest: 'reviewed-file', selectedKey: 'senior-male',
+    categories: [{ key: 'senior-male', event: fixture.event, fixture, status: 'NOT STARTED' }, { key: 'junior-female', event: second.event, fixture: second, status: 'NOT STARTED' }]
+  };
+  context.fetch = async (url, options) => {
+    requests.push({ url, options });
+    let key = workbook.selectedKey;
+    if (url.startsWith('/api/tournament/category/')) key = 'senior-male';
+    else if (url === '/api/tournament/category') key = JSON.parse(options.body).categoryKey;
+    else if (options.headers['X-SFTS-Import-Category']) key = options.headers['X-SFTS-Import-Category'];
+    if (!url.includes('preview=true') && !url.startsWith('/api/tournament/category/')) workbook.selectedKey = key;
+    return { ok: true, json: async () => JSON.parse(JSON.stringify({ ok: true, tournament: workbook.categories.find(item => item.key === key).fixture, workbook })) };
+  };
+  await context.reviewImportFile({ file: { type: 'application/octet-stream' } });
+  assert.match(get('importWorkbookSummary').textContent, /2 categories/);
+  assert.equal(context.lastTournament.event, undefined, 'preview does not replace the active fixture');
+  get('importDivision').value = 'JUNIOR';
+  await context.changeImportCategory('division');
+  assert.equal(get('importGender').value, 'FEMALE');
+  assert.equal(get('importWeightCategory').value, 'junior-female');
+  assert.match(get('importReviewTable').innerHTML, /Ananya Mitra/);
+  await context.startImportedCategory();
+  assert.equal(requests[1].options.headers['X-SFTS-Import-Category'], 'junior-female');
+  assert.equal(context.lastTournament.event.division, 'JUNIOR');
+  assert.deepEqual(visibleSteps(get), [3]);
+  context.prepareAnotherCategory();
+  get('importDivision').value = 'SENIOR';
+  await context.changeImportCategory('division');
+  assert.match(requests[2].url, /^\/api\/tournament\/category\/senior-male\?/);
+  assert.equal(context.lastTournament.event.division, 'JUNIOR', 'reviewing a different category does not activate it');
+  await context.startImportedCategory();
+  assert.equal(requests[3].url, '/api/tournament/category');
+  assert.equal(JSON.parse(requests[3].options.body).categoryKey, 'senior-male');
+  assert.equal(context.lastTournament.event.division, 'SENIOR');
+  context.lastTournament.activeBoutNo = 1;
+  context.renderImportWizard();
+  assert.equal(get('importDivision').disabled, true);
+  assert.equal(get('importGender').disabled, true);
+  assert.equal(get('importWeightCategory').disabled, true);
+  get('importDivision').value = 'JUNIOR';
+  await context.changeImportCategory('division');
+  assert.equal(requests.length, 4, 'loaded matches block switching in the UI');
 });
 
 test('Continue Category returns to the decision cards while manual entry retains New Match', async () => {

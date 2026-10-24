@@ -8,9 +8,10 @@ import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
 import { WebSocketServer } from "ws";
-import { FIXTURE_HEADERS, parseFixtureRows } from './fixtureImport.js';
+import { MAX_WORKBOOK_ROWS, parseFixtureRows } from './fixtureImport.js';
 import { buildFixtureProgression, refreshFixtureProgression, isAutomaticFixture, nextFixtureBout, fixtureDescendants, participantKey } from './fixtureProgression.js';
 import { createFileJobs } from './fileJobs.js';
+import { createFixtureTemplateSheets } from './fixtureTemplate.js';
 import { createRemoteTestTracker } from './remoteTest.js';
 import { readBoundedFile } from './safeFiles.js';
 import { createNetworkGuard, createRateLimiter, isLoopback, normalizeAddress } from './networkGuard.js';
@@ -401,10 +402,23 @@ async function importFixture(buffer, event) {
   try { rows = await fileJobs.run('readPlayers', buffer); }
   catch (error) { throw new TournamentImportError(`The file is not a readable Excel or CSV file: ${error.message}`); }
   const automatic = event?.autoAdvance === true;
-  const parsed = parseFixtureRows(rows, { event, maxBouts: automatic ? 256 : 500, openingFixture: automatic, categoryFromInput: manualCategoryFromInput, playerDetails: manualPlayerDetails });
+  const parsed = parseFixtureRows(rows, { event, maxBouts: automatic ? MAX_WORKBOOK_ROWS : 500, openingFixture: automatic, multipleCategories: automatic, categoryFromInput: manualCategoryFromInput, playerDetails: manualPlayerDetails });
   if (parsed.errors.length) throw new TournamentImportError('The match file could not be imported', parsed.errors);
+  const digest = crypto.createHash('sha256').update(buffer).update(JSON.stringify({ categories: parsed.categories.map(item => item.category), automatic })).digest('hex');
+  const categories = (automatic ? parsed.categories : [parsed]).map(group => {
+    const fixture = fixtureFromParsed(group, automatic);
+    fixture.sourceDigest = digest;
+    return { key: crypto.createHash('sha256').update(manualCategoryIdentity(group.category)).digest('hex'), fixture };
+  });
+  return {
+    tournament: categories[0].fixture,
+    workbook: automatic ? { version: 1, sourceDigest: digest, selectedKey: categories[0].key, categories } : null
+  };
+}
+
+function fixtureFromParsed(parsed, automatic) {
   const category = manualCompetition.categories.find(item => manualCategoryIdentity(item) === manualCategoryIdentity(parsed.category));
-  if (category?.status === 'FINALIZED') throw new TournamentImportError('This category is finalized and cannot accept another import');
+  if (!automatic && category?.status === 'FINALIZED') throw new TournamentImportError('This category is finalized and cannot accept another import');
   const result = { ...makeTournament(), generatedAt: new Date().toISOString(), event: parsed.category, categoryId: category?.id || null };
   if (automatic) result.progressionMode = 'OPENING_FIXTURE';
   const { division, gender, weightCategory, categoryGroup } = parsed.category;
@@ -427,8 +441,9 @@ async function importFixture(buffer, event) {
   result.players = [...players.values()];
   if (automatic) {
     try { buildFixtureProgression(result); }
-    catch (error) { throw new TournamentImportError(error.message); }
+    catch (error) { throw new TournamentImportError(`${parsed.category.divisionLabel} / ${gender} / ${weightCategory || categoryGroup}: ${error.message}`); }
     refreshFixtureProgression(result, { records, validateRecord: validateCompletedFixtureBout });
+    if (category?.status === 'FINALIZED' && result.schedule.some(bout => !['COMPLETED', 'BYE'].includes(bout.status))) throw new TournamentImportError('A finalized category must retain its complete original fixture');
   } else {
     for (const bout of result.schedule) {
       const completed = records.get(bout.officialBoutNo.toUpperCase());
@@ -440,8 +455,37 @@ async function importFixture(buffer, event) {
       }
     }
   }
-  result.sourceDigest = crypto.createHash('sha256').update(buffer).update(JSON.stringify({ ...parsed.category, automatic })).digest('hex');
   return result;
+}
+
+function workbookCategoryStatus(fixture) {
+  const category = manualCompetition.categories.find(item => item.id === fixture.categoryId);
+  if (category?.status === 'FINALIZED') return 'FINALIZED';
+  if (fixture.recoveryError) return 'REVIEW REQUIRED';
+  if (fixture.schedule.every(bout => ['COMPLETED', 'BYE'].includes(bout.status))) return 'COMPLETED';
+  return fixture.schedule.some(bout => ['COMPLETED', 'IN_PROGRESS', 'TIE_PENDING'].includes(bout.status)) ? 'IN PROGRESS' : 'NOT STARTED';
+}
+
+function fixtureWorkbookState(workbook = importedWorkbook, preview = false) {
+  if (!workbook) return null;
+  return {
+    version: 1, sourceDigest: workbook.sourceDigest, selectedKey: workbook.selectedKey,
+    categories: workbook.categories.map(({ key, fixture }) => ({
+      key, event: fixture.event, competitorCount: fixture.players.length,
+      byeCount: fixture.schedule.filter(bout => bout.status === 'BYE').length,
+      matchCount: fixture.schedule.filter(bout => bout.status !== 'BYE').length,
+      status: workbookCategoryStatus(fixture), ...(preview ? { fixture } : {})
+    }))
+  };
+}
+
+function commitFixtureImport(imported, digest, selectedKey) {
+  requireFixtureReview(imported.tournament, digest);
+  const selected = imported.workbook?.categories.find(item => item.key === (selectedKey || imported.workbook.selectedKey));
+  if (imported.workbook && !selected) throw new TournamentImportError('Select a category from the reviewed tournament file');
+  importedWorkbook = imported.workbook;
+  if (selected) importedWorkbook.selectedKey = selected.key;
+  tournament = selected?.fixture || imported.tournament;
 }
 
 function importEventHeader(req) {
@@ -462,6 +506,7 @@ let match = makeMatch();
 let arenaNumber = '';
 let matchHistory = [];
 let tournament = makeTournament();
+let importedWorkbook = null;
 let manualCompetition = makeManualCompetition();
 let manualMatchRecords = [];
 let hostSocket = null;
@@ -569,7 +614,8 @@ function persistenceSnapshot({ cleanShutdown = false } = {}) {
     ruleset: deep(activeRulesMetadata),
     match: savedMatch,
     matchHistory: deep(matchHistory),
-    tournament: deep(tournament)
+    tournament: deep(tournament),
+    importedWorkbook: deep(importedWorkbook)
   };
 }
 
@@ -651,6 +697,11 @@ function restorePersistedState(snapshot) {
   match.test = { active: false, presses: {} };
   matchHistory = snapshot.matchHistory;
   tournament = snapshot.tournament;
+  importedWorkbook = snapshot.importedWorkbook || null;
+  if (importedWorkbook) {
+    const selected = importedWorkbook.categories.find(item => item.key === importedWorkbook.selectedKey);
+    selected.fixture = tournament;
+  }
   tournament.placementPolicy ||= deep(rules.tournament.placements);
   refreshTournamentBracket(tournament);
   manualCompetition = snapshot.manualCompetition && typeof snapshot.manualCompetition === 'object'
@@ -702,8 +753,9 @@ manualCompetition.categories = manualCompetition.categories.filter(category => (
 manualMatchRecords = manualMatchRecords.filter(record => (
   record && typeof record === 'object' && record.manualBout?.categoryId
 ));
-if (isAutomaticFixture(tournament) && tournament.categoryId) {
-  const category = manualCompetition.categories.find(item => item.id === tournament.categoryId);
+for (const fixture of importedWorkbook ? importedWorkbook.categories.map(item => item.fixture) : [tournament]) {
+  if (!isAutomaticFixture(fixture) || !fixture.categoryId) continue;
+  const category = manualCompetition.categories.find(item => item.id === fixture.categoryId);
   const known = new Set(manualMatchRecords.map(record => record.id));
   let recovered = false;
   if (category) for (const record of matchHistory) {
@@ -714,11 +766,11 @@ if (isAutomaticFixture(tournament) && tournament.categoryId) {
     recovered = true;
   }
   try {
-    const records = new Map(manualMatchRecords.filter(record => record.manualBout?.categoryId === tournament.categoryId).map(record => [String(record.manualBout.officialBoutNo).toUpperCase(), record]));
-    refreshFixtureProgression(tournament, { records, validateRecord: validateCompletedFixtureBout });
-    if (tournament.schedule.find(bout => bout.boutNo === tournament.activeBoutNo)?.status !== 'IN_PROGRESS') tournament.activeBoutNo = null;
+    const records = new Map(manualMatchRecords.filter(record => record.manualBout?.categoryId === fixture.categoryId).map(record => [String(record.manualBout.officialBoutNo).toUpperCase(), record]));
+    refreshFixtureProgression(fixture, { records, validateRecord: validateCompletedFixtureBout });
+    if (fixture.schedule.find(bout => bout.boutNo === fixture.activeBoutNo)?.status !== 'IN_PROGRESS') fixture.activeBoutNo = null;
   } catch (error) {
-    tournament.recoveryError = 'Saved fixture and results disagree. Review or reimport the category before continuing';
+    fixture.recoveryError = 'Saved fixture and results disagree. Review or reimport the tournament file before continuing';
     console.error(`Could not reconcile category progression: ${error.message}`);
   }
   if (recovered) { applyAutomaticManualPlacements(category); persistManualArchive(); }
@@ -772,7 +824,7 @@ function fullState(compact = false) {
     remoteScoreValues,
     remoteScoreRevisions,
     match,
-    ...(!compact ? { matchHistory: matchHistoryState(), tournament, manualCompetition } : {}),
+    ...(!compact ? { matchHistory: matchHistoryState(), tournament, manualCompetition, fixtureWorkbook: fixtureWorkbookState() } : {}),
     remotes: [...remoteStatuses.values()],
     usbImportOnly: USB_IMPORT_ONLY,
     ...(!compact ? { ruleset: activeRulesMetadata, scoringRules: scoringRulesState() } : {})
@@ -1695,7 +1747,8 @@ function normalizeManualCategoryPlacementState() {
 function saveManualCategoryPlacements(categoryId, placements, finalize = false) {
   const category = manualCompetition.categories.find(item => item.id === String(categoryId || ''));
   if (!category) return { ok: false, code: 'MANUAL_CATEGORY_NOT_FOUND', message: 'Manual category not found' };
-  if (finalize && isAutomaticFixture(tournament) && tournament.categoryId === category.id && tournament.schedule.some(bout => !['COMPLETED', 'BYE'].includes(bout.status))) return { ok: false, code: 'CATEGORY_IN_PROGRESS', message: 'Complete the category matches and confirm every winner before finalizing' };
+  const importedFixture = importedWorkbook?.categories.find(item => item.fixture.categoryId === category.id)?.fixture || (tournament.categoryId === category.id ? tournament : null);
+  if (finalize && isAutomaticFixture(importedFixture) && importedFixture.schedule.some(bout => !['COMPLETED', 'BYE'].includes(bout.status))) return { ok: false, code: 'CATEGORY_IN_PROGRESS', message: 'Complete the category matches and confirm every winner before finalizing' };
   if (category.status === 'FINALIZED') return { ok: false, code: 'MANUAL_CATEGORY_FINALIZED', message: 'This category is already finalized' };
   if (!placements || typeof placements !== 'object' || Array.isArray(placements)) {
     return { ok: false, code: 'INVALID_PLACEMENTS', message: 'Category placements are required' };
@@ -2081,67 +2134,7 @@ async function announceTournamentBout(bout) {
 }
 
 async function createPlayerTemplateBuffer() {
-  const definition = tournamentDivisionDefinitions().find(item => item.categoryType === 'WEIGHT') || tournamentDivisionDefinitions()[0];
-  const weightCategory = definition.categoryType === 'WEIGHT' ? definition.weightCategories.MALE[0].name : '';
-  const categoryGroup = definition.categoryType === 'GROUP' ? definition.groups[0].name : '';
-  const playerHeaders = FIXTURE_HEADERS;
-  const dummyPlayers = [
-    ['Arjun Sen', 'Falcon Taekwondo'],
-    ['Rohan Das', 'Riverfront Martial Arts'],
-    ['Kabir Roy', 'Summit Taekwondo'],
-    ['Ishaan Ghosh', 'Falcon Taekwondo'],
-    ['Vivaan Dutta', 'Riverfront Martial Arts'],
-    ['Aarav Bose', 'Summit Taekwondo'],
-    ['Neel Banerjee', 'Falcon Taekwondo'],
-    ['Dhruv Pal', 'Riverfront Martial Arts'],
-    ['Aditya Saha', 'Summit Taekwondo']
-  ];
-  const dummyPlayer = number => [...dummyPlayers[number - 1], 'WB', 'Nadia'];
-  const playerExamples = Array.from({ length: 8 }, (_, index) => [
-    `DEMO-PRE-${String(index + 1).padStart(2, '0')}`, 'PRELIMINARY', definition.label, 'MALE', weightCategory, categoryGroup,
-    ...dummyPlayer(index === 0 ? 1 : index + 2),
-    ...(index === 0 ? dummyPlayer(2) : ['BYE', '', '', ''])
-  ]);
-  const playerCols = playerHeaders.map(() => ({ wch: 22 }));
-
-  const categoryRows = [['Division', 'Age Eligibility', 'Gender', 'Weight Category', 'Weight Limit', 'Group', 'Group Age Limit']];
-  for (const division of tournamentDivisionDefinitions()) {
-    if (division.categoryType === 'WEIGHT') {
-      for (const gender of ['MALE', 'FEMALE']) {
-        for (const category of division.weightCategories[gender]) {
-          categoryRows.push([division.label, division.ageLabel, gender, category.name, category.limit, '', '']);
-        }
-      }
-    } else {
-      for (const group of division.groups) {
-        categoryRows.push([division.label, division.ageLabel, 'MALE / FEMALE', '', '', group.name, group.ageLabel]);
-      }
-    }
-  }
-  const categoryCols = [
-    { wch: 16 }, { wch: 27 }, { wch: 18 }, { wch: 22 }, { wch: 29 }, { wch: 14 }, { wch: 25 }
-  ];
-
-  const instructions = [
-    ['SFTS CATEGORY MATCH IMPORT'],
-    ['Matches', 'Supply the OPENING ROUND ONLY, in fixture position order. One division, gender and category per file. Import the dummy fixture as supplied for testing, or replace all demo rows for your category. SFTS builds the later rounds.'],
-    ['Test tournament', '9 dummy players and 7 BYEs in a 16-slot bracket: 1 contested preliminary, 4 quarterfinals, 2 semifinals and 1 final (8 scored matches). This is the minimum player count to test all four stages.'],
-    ['Event details', 'Enter tournament name, date, venue, arena and competition in SFTS before importing.'],
-    ['Required', 'Bout Number, Stage, Division, Gender, Weight Category (or Group), Hong Name, Hong Club, Chung Name, Chung Club.'],
-    ['Optional', 'Hong/Chung State Code and District. State codes must be valid Indian state codes.'],
-    ['Stage', 'Use the same stage on all opening rows: 1 row FINAL, 2 SEMIFINAL, 4 QUARTERFINAL, 8 or more PRELIMINARY. Row counts include BYE positions.'],
-    ['Sides', 'Hong is RED; Chung is BLUE. Supply actual competitors from the fixture software.'],
-    ['BYEs', 'Put BYE (or leave the name blank) on the empty side, and leave its club, state and district blank. Include BYE rows so the opening row count is a power of two. Each competitor appears once.'],
-    ['Progression', 'Adjacent row winners meet next: row 1 winner is HONG, row 2 winner is CHUNG. No reshuffle. SFTS continues locally through the final.'],
-    ['Results', 'Completed official bout numbers retain their results; their sides and stages cannot be changed.'],
-    ['Limits', 'Maximum 256 opening positions / 512 competitors and 4 MB. At least two actual competitors. Only the first worksheet is read.']
-  ];
-  const output = await fileJobs.run('workbook', { sheets: [
-    { name: 'Matches', rows: [playerHeaders, ...playerExamples], cols: playerCols, filter: `A1:N${playerExamples.length + 1}` },
-    { name: 'Categories', rows: categoryRows, cols: categoryCols, filter: `A1:G${categoryRows.length}` },
-    { name: 'Instructions', rows: instructions, cols: [{ wch: 30 }, { wch: 105 }] }
-  ] });
-  return Buffer.from(output);
+  return Buffer.from(await fileJobs.run('workbook', { sheets: createFixtureTemplateSheets(tournamentDivisionDefinitions()) }));
 }
 
 function rulesSummary(rulePack) {
@@ -2307,11 +2300,10 @@ app.post('/api/usb/import', requireHostRequest, express.json({ limit: '8kb', inf
       const filePath = await selectedUsbFile(context, req.body?.fileName);
       const imported = await importFixture(await readBoundedFile(filePath, MAX_IMPORT_BYTES), req.body?.event);
       if (!hostRequestAuthorized(req) || tournamentMatchIsBusy() || practiceMatchIsBusy() || rules !== importRules) throw new Error('Match, host session or rules changed; retry the import');
-      if (req.body?.preview === true) return { ok: true, preview: true, tournament: deep(imported) };
-      requireFixtureReview(imported, req.body?.digest);
-      tournament = imported;
+      if (req.body?.preview === true) return { ok: true, preview: true, tournament: deep(imported.tournament), workbook: fixtureWorkbookState(imported.workbook, true) };
+      commitFixtureImport(imported, req.body?.digest, req.body?.categoryKey);
       state(true);
-      return { ok: true, tournament: deep(tournament) };
+      return { ok: true, tournament: deep(tournament), workbook: fixtureWorkbookState() };
     });
     res.json(result);
   } catch (error) {
@@ -2364,30 +2356,38 @@ app.post('/api/tournament/import', requireHostRequest, express.raw({ type: '*/*'
     const imported = await importFixture(buffer, importEventHeader(req));
     if (!hostRequestAuthorized(req) || tournamentMatchIsBusy() || practiceMatchIsBusy() || rules !== importRules) throw new Error('Match, host session or rules changed; retry the import');
     if (req.query.preview === 'true') {
-      res.json({ ok: true, preview: true, tournament: imported });
+      res.json({ ok: true, preview: true, tournament: imported.tournament, workbook: fixtureWorkbookState(imported.workbook, true) });
       return;
     }
-    requireFixtureReview(imported, req.get('X-SFTS-Import-Digest'));
-    tournament = imported;
+    commitFixtureImport(imported, req.get('X-SFTS-Import-Digest'), req.get('X-SFTS-Import-Category'));
     state(true);
-    res.json({ ok: true, tournament: deep(tournament) });
+    res.json({ ok: true, tournament: deep(tournament), workbook: fixtureWorkbookState() });
   } catch (error) {
     const details = error instanceof TournamentImportError ? error.errors : [];
     res.status(400).json({ ok: false, message: error.message || 'Player sheet import failed', errors: details });
   }
 });
 
-app.get('/api/tournament/template.xlsx', requireHostRequest, async (req, res, next) => {
-  if (USB_IMPORT_ONLY) {
-    res.status(403).json({ ok: false, message: 'SAVE THE TEMPLATE TO THE USB FROM PLAYER SETTINGS' });
-    return;
-  }
-  try {
-  const output = await createPlayerTemplateBuffer();
-  res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  res.attachment('sfts-match-template.xlsx');
-  res.send(output);
-  } catch (error) { next(error); }
+app.get('/api/tournament/template.xlsx', requireHostRequest, (req, res) => {
+  res.status(403).json({ ok: false, message: 'SAVE TEMPLATE TO USB from the Event card. Browser template downloads are disabled.' });
+});
+
+app.get('/api/tournament/category/:key', requireHostRequest, (req, res) => {
+  const selected = importedWorkbook && importedWorkbook.sourceDigest === req.query.workbookId && importedWorkbook.categories.find(item => item.key === req.params.key);
+  if (!selected) return res.status(404).json({ ok: false, message: 'This tournament selection changed. Reopen Data Import and select the category again.' });
+  res.json({ ok: true, tournament: selected.fixture, workbook: fixtureWorkbookState() });
+});
+
+app.post('/api/tournament/category', requireHostRequest, express.json({ limit: '2kb', inflate: false }), (req, res) => {
+  if (tournamentMatchIsBusy() || practiceMatchIsBusy()) return res.status(409).json({ ok: false, message: 'Finish or reset the current match before switching categories.' });
+  const selected = importedWorkbook && importedWorkbook.sourceDigest === req.body?.workbookId && importedWorkbook.categories.find(item => item.key === req.body?.categoryKey);
+  if (!selected) return res.status(404).json({ ok: false, message: 'Select a category from the current tournament file.' });
+  const validation = manualCategoryFromInput(selected.fixture.event);
+  if (validation.error) return res.status(400).json({ ok: false, message: validation.error });
+  importedWorkbook.selectedKey = selected.key;
+  tournament = selected.fixture;
+  state(true);
+  res.json({ ok: true, tournament: deep(tournament), workbook: fixtureWorkbookState() });
 });
 
 app.get('/api/tournament/schedule.xlsx', requireHostRequest, async (req, res, next) => {

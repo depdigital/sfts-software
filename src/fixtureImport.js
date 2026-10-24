@@ -4,7 +4,10 @@ export const FIXTURE_HEADERS = [
   'Chung Name', 'Chung Club', 'Chung State Code', 'Chung District'
 ];
 
-export function parseFixtureRows(rows, { categoryFromInput, playerDetails, event, maxBouts = 500, openingFixture = false }) {
+export const MAX_WORKBOOK_ROWS = 4096;
+export const MAX_WORKBOOK_CATEGORIES = 128;
+
+export function parseFixtureRows(rows, { categoryFromInput, playerDetails, event, maxBouts = 500, openingFixture = false, multipleCategories = false }) {
   const errors = [];
   const headers = (rows[0] || []).map(value => String(value).toLowerCase().replace(/[^a-z0-9]/g, ''));
   const aliases = {
@@ -25,9 +28,9 @@ export function parseFixtureRows(rows, { categoryFromInput, playerDetails, event
     if (columns[key] < 0) errors.push(`Missing required column: ${key}`);
   }
   if (rows.length < 2) errors.push('The first worksheet does not contain any matches');
-  if (rows.length - 1 > maxBouts) errors.push(`Maximum ${maxBouts} matches per category file`);
+  if (rows.length - 1 > maxBouts) errors.push(multipleCategories ? `Maximum ${maxBouts} opening rows per tournament file` : `Maximum ${maxBouts} matches per category file`);
   const bouts = [];
-  const numbers = new Set();
+  const categories = new Map();
   let category;
   for (const [index, row] of rows.slice(1, maxBouts + 1).entries()) {
     const get = key => String(row[columns[key]] ?? '').trim();
@@ -36,10 +39,14 @@ export function parseFixtureRows(rows, { categoryFromInput, playerDetails, event
     if (parsed.error) { fail(parsed.error); continue; }
     if (get('group') && parsed.value.weightCategory) fail('Group must be blank for a weight category');
     if (get('weightcategory') && parsed.value.categoryGroup) fail('Weight Category must be blank for a group category');
-    if (category && ['division', 'gender', 'weightCategory', 'categoryGroup'].some(key => parsed.value[key] !== category[key])) {
+    if (!multipleCategories && category && ['division', 'gender', 'weightCategory', 'categoryGroup'].some(key => parsed.value[key] !== category[key])) {
       fail('Every match in a file must have the same division, gender and category');
     }
     category ||= parsed.value;
+    const categoryKey = JSON.stringify(['division', 'gender', 'weightCategory', 'categoryGroup'].map(key => parsed.value[key] || ''));
+    if (!categories.has(categoryKey)) categories.set(categoryKey, { category: parsed.value, bouts: [], numbers: new Set() });
+    const group = categories.get(categoryKey);
+    const numbers = multipleCategories ? group.numbers : (categories.values().next().value.numbers);
     const officialBoutNo = get('boutnumber');
     const numberKey = officialBoutNo.toUpperCase();
     if (!officialBoutNo || officialBoutNo.length > 40 || numbers.has(numberKey)) fail('Bout number is required, must be unique and at most 40 characters');
@@ -61,7 +68,10 @@ export function parseFixtureRows(rows, { categoryFromInput, playerDetails, event
     }
     if (!players.RED && !players.BLUE) fail('A match must contain at least one competitor');
     if (players.RED && players.BLUE && players.RED.playerName?.toUpperCase() === players.BLUE.playerName?.toUpperCase() && players.RED.club?.toUpperCase() === players.BLUE.club?.toUpperCase()) fail('HONG and CHUNG must be different competitors');
-    bouts.push({ officialBoutNo, stage, ...players });
+    const bout = { officialBoutNo, stage, ...players };
+    bouts.push(bout);
+    group.bouts.push(bout);
   }
-  return { category, bouts, errors: errors.slice(0, 30) };
+  if (multipleCategories && categories.size > MAX_WORKBOOK_CATEGORIES) errors.push(`Maximum ${MAX_WORKBOOK_CATEGORIES} categories per tournament file`);
+  return { category, bouts, categories: [...categories.values()].map(({ category, bouts }) => ({ category, bouts })), errors: errors.slice(0, 30) };
 }

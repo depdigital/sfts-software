@@ -1,21 +1,21 @@
-# Independent category import
+# Tournament fixture import
 
-Data Import is a five-card workflow: **Event → File → Review → Matches → Results**. The fixture software supplies the opening round once. SFTS continues the category locally through the final, using the normal manual-entry scoring and category result records.
+Data Import is a five-card workflow: **Event → File → Review → Matches → Results**. The fixture software supplies one tournament file with the opening positions for multiple divisions, genders and categories. SFTS groups the rows, preserves each category's bracket order, and continues the selected category locally through the final using the normal scoring and category result records.
 
 ## Event card
 
-Enter tournament name, date (`YYYY-MM-DD`), venue, arena number (`1`–`999`) and competition (`KYORUGI` or `FRESHER KYORUGI`). Division, gender and weight category/group come from the spreadsheet.
+Enter tournament name, date (`YYYY-MM-DD`), venue, arena number (`1`–`999`) and competition (`KYORUGI` or `FRESHER KYORUGI`) manually. These apply to the entire file. Division, gender and weight category/group come from the spreadsheet. Competition is not taken from Excel; keep regular and fresher competitions in separate files.
 
-**SAVE TEMPLATE TO US** on the Event card downloads a ready-to-import test fixture with **9 dummy players and 7 BYEs** in a 16-slot bracket. This is the smallest standard bracket that includes a contested preliminary followed by four quarterfinals, two semifinals and a final (eight scored matches). The template uses a category from the active rulepack. In USB-only mode, the button saves the same template to USB.
+**SAVE TEMPLATE TO USB** on the Event card saves the template through the existing USB drive workflow. Browser template downloads are disabled. With the default rulepack, the sample contains **15 fictional players in 4 categories across 2 divisions**: a **9-player male bracket with 7 BYEs** to test all rounds, another **2-player male category in the same division**, a **2-player female category in that division**, and a **2-player male category in another division**. This is the minimum dataset that exercises each dependent selector independently while preserving the full-round test. Custom rulepacks include only the available sample categories.
 
 ## Opening fixture file
 
-Only the first worksheet is read. One file contains one division/gender/category. Supply **only the opening positions**, in fixture order, with every competitor appearing exactly once. Repeat division, gender and category on every row. Bout references should be stored as text to retain leading zeroes.
+Only the first worksheet is read. One file can contain multiple divisions/genders/categories. Supply **only the opening positions** for each category, in fixture order, with every competitor appearing exactly once within that category. Repeat division, gender and category on every row. Rows from different categories can be interleaved; grouping preserves their relative order within each category. Bout references should be stored as text to retain leading zeroes.
 
 | Column | Required | Values |
 | --- | --- | --- |
-| Bout Number | Yes | Unique reference, at most 40 characters; case-insensitive duplicate checks. |
-| Stage | Yes | Same opening stage on every row; see the stage table below. |
+| Bout Number | Yes | Unique within the category, at most 40 characters; case-insensitive duplicate checks. |
+| Stage | Yes | Same opening stage on every row within a category; see the stage table below. |
 | Division | Yes | Active rulepack ID or label. |
 | Gender | Yes | MALE/M or FEMALE/F. |
 | Weight Category | Weight divisions | Active rulepack category name; blank for group divisions. |
@@ -34,7 +34,7 @@ For a BYE, put `BYE` or leave the name blank on the empty side. Its club, state 
 | 4 | QUARTERFINAL |
 | 8, 16, 32, 64, 128, 256 | PRELIMINARY |
 
-Include enough BYE rows to make the opening row count a power of two. At least two actual competitors are required; single-entry direct medal allocation is outside this scored-category workflow. Maximum: **256 opening positions / 512 competitors / 511 total bouts**, and a **4 MB** source file.
+Within each category, include enough BYE rows to make its opening row count a power of two. At least two actual competitors per category are required; single-entry direct medal allocation is outside this scored-category workflow. Limits: **128 categories / 4096 opening rows / 4 MB per file**, and **256 opening positions / 512 competitors / 511 total bouts per category**. Invalid rows or an invalid category reject the whole file before it replaces the current tournament.
 
 Example with three competitors:
 
@@ -46,11 +46,13 @@ SF-02,SEMIFINAL,SENIOR,MALE,FLYWEIGHT,,Vikram,Cochin Club,KL,Kochi,BYE,,,
 
 Vikram advances directly into the final without a scored match or fabricated match record. The SF-01 winner becomes HONG in the final; Vikram becomes CHUNG.
 
-The downloadable/USB template remains `sfts-match-template.xlsx`. **Matches** is first, followed by **Categories** and **Instructions**. Import its eight opening rows unchanged for testing, or replace all demo rows with your actual fixture. Header matching ignores case, spacing and punctuation. Official Bout No/Bout No/Bout, Red/Blue Name/Club/State Code/District and Hong/Chung or Red/Blue Affiliation aliases remain supported. Duplicate or ambiguous headers are rejected.
+The USB template remains `sfts-match-template.xlsx`. **Matches** is first, followed by **Categories** and **Instructions**. Import its eleven default sample rows unchanged for testing, or replace all sample rows with your tournament's opening fixtures. Header matching ignores case, spacing and punctuation. Official Bout No/Bout No/Bout, Red/Blue Name/Club/State Code/District and Hong/Chung or Red/Blue Affiliation aliases remain supported. Duplicate or ambiguous headers are rejected.
 
 ## Review card
 
-Reading a file displays the category, event details, opening HONG/CHUNG assignments, competitor count, BYEs and total matches through the final. This is a preview: it does not replace the current category. **Confirm & Start Category** checks the file/event digest again before committing. Changing the file or event details requires a fresh review.
+Reading a file displays dependent **Division → Gender → Category** dropdowns, with category progress labels. Select a category to review its event details, opening HONG/CHUNG assignments, competitor count, BYEs and total matches through the final. Previewing does not replace the active tournament. **Confirm & Start Category** checks the complete file/event digest again before storing all categories and activating the selected one. Changing the file or event details requires a fresh review.
+
+After import, **Select Another Category** uses the stored workbook. Selecting a dropdown previews that category; **Start Category**, **Continue Category** or **View Category Results** activates it. No file upload or USB reread is required. Dropdowns are disabled while a match is loaded or underway, and the server also rejects category switching until it is finished or reset. Completed and finalized categories remain visible for reviewing results.
 
 ## Match card
 
@@ -66,12 +68,14 @@ Bouts run in round/position order. A later round cannot be loaded out of order. 
 
 Gold/silver come from the actual final winner/loser; bronze comes from the recorded semifinal losers. Review, operator placement overrides, finalization and PDF/USB export use the existing manual category results. Finalization is blocked until all category matches have completed and every winner is decided.
 
-The opening fixture, generated rounds, current bout and results are saved locally. Restart restores the tournament paused, including already advanced BYEs and winner assignments. Shared manual archive records are used to reconcile saved progression; inconsistent recovery requires review before loading. Reimporting the same opening fixture reconstructs progress from completed reference numbers and rejects changed recorded competitors/stages.
+Every imported category's opening fixture, generated rounds, current bout and results are saved locally. Restart restores the selected category and pauses any loaded match, while retaining the other categories' progress, BYEs and winner assignments. Shared manual archive records reconcile each category's saved progression; inconsistent recovery requires review before loading. Reimporting the same tournament file reconstructs progress from completed reference numbers and rejects changed recorded competitors/stages.
 
-Importing another category replaces the current list while retaining archived category results. Finalized categories reject further imports/loads. Existing explicit match lists and legacy generated-bracket snapshots remain recoverable, and manual-entry controls keep their original workflow.
+Importing another tournament file replaces the available category list while retaining archived results. A finalized category can remain in a combined file if its recorded matches agree; it cannot load additional bouts. Incomplete categories cannot be finalized, including while another category is selected. Existing single-category files, explicit match lists and legacy generated-bracket snapshots remain recoverable, and manual-entry controls retain their original workflow.
 
 ## Implementation and Pi limits
 
-New wizard imports send `autoAdvance: true` in the event metadata. Desktop review uses `/api/tournament/import?preview=true`, then commits with `X-SFTS-Import-Digest`. USB review uses `preview: true` alongside `fileName` and `event`, then commits with the returned `digest`. Both require the normal host session and the same bounded file worker. No server-side draft queue or polling timer is added.
+New wizard imports send `autoAdvance: true` in the event metadata. Desktop review uses `/api/tournament/import?preview=true`, then commits with `X-SFTS-Import-Digest` and the selected `X-SFTS-Import-Category`. USB review uses `preview: true` alongside `fileName` and `event`, then commits with `digest` and `categoryKey`. Both require the normal host session and the same bounded file worker. No server-side draft queue or polling timer is added.
+
+Preview responses include `workbook.categories` with per-category fixture details. Committed responses and full WebSocket states supply category summaries (`workbook` in HTTP responses, `fixtureWorkbook` in state). `GET /api/tournament/category/:key?workbookId=...` reviews a stored category; `POST /api/tournament/category` with `workbookId` and `categoryKey` selects it. These endpoints require host authentication and reject stale workbook selections. Only the active fixture and small category summaries are broadcast; inactive full brackets remain on the server.
 
 Older integrations without `autoAdvance` retain explicit-match-list behavior. The automatic mode updates an ordered, bounded list when a result/load/correction changes; it does not run bracket calculations on the scoring timer. The isolated desktop/Pi workload check can be run with `node tools/backend-benchmark.js --opening-fixture`. Desktop results are not a Pi hardware certification.

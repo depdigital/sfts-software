@@ -682,13 +682,22 @@
 
     <section id="dataImportModal" class="overlay hidden">
       <div class="modalCard playerSettingsModal dataImportModal">
-        <header class="manualWizardHeader"><div><h2>DATA IMPORT</h2><p>Import the opening fixture once. Continue this category on the scoreboard.</p></div><button onclick="backFromDataImport()">EXIT</button></header>
+        <header class="manualWizardHeader"><div><h2>DATA IMPORT</h2><p>Import one tournament file. Select a category and continue its matches on the scoreboard.</p></div><button onclick="backFromDataImport()">EXIT</button></header>
         <ol id="importWizardSteps" class="manualWizardSteps importWizardSteps" aria-label="Category import progress">
           <li><b>1</b><span>EVENT</span></li><li><b>2</b><span>FILE</span></li><li><b>3</b><span>REVIEW</span></li><li><b>4</b><span>MATCHES</span></li><li><b>5</b><span>RESULTS</span></li>
         </ol>
         <p id="importWizardError" class="manualEntryError hidden" role="alert"></p>
+        <section id="importCategoryPicker" class="manualSection hidden">
+          <h3>SELECT A CATEGORY</h3><p id="importWorkbookSummary" class="manualHint"></p>
+          <div class="manualFieldGrid">
+            <label>DIVISION<select id="importDivision" onchange="changeImportCategory('division')"></select></label>
+            <label>GENDER<select id="importGender" onchange="changeImportCategory('gender')"></select></label>
+            <label><span id="importCategoryLabel">WEIGHT CATEGORY</span><select id="importWeightCategory" onchange="changeImportCategory('category')"></select></label>
+          </div>
+          <p id="importCategoryLockHint" class="manualHint hidden">Finish or reset the current match before switching categories.</p>
+        </section>
         <section id="importStep0" class="manualWizardPanel">
-          <h3>ENTER THE EVENT</h3><p>These details apply to this category.</p>
+          <h3>ENTER THE EVENT</h3><p>Enter these details manually. They apply to every category in the imported file.</p>
           <div class="manualSection"><div class="manualFieldGrid">
             <label>TOURNAMENT NAME<input id="importEventName" maxlength="96" autocomplete="off" /></label>
             <label>DATE<input id="importEventDate" type="date" /></label>
@@ -696,29 +705,25 @@
             <label>ARENA NO.<input id="importArenaNumber" type="number" min="1" max="999" /></label>
             <label>COMPETITION<select id="importCompetition"><option>KYORUGI</option><option>FRESHER KYORUGI</option></select></label>
           </div></div>
-          <p class="manualHint">The template includes 9 dummy players and 7 byes to test preliminary, quarterfinal, semifinal and final rounds.</p>
-          <div class="manualActions"><button onclick="importEventNext()">NEXT: CHOOSE FILE</button><button onclick="downloadPlayerTemplate()">SAVE TEMPLATE TO US</button><button id="importResumeButton" onclick="resumeImportedCategory()">RESUME CURRENT CATEGORY</button></div>
+          <p class="manualHint">The template includes a 9-player bracket with 7 byes to test all rounds, plus 2-player finals to test division, gender and category selection.</p>
+          <div class="manualActions"><button onclick="importEventNext()">NEXT: CHOOSE FILE</button><button onclick="savePlayerTemplateToUsb()">SAVE TEMPLATE TO USB</button><button id="importResumeButton" onclick="resumeImportedCategory()">CONTINUE CURRENT CATEGORY</button></div>
         </section>
         <section id="importStep1" class="manualWizardPanel hidden">
-          <h3>CHOOSE THE OPENING FIXTURE</h3><p>One division, gender and category per file. Include every competitor and each BYE position.</p>
+          <h3>IMPORT TOURNAMENT FILE</h3><p>Include the opening fixtures for every division, gender and category in one file, with every competitor and BYE position. The selected competition applies to the whole file.</p>
           <div id="nativeTournamentImport">
             <input id="playerSheetFile" class="playerSettingsInput" type="file" accept=".xlsx,.xls,.csv" />
-            <div class="tournamentImportActions"><button onclick="uploadPlayerSheet()">REVIEW FIXTURE</button><button onclick="downloadPlayerTemplate()">DOWNLOAD TEMPLATE</button></div>
+            <div class="tournamentImportActions"><button onclick="uploadPlayerSheet()">IMPORT TOURNAMENT FILE</button></div>
           </div>
           <div id="usbTournamentImport" class="hidden">
             <div class="usbImportToolbar"><div id="usbDriveStatus" class="usbDriveStatus">USB NOT CHECKED</div><div class="usbDeviceActions"><button onclick="refreshUsbFiles()">REFRESH USB</button><button onclick="unmountUsb()">UNMOUNT USB SAFELY</button></div></div>
             <label class="usbFileLabel">USB FIXTURE FILES<select id="usbFileSelect" class="playerSettingsSelect" disabled><option value="">REFRESH USB TO LIST FILES</option></select></label>
-            <div class="tournamentImportActions"><button id="usbImportButton" onclick="importUsbFile()" disabled>REVIEW FIXTURE</button></div>
+            <div class="tournamentImportActions"><button id="usbImportButton" onclick="importUsbFile()" disabled>IMPORT TOURNAMENT FILE</button></div>
           </div>
           <button onclick="setImportStep(0)">BACK: EVENT</button>
         </section>
         <section id="importStep2" class="manualWizardPanel hidden">
           <h3>REVIEW BEFORE STARTING</h3><p>Check the category, HONG/CHUNG assignments and BYEs. Adjacent match winners meet in the next round.</p>
-          <div class="manualSection"><div class="manualFieldGrid">
-            <label>DIVISION<input id="importDivision" readonly placeholder="FROM FILE" /></label>
-            <label>GENDER<input id="importGender" readonly placeholder="FROM FILE" /></label>
-            <label><span id="importCategoryLabel">WEIGHT CATEGORY</span><input id="importWeightCategory" readonly placeholder="FROM FILE" /></label>
-          </div><p id="importCategorySummary" class="manualHint"></p><p id="importReviewSummary"></p></div>
+          <div class="manualSection"><p id="importCategorySummary" class="manualHint"></p><p id="importReviewSummary"></p></div>
           <div id="importReviewTable" class="scheduleTable"></div>
           <div class="manualActions"><button id="importStartButton" onclick="startImportedCategory()">CONFIRM &amp; START CATEGORY</button><button onclick="setImportStep(1)">BACK: CHOOSE FILE</button></div>
         </section>
@@ -729,11 +734,11 @@
             <p id="importCorrectionHint" class="manualHint"></p>
             <div class="manualActions"><button id="importCorrectRed" onclick="correctImportedResult('RED')">HONG WON</button><button id="importCorrectBlue" onclick="correctImportedResult('BLUE')">CHUNG WON</button></div>
           </section>
-          <div class="manualActions"><button onclick="openSchedule()">VIEW ALL MATCHES</button><button onclick="setImportStep(4)">CATEGORY RESULTS</button><button onclick="prepareAnotherCategory()">IMPORT ANOTHER CATEGORY</button></div>
+          <div class="manualActions"><button onclick="openSchedule()">VIEW CATEGORY MATCHES</button><button onclick="setImportStep(4)">CATEGORY RESULTS</button><button onclick="prepareAnotherCategory()">SELECT ANOTHER CATEGORY</button><button onclick="setImportStep(0)">IMPORT ANOTHER TOURNAMENT</button></div>
         </section>
         <section id="importStep4" class="manualWizardPanel hidden">
           <h3>CATEGORY RESULTS</h3><div id="importResultsCard" class="manualSection"></div>
-          <div class="manualActions"><button onclick="openManualCategoryResults(true)">REVIEW, FINALIZE &amp; EXPORT PDF</button><button onclick="setImportStep(3)">BACK TO MATCHES</button><button onclick="prepareAnotherCategory()">IMPORT ANOTHER CATEGORY</button></div>
+          <div class="manualActions"><button onclick="openManualCategoryResults(true)">REVIEW, FINALIZE &amp; EXPORT PDF</button><button onclick="setImportStep(3)">BACK TO MATCHES</button><button onclick="prepareAnotherCategory()">SELECT ANOTHER CATEGORY</button><button onclick="setImportStep(0)">IMPORT ANOTHER TOURNAMENT</button></div>
         </section>
         <div id="tournamentImportStatus" class="tournamentImportStatus">NO CATEGORY FIXTURE IMPORTED</div>
       </div>

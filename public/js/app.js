@@ -10,6 +10,7 @@ let reconnectDelay = 500;
 let lastState = null;
 let lastStateEnvelope = null;
 let lastTournament = null;
+let lastFixtureWorkbook = null;
 let manualResultsFromImport = false;
 let lastManualCompetition = { version: 1, categories: [] };
 let manualRecordsCache = [];
@@ -132,6 +133,7 @@ function connectSocket() {
       remoteScoreRevisions = msg.remoteScoreRevisions || { RED: 0, BLUE: 0 };
       currentArenaNumber = String(msg.arenaNumber || "");
       lastTournament = msg.tournament || null;
+      lastFixtureWorkbook = msg.fixtureWorkbook || null;
       lastManualCompetition = msg.manualCompetition || { version: 1, categories: [] };
       historyCache = msg.matchHistory || [];
       usbImportOnly = msg.usbImportOnly === true;
@@ -2400,12 +2402,9 @@ function renderTournament(tournament) {
   if (!status) return;
   if (tournament?.format === "IMPORTED_MATCHES") {
     const event = tournament.event;
-    $("importDivision").value = event?.divisionLabel || event?.division || "";
-    $("importGender").value = event?.gender || "";
-    $("importWeightCategory").value = event?.categoryGroup || event?.weightCategory || "";
-    $("importCategoryLabel").textContent = event?.categoryGroup ? "CATEGORY GROUP" : "WEIGHT CATEGORY";
     $("importCategorySummary").textContent = event ? `${event.divisionLabel || event.division} · ${event.gender} · ${event.categoryGroup || event.weightCategory}` : "Division, gender and weight category will be read from the file.";
-    status.textContent = event ? `${tournament.schedule.length} MATCHES · ${tournament.schedule.filter(bout => bout.status === "COMPLETED").length} COMPLETED` : "NO CATEGORY MATCH FILE IMPORTED";
+    const matches = tournament.schedule.filter(bout => bout.status !== "BYE");
+    status.textContent = event ? `${matches.length} MATCHES IN CURRENT CATEGORY · ${matches.filter(bout => bout.status === "COMPLETED").length} COMPLETED · ${tournament.schedule.length - matches.length} BYES` : "NO TOURNAMENT FILE IMPORTED";
     if (typeof renderImportWizard === "function") renderImportWizard();
     return;
   }
@@ -2441,11 +2440,7 @@ async function downloadFile(path, fallbackName) {
 }
 
 function downloadPlayerTemplate() {
-  if (usbImportOnly) {
-    void savePlayerTemplateToUsb();
-    return;
-  }
-  downloadFile("/api/tournament/template.xlsx", "sfts-match-template.xlsx");
+  void savePlayerTemplateToUsb();
 }
 
 function renderUsbImportMode() {

@@ -8,6 +8,8 @@ import WebSocket from 'ws';
 import { request } from 'node:http';
 import * as XLSX from 'xlsx';
 import { readRulesFile } from '../src/rules.js';
+import { createFixtureTemplateSheets } from '../src/fixtureTemplate.js';
+import { createFileJobs } from '../src/fileJobs.js';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const testDataDir = path.join(projectRoot, 'data', `backend-test-${process.pid}`);
@@ -228,11 +230,16 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   const workbookBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
   assert.equal((await fetch(`http://127.0.0.1:${port}/api/tournament/template.xlsx`)).status, 401);
   const templateResponse = await fetch(`http://127.0.0.1:${port}/api/tournament/template.xlsx`, { headers: { 'X-SFTS-Host-Token': hostRole.hostToken } });
-  assert.equal(templateResponse.status, 200);
-  const templateBuffer = Buffer.from(await templateResponse.arrayBuffer());
+  assert.equal(templateResponse.status, 403);
+  assert.match((await templateResponse.json()).message, /SAVE TEMPLATE TO USB/);
+  const templateRules = await readRulesFile(path.join(projectRoot, 'config/rules.default.json'));
+  const templateJobs = createFileJobs();
+  let templateBuffer;
+  try { templateBuffer = Buffer.from(await templateJobs.run('workbook', { sheets: createFixtureTemplateSheets(templateRules.tournament.divisions) })); }
+  finally { await templateJobs.close(); }
   const templateWorkbook = XLSX.read(templateBuffer, { type: 'buffer' });
   assert.deepEqual(templateWorkbook.SheetNames, ['Matches', 'Categories', 'Instructions']);
-  assert.equal(XLSX.utils.sheet_to_json(templateWorkbook.Sheets.Matches).length, 8);
+  assert.equal(XLSX.utils.sheet_to_json(templateWorkbook.Sheets.Matches).length, 11);
   const templateImport = await fetch(`http://127.0.0.1:${port}/api/tournament/import?preview=true`, {
     method: 'POST',
     headers: { ...importHeaders, 'X-SFTS-Import-Event': encodeURIComponent(JSON.stringify({ ...event, autoAdvance: true })) },
@@ -241,6 +248,7 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   assert.equal(templateImport.status, 200);
   const templatePreview = await templateImport.json();
   assert.equal(templatePreview.tournament.players.length, 9);
+  assert.equal(templatePreview.workbook.categories.length, 4);
   assert.equal(templatePreview.tournament.schedule.filter(bout => bout.status === 'BYE').length, 7);
   const imported = await fetch(`http://127.0.0.1:${port}/api/tournament/import`, { method: 'POST', headers: importHeaders, body: workbookBuffer });
   assert.equal(imported.status, 200);
