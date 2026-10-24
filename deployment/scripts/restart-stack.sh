@@ -16,11 +16,16 @@ CHROMIUM_POLICY_SOURCE="${PROJECT_DIR}/deployment/config/chromium-kiosk-policy.j
 ENV_FILE="/etc/sfts/sfts-scoreboard.env"
 PACKAGE_JSON="${PROJECT_DIR}/package.json"
 PACKAGE_LOCK="${PROJECT_DIR}/package-lock.json"
+SERVICE_TEMPLATE="${PROJECT_DIR}/deployment/systemd/sfts-scoreboard.service"
 CHROMIUM_POLICY_TMP=""
+SERVICE_TMP=""
 
 cleanup() {
   if [[ -n "${CHROMIUM_POLICY_TMP:-}" ]]; then
     rm -f "${CHROMIUM_POLICY_TMP}"
+  fi
+  if [[ -n "${SERVICE_TMP:-}" ]]; then
+    rm -f "${SERVICE_TMP}"
   fi
 }
 
@@ -45,6 +50,8 @@ command -v flock >/dev/null 2>&1 || fail "flock is not available"
 [[ -f "${CHROMIUM_POLICY_SOURCE}" ]] || fail "Chromium kiosk policy template is missing"
 [[ -f "${PACKAGE_JSON}" ]] || fail "package.json is missing"
 [[ -f "${PACKAGE_LOCK}" ]] || fail "package-lock.json is missing"
+[[ -f "${SERVICE_TEMPLATE}" ]] || fail "scoreboard service template is missing"
+[[ -x /usr/bin/node ]] || fail "Node.js was not found at /usr/bin/node"
 
 SERVER_PORT="8080"
 if [[ -r "${ENV_FILE}" ]]; then
@@ -68,19 +75,41 @@ install -d -m 0755 /run/lock
 exec 8>/run/lock/sfts-scoreboard-install.lock
 flock -n 8 || fail "another SFTS install or restart is already running"
 
-if runuser -u "${SERVICE_USER}" -- env PATH="/usr/bin:/bin" \
+DEPENDENCY_STAMP="${PROJECT_DIR}/node_modules/.sfts-production-lock.sha256"
+DEPENDENCY_HASH="$(sha256sum "${PACKAGE_LOCK}" | awk '{print $1}')"
+if grep -Fxq "${DEPENDENCY_HASH}" "${DEPENDENCY_STAMP}" 2>/dev/null && \
+  runuser -u "${SERVICE_USER}" -- env PATH="/usr/bin:/bin" \
   "${NPM_BIN}" --prefix "${PROJECT_DIR}" ls --omit=dev --all >/dev/null 2>&1; then
   log "Production dependencies are current"
 else
   log "Production dependencies changed; stopping ${SCOREBOARD_SERVICE} before installation"
   systemctl stop "${SCOREBOARD_SERVICE}"
-  runuser -u "${SERVICE_USER}" -- env PATH="/usr/bin:/bin" \
+  runuser -u "${SERVICE_USER}" -- env PATH="/usr/bin:/bin" npm_config_allow_remote=root \
     "${NPM_BIN}" --prefix "${PROJECT_DIR}" ci --omit=dev
   runuser -u "${SERVICE_USER}" -- env PATH="/usr/bin:/bin" \
     "${NPM_BIN}" --prefix "${PROJECT_DIR}" ls --omit=dev --all >/dev/null 2>&1 \
     || fail "production dependency verification failed"
   log "Production dependencies installed"
+  runuser -u "${SERVICE_USER}" -- sh -c 'printf "%s\n" "$1" > "$2"' sh "${DEPENDENCY_HASH}" "${DEPENDENCY_STAMP}"
 fi
+
+log "Installing the current scoreboard service hardening"
+SERVICE_GROUP="$(id -gn "${SERVICE_USER}")"
+PROJECT_VALUE="$(printf '%s' "${PROJECT_DIR}" | sed 's/[&|\\]/\\&/g')"
+USER_VALUE="$(printf '%s' "${SERVICE_USER}" | sed 's/[&|\\]/\\&/g')"
+GROUP_VALUE="$(printf '%s' "${SERVICE_GROUP}" | sed 's/[&|\\]/\\&/g')"
+SERVICE_TMP="$(mktemp /tmp/sfts-scoreboard.XXXXXX.service)"
+sed -e "s|@PROJECT_DIR@|${PROJECT_VALUE}|g" \
+  -e 's|@NODE_BIN@|/usr/bin/node|g' \
+  -e "s|@SERVICE_USER@|${USER_VALUE}|g" \
+  -e "s|@SERVICE_GROUP@|${GROUP_VALUE}|g" \
+  "${SERVICE_TEMPLATE}" > "${SERVICE_TMP}"
+if command -v systemd-analyze >/dev/null 2>&1; then
+  systemd-analyze verify "${SERVICE_TMP}" >/dev/null || fail "scoreboard service validation failed"
+fi
+install -m 0644 -o root -g root "${SERVICE_TMP}" /etc/systemd/system/sfts-scoreboard.service
+rm -f "${SERVICE_TMP}"
+SERVICE_TMP=""
 
 log "Reloading systemd service definitions"
 systemctl daemon-reload

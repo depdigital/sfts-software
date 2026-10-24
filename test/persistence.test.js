@@ -186,6 +186,36 @@ test('local persistence prevents two server instances sharing one data folder', 
   }
 });
 
+test('rapid immediate saves retain the latest cumulative state with a bounded snapshot backlog', async () => {
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), 'sfts-save-burst-'));
+  try {
+    const persistence = createPersistence({ dataDir });
+    let materialized = 0;
+    const writes = Array.from({ length: 100 }, (_, index) => persistence.flush(() => {
+      materialized += 1;
+      return snapshot(String(index));
+    }));
+    await Promise.all(writes);
+    assert.ok(materialized <= 2, `created ${materialized} snapshots for one burst`);
+    assert.equal(JSON.parse(await readFile(persistence.stateFile, 'utf8')).savedAt, '99');
+  } finally { await rm(dataDir, { recursive: true, force: true }); }
+});
+
+test('explicit state flush rejects storage failures and reports recovery after a successful retry', async () => {
+  const dataDir = await mkdtemp(path.join(os.tmpdir(), 'sfts-state-error-'));
+  const blocked = path.join(dataDir, 'not-a-directory');
+  try {
+    await writeFile(blocked, 'blocked');
+    const status = [];
+    const persistence = createPersistence({ dataDir: blocked, logger: { error() {} }, onStatus: ok => status.push(ok) });
+    await assert.rejects(persistence.flush(snapshot('failed')));
+    await rm(blocked);
+    await persistence.flush(snapshot('recovered'));
+    assert.deepEqual(status, [false, true]);
+    assert.equal(JSON.parse(await readFile(persistence.stateFile, 'utf8')).savedAt, 'recovered');
+  } finally { await rm(dataDir, { recursive: true, force: true }); }
+});
+
 test('server restores match history and tournament progress after restart', async () => {
   const dataDir = await mkdtemp(path.join(os.tmpdir(), 'sfts-server-persistence-'));
   const port = 22000 + (process.pid % 1000);

@@ -116,7 +116,7 @@ If more than one physical USB flash drive is visible, the dashboard refuses file
 Open the host dashboard on the Pi at:
 
 ```text
-http://localhost:8080
+http://127.0.0.1:8080
 ```
 
 Configure the ESP32 remotes with the Pi’s Ethernet address, normally:
@@ -144,7 +144,9 @@ To refresh the complete SFTS application stack after deploying code changes with
 sudo bash deployment/scripts/restart-stack.sh
 ```
 
-The script first verifies the production dependency tree and runs `npm ci --omit=dev` as the scoreboard service user when the lockfile requires new or changed packages. It refreshes the supervised kiosk autostart, Labwc restrictions, and Chromium managed policies using the configured scoreboard port, reloads systemd, restarts Piper, restarts the scoreboard, waits for both local services to respond, and restarts LightDM so the kiosk browser loads the latest dashboard. The current graphical session will close and relaunch; saved match state is preserved and the match remains paused after the server restart.
+The script compares the production lockfile hash with the installed dependency stamp, verifies the dependency tree, and runs `npm ci --omit=dev` as the scoreboard service user when needed. The first run after this update downloads the patched SheetJS release from its official CDN; npm verifies its lockfile integrity. It refreshes the systemd service template, supervised kiosk autostart, Labwc restrictions, and Chromium managed policies using the configured scoreboard port, reloads systemd, restarts Piper, restarts the scoreboard, waits for both local services to respond, and restarts LightDM so the kiosk browser loads the latest dashboard. The current graphical session will close and relaunch; saved match state is preserved and the match remains paused after the server restart.
+
+See [the backend and Pi 3 audit](../docs/backend-audit-pi3.md) for the new resource limits and the isolated `npm run benchmark:backend` hardware check. A persistent storage warning appears on the dashboard if internal match/archive writes fail; it clears after a successful save.
 
 Check the local HTTP endpoint:
 

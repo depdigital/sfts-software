@@ -37,6 +37,18 @@ button {
   letter-spacing: 0.04em;
   text-align: center;
 }
+.storageWarning {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1001;
+  padding: 12px 24px;
+  color: #1c1000;
+  background: #ffcf40;
+  font-weight: 900;
+  text-align: center;
+}
 .screensaver {
   position: fixed;
   inset: 0;

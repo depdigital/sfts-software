@@ -58,6 +58,8 @@ npm start
 
 Keep the token private. Only use the server on the closed local event network; do not expose its port to the internet.
 
+Backend hardening and Pi 3 resource limits, measurements, remaining limits and the isolated hardware benchmark are documented in [the backend audit](docs/backend-audit-pi3.md). The production lockfile pins the patched official SheetJS CDN release; installation needs access to that CDN during maintenance. The server omits the host token from logs in kiosk mode.
+
 ### Kiosk mode
 
 For a Raspberry Pi kiosk, enable kiosk mode and open the dashboard at `http://127.0.0.1:8080`. The local kiosk browser is authorized automatically, so the operator does not type a token. Other computers still need the host token.
@@ -105,7 +107,7 @@ The host SETTINGS screen also provides REBOOT and SHUTDOWN controls. Each action
 
 If Chromium ever shows an internal error page instead of the dashboard, press **Ctrl+Alt+Shift+R**. The dedicated kiosk binding terminates only the current user's Chromium processes, and the supervised launcher opens a fresh local dashboard after two seconds.
 
-Open the host dashboard on the Pi at `http://localhost:8080`. Configure the ESP32 remotes with the Pi's Ethernet address, normally `ws://192.168.50.102:8080`, and their matching tokens from `config/remote-config.json`.
+Open the host dashboard on the Pi at `http://127.0.0.1:8080`. Configure the ESP32 remotes with the Pi's Ethernet address, normally `ws://192.168.50.102:8080`, and their matching tokens from `config/remote-config.json`.
 
 Useful service commands:
 

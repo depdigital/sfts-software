@@ -2,8 +2,7 @@
 Description=SFTS Taekwondo Scoring System
 After=network-online.target sfts-piper.service
 Wants=network-online.target sfts-piper.service
-StartLimitIntervalSec=60
-StartLimitBurst=5
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -12,10 +11,14 @@ Group=@SERVICE_GROUP@
 WorkingDirectory=@PROJECT_DIR@
 EnvironmentFile=-/etc/sfts/sfts-scoreboard.env
 ExecStart=@NODE_BIN@ @PROJECT_DIR@/src/server.js
-Restart=on-failure
+Restart=always
 RestartSec=5
+TimeoutStopSec=20
 UMask=0027
 NoNewPrivileges=true
+CapabilityBoundingSet=
+RestrictRealtime=true
+ProtectKernelLogs=true
 PrivateTmp=true
 # USB status, mounting, and safe unmounting require visibility of removable devices.
 PrivateDevices=false

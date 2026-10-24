@@ -33,10 +33,13 @@ async function renameReplacing(source, target) {
   }
 }
 
-export function createManualArchive({ dataDir, logger = console }) {
+export function createManualArchive({ dataDir, logger = console, onStatus = () => {} }) {
   const archiveFile = path.join(dataDir, 'manual-results.json');
   const backupFile = path.join(dataDir, 'manual-results.backup.json');
   let writeChain = Promise.resolve();
+  let pendingSnapshot = null;
+  let writing = false;
+  let lastWriteError = null;
 
   async function load() {
     const primary = await readArchive(archiveFile);
@@ -61,25 +64,50 @@ export function createManualArchive({ dataDir, logger = console }) {
     const tempFile = `${archiveFile}.${process.pid}.tmp`;
     const handle = await open(tempFile, 'w');
     try {
-      await handle.writeFile(`${JSON.stringify(snapshot, null, 2)}\n`, 'utf8');
+      await handle.writeFile(`${JSON.stringify(snapshot)}\n`, 'utf8');
       await handle.sync();
     } finally {
       await handle.close();
     }
     await renameReplacing(tempFile, archiveFile);
+    try {
+      const directory = await open(dataDir, 'r');
+      try { await directory.sync(); } finally { await directory.close(); }
+    } catch { /* directory fsync is unavailable on some Windows filesystems */ }
   }
 
   function schedule(snapshot) {
-    const copy = structuredClone(snapshot);
-    writeChain = writeChain
-      .catch(() => {})
-      .then(() => write(copy))
-      .catch(error => logger.error(`Could not save the manual result archive: ${error.message}`));
+    pendingSnapshot = typeof snapshot === 'function' ? snapshot : structuredClone(snapshot);
+    if (writing) return;
+    writing = true;
+    writeChain = Promise.resolve().then(async () => {
+      while (pendingSnapshot) {
+        const pending = pendingSnapshot;
+        pendingSnapshot = null;
+        try {
+          await write(typeof pending === 'function' ? pending() : pending);
+          if (lastWriteError) onStatus(true);
+          lastWriteError = null;
+        } catch (error) {
+          lastWriteError = error;
+          onStatus(false);
+          logger.error(`Could not save the manual result archive: ${error.message}`);
+        }
+      }
+    }).finally(() => {
+      writing = false;
+      if (pendingSnapshot) {
+        const pending = pendingSnapshot;
+        pendingSnapshot = null;
+        schedule(pending);
+      }
+    });
   }
 
   async function flush(snapshot = null) {
-    await writeChain;
-    if (snapshot) await write(structuredClone(snapshot));
+    if (snapshot) schedule(snapshot);
+    do { await writeChain; } while (writing || pendingSnapshot);
+    if (lastWriteError) throw lastWriteError;
   }
 
   return { archiveFile, backupFile, load, schedule, flush };

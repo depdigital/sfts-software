@@ -5,6 +5,7 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import WebSocket from 'ws';
+import { request } from 'node:http';
 import * as XLSX from 'xlsx';
 import { readRulesFile } from '../src/rules.js';
 
@@ -85,6 +86,7 @@ before(async () => {
       SFTS_KYESHI_LIMIT_MS: '1000',
       SFTS_HOST_TOKEN: 'test-host-token',
       SFTS_KIOSK_MODE: 'true',
+      SFTS_AUTH_TIMEOUT_MS: '700',
       SFTS_USB_IMPORT_ONLY: 'false'
     },
     stdio: ['ignore', 'pipe', 'pipe']
@@ -120,10 +122,31 @@ after(async () => {
   await rm(testDataDir, { recursive: true, force: true });
 });
 
+test('compact updates preserve full initial snapshots and refresh bulk data on host changes', async () => {
+  const host = await connect();
+  host.send(JSON.stringify({ type: 'role', role: 'host', accessToken: 'test-host-token', supportsStatePatch: true }));
+  await waitForMessage(host, msg => msg.type === 'roleAccepted');
+  const initial = await waitForMessage(host, msg => msg.type === 'state');
+  assert.ok(initial.tournament);
+  assert.ok(initial.manualCompetition);
+  const remote = await connect();
+  remote.send(JSON.stringify({ type: 'remote_hello', deviceId: 'C4', sessionId: 'compact-state-test', protocolVersion: 2 }));
+  await waitForMessage(remote, msg => msg.type === 'remote_ready');
+  const patch = await waitForMessage(host, msg => msg.type === 'statePatch');
+  assert.ok(patch.match);
+  assert.equal(Object.hasOwn(patch, 'tournament'), false);
+  host.send(JSON.stringify({ type: 'host', action: 'setArenaNumber', value: '7' }));
+  const updated = await waitForMessage(host, msg => msg.type === 'state' && msg.arenaNumber === '7');
+  assert.ok(updated.tournament);
+  assert.equal(updated.match.red.score, 0);
+  host.send(JSON.stringify({ type: 'host', action: 'setArenaNumber', value: '' }));
+  await waitForMessage(host, msg => msg.type === 'state' && msg.arenaNumber === '');
+  await closeSocket(remote);
+  await closeSocket(host);
+});
+
 test('WebSocket roles, majority scoring, timer expiry, and phase guards work', async () => {
-  const untrustedKioskPage = await connect({ headers: { Origin: 'https://example.invalid' } });
-  assert.equal((await assign(untrustedKioskPage, 'host', 0, '')).code, 'HOST_UNAUTHORIZED');
-  await closeSocket(untrustedKioskPage);
+  await assert.rejects(connect({ headers: { Origin: 'https://example.invalid' } }), /403/);
 
   const trustedKioskPage = await connect({ headers: { Origin: `http://127.0.0.1:${port}` } });
   assert.equal((await assign(trustedKioskPage, 'host', 0, '')).type, 'roleAccepted');
@@ -321,6 +344,9 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   assert.equal(pausedManual.code, 'ROUND_NOT_ACTIVE');
   host.send(JSON.stringify({ type: 'host', action: 'playPause' }));
   await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'ROUND' && message.match.running);
+
+  host.send(JSON.stringify({ type: 'host', action: 'editScore', player: 'RED', value: 1e100 }));
+  assert.equal((await waitForMessage(host, msg => msg.type === 'error')).code, 'INVALID_SCORE');
 
   const firstScoreMessageOrder = [];
   const captureFirstScoreOrder = raw => {
@@ -1130,6 +1156,44 @@ test('malformed WebSocket input does not terminate a connection', async () => {
   const state = await waitForMessage(client, message => message.type === 'remote_state');
   assert.equal(state.deviceId, 'C1');
   assert.equal(client.readyState, WebSocket.OPEN);
+});
+
+test('browser origin, DNS rebinding and malformed coercions cannot bypass the backend boundary', async () => {
+  const spoofedStatus = await new Promise((resolve, reject) => {
+    const req = request(`http://127.0.0.1:${port}/`, { headers: { Host: `attacker.invalid:${port}` } }, res => {
+      res.resume();
+      resolve(res.statusCode);
+    });
+    req.on('error', reject);
+    req.end();
+  });
+  assert.equal(spoofedStatus, 403);
+  const crossOrigin = await fetch(`http://127.0.0.1:${port}/api/manual/categories`, {
+    headers: { Origin: 'https://attacker.invalid', 'X-SFTS-Host-Token': 'test-host-token' }
+  });
+  assert.equal(crossOrigin.status, 403);
+  const validPage = await fetch(`http://127.0.0.1:${port}/`);
+  assert.equal(validPage.status, 200);
+  assert.equal(validPage.headers.get('x-content-type-options'), 'nosniff');
+  assert.match(validPage.headers.get('content-security-policy'), /frame-ancestors 'none'/);
+
+  const client = await connect();
+  client.send(JSON.stringify({ type: 'role', role: 'host', corner: { valueOf: null, toString: null } }));
+  assert.equal((await waitForMessage(client, msg => msg.type === 'error')).code, 'INVALID_MESSAGE');
+  client.send(JSON.stringify({ type: 'role', role: 'host', accessToken: 'wrong-token' }));
+  assert.equal((await waitForMessage(client, msg => msg.type === 'error')).code, 'HOST_UNAUTHORIZED');
+  await closeSocket(client);
+});
+
+test('idle unauthenticated sockets expire while authenticated remotes remain usable', async () => {
+  const idle = await connect();
+  const closed = await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('Unauthenticated socket did not expire')), 2000);
+    idle.once('close', code => { clearTimeout(timer); resolve(code); });
+  });
+  assert.equal(closed, 1006);
+  clients.delete(idle);
+  assert.equal((await fetch(`http://127.0.0.1:${port}/`)).status, 200);
 });
 
 test('HTTP static endpoint is available and QR endpoint is removed', async () => {

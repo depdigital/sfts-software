@@ -2,24 +2,27 @@ import express from "express";
 import crypto from "node:crypto";
 import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { lstat, open, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { lstat, open, readdir, realpath, rename, rm, stat } from "node:fs/promises";
 import http from "http";
 import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
 import { WebSocketServer } from "ws";
-import * as XLSX from "xlsx";
+import { createFileJobs } from './fileJobs.js';
+import { readBoundedFile } from './safeFiles.js';
+import { createNetworkGuard, createRateLimiter, isLoopback, normalizeAddress } from './networkGuard.js';
 import { createTts } from "./tts.js";
 import { createPersistence } from "./persistence.js";
 import { createManualArchive } from "./manualArchive.js";
-import { createManualCategoryPdf, manualCategoryPdfFileName } from "./manualCategoryPdf.js";
 import { roundTieSuperiority } from "./roundTie.js";
 import {
   loadRules,
+  parseRulesText,
   readRulesFile,
   rulesConstants,
   rulesMetadata,
   rulesPaths,
+  validateRules,
   writeRulesAtomically
 } from "./rules.js";
 
@@ -47,6 +50,7 @@ const configuredRemoteTokens = remoteConfig.remoteTokens && typeof remoteConfig.
   ? remoteConfig.remoteTokens
   : {};
 const PORT = Number(process.env.PORT || remoteConfig.port || 8080);
+if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) throw new Error('PORT must be an integer from 1 to 65535');
 let ROUND_MS_DEFAULT = rules.match.roundDurationSeconds * 1000;
 let MIN_TIMER_MS = rules.match.minimumRoundDurationSeconds * 1000;
 let MAX_TIMER_MS = rules.match.maximumRoundDurationSeconds * 1000;
@@ -75,6 +79,16 @@ const COALESCED_HOST_ACTIONS = new Set([
   'point', 'headPoint', 'technicalPoint', 'gamjeom', 'editScore', 'editGamjeom', 'editRoundTieStats',
   'correctScoringAction', 'correctGamjeom', 'advancedScoreCorrection'
 ]);
+const HOST_ACTIONS = new Set([
+  'systemPower', 'cancelSystemPower', 'startKyeShi', 'pauseKyeShi', 'resumeKyeShi', 'endKyeShi',
+  'declareKyeShiWinner', 'startGoldenRound', 'decideWooSeGirok', 'decideGoldenRoundSuperiority',
+  'manualMatchDecision', 'playPause', 'setTime', 'resetRoundTimer', 'playerSettings', 'saveManualBout',
+  'deleteManualCategory', 'saveManualCategoryPlacements', 'announcePractice', 'loadPractice',
+  'setArenaNumber', 'announcePlayers', 'name', 'advancedScoreCorrection', 'editScore', 'editGamjeom',
+  'editRoundTieStats', 'correctScoringAction', 'correctGamjeom', 'point', 'technicalPoint', 'headPoint',
+  'gamjeom', 'nextRound', 'resetMatch', 'newMatch', 'nextManualBout', 'loadBout', 'announceBout',
+  'resolveTie', 'setRemoteMode', 'testStart', 'testStop'
+]);
 let TECHNICAL_COMBO_WINDOW_MS = rules.scoring.technicalInput.windowMilliseconds;
 let MIN_ACTIVE_REMOTES = rules.voting.minimumActiveRemotes;
 let MAX_ACTIVE_REMOTES = rules.voting.maximumActiveRemotes;
@@ -100,12 +114,47 @@ const server = http.createServer(app);
 server.requestTimeout = 30_000;
 server.headersTimeout = 10_000;
 server.keepAliveTimeout = 5_000;
-const wss = new WebSocketServer({ server, maxPayload: MAX_WS_PAYLOAD });
+const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_WS_PAYLOAD, perMessageDeflate: false });
+const networkGuard = createNetworkGuard({ port: PORT });
+const fileJobs = createFileJobs();
+const AUTH_TIMEOUT_MS = Math.max(500, Math.min(30_000, Number(process.env.SFTS_AUTH_TIMEOUT_MS) || 10_000));
+server.on('upgrade', (request, socket, head) => {
+  const peer = normalizeAddress(socket.remoteAddress || '');
+  const local = isLoopback(peer);
+  let peerCount = 0;
+  let externalCount = 0;
+  for (const client of wss.clients) {
+    if (client.peerAddress === peer) peerCount += 1;
+    if (!isLoopback(client.peerAddress)) externalCount += 1;
+  }
+  const reject = status => {
+    socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+  };
+  if (!networkGuard.trustedRequest(request)) return reject('403 Forbidden');
+  // Reserve capacity for the local host even if LAN clients fill their quota.
+  if (wss.clients.size >= 32 || (!local && externalCount >= 24) || peerCount >= (local ? 24 : 8) || !networkGuard.upgrades.take(peer)) {
+    return reject('429 Too Many Requests');
+  }
+  wss.handleUpgrade(request, socket, head, ws => wss.emit('connection', ws, request));
+});
+server.maxHeadersCount = 64;
+server.maxConnections = 64;
+app.disable('x-powered-by');
+app.set('query parser', 'simple');
+app.use(networkGuard.httpMiddleware);
 const publicDir = path.join(PROJECT_ROOT, 'public');
 const samplesDir = path.join(PROJECT_ROOT, 'samples');
 const tts = createTts();
-const persistence = createPersistence();
-const manualArchive = createManualArchive({ dataDir: persistence.dataDir });
+let stateStorageHealthy = true;
+let archiveStorageHealthy = true;
+const persistence = createPersistence({ onStatus: ok => {
+  stateStorageHealthy = ok;
+  emit({ type: 'storageStatus', ok: stateStorageHealthy && archiveStorageHealthy });
+} });
+const manualArchive = createManualArchive({ dataDir: persistence.dataDir, onStatus: ok => {
+  archiveStorageHealthy = ok;
+  emit({ type: 'storageStatus', ok: stateStorageHealthy && archiveStorageHealthy });
+} });
 const hostAccessToken = String(process.env.SFTS_HOST_TOKEN || '').trim() || crypto.randomBytes(24).toString('hex');
 app.use('/samples', express.static(samplesDir, { index: false }));
 app.use(express.static(publicDir));
@@ -576,30 +625,13 @@ const TOURNAMENT_COLUMN_ALIASES = {
   club: new Set(['club', 'clubname', 'team', 'teamname'])
 };
 
-function importTournamentPlayers(buffer) {
-  let workbook;
+async function importTournamentPlayers(buffer) {
+  let rows;
   try {
-    workbook = XLSX.read(buffer, {
-      type: 'buffer',
-      cellFormula: false,
-      cellNF: false,
-      cellStyles: false,
-      bookVBA: false,
-      dense: true,
-      sheetRows: MAX_TOURNAMENT_PLAYERS + 2
-    });
-  } catch {
-    throw new TournamentImportError('The uploaded file is not a readable Excel or CSV file');
+    rows = await fileJobs.run('readPlayers', buffer);
+  } catch (error) {
+    throw new TournamentImportError(`The uploaded file is not a readable Excel or CSV file: ${error.message}`);
   }
-
-  const firstSheet = workbook.SheetNames[0];
-  if (!firstSheet) throw new TournamentImportError('The workbook does not contain a worksheet');
-  const rows = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet], {
-    header: 1,
-    defval: '',
-    raw: false,
-    blankrows: false
-  });
   if (!rows.length) throw new TournamentImportError('The worksheet is empty');
 
   const headers = rows[0].map(normalizeColumn);
@@ -734,7 +766,6 @@ let kyeShiLastAt = null;
 let lastStateAt = 0;
 let persistenceReady = false;
 let lastTimerPersistAt = 0;
-let persistenceFlushChain = Promise.resolve();
 let recoveredFromUnexpectedShutdown = false;
 let voteSettleGuard = null;
 let pendingSystemPower = null;
@@ -817,22 +848,16 @@ function manualArchiveSnapshot() {
 }
 
 function persistManualArchive() {
-  manualArchive.schedule(manualArchiveSnapshot());
+  manualArchive.schedule(manualArchiveSnapshot);
 }
 
 function flushPersistedState(snapshot) {
-  persistenceFlushChain = persistenceFlushChain
-    .catch(() => {})
-    .then(() => persistence.flush(snapshot))
-    .catch(error => {
-      console.error(`Could not flush saved state: ${error.message}`);
-    });
-  return persistenceFlushChain;
+  return persistence.flush(snapshot);
 }
 
 function persistState(immediate = false) {
   if (!persistenceReady) return;
-  if (immediate) void flushPersistedState(persistenceSnapshot());
+  if (immediate) void flushPersistedState(persistenceSnapshot()).catch(() => {});
   else persistence.schedule(() => persistenceSnapshot());
   lastTimerPersistAt = Date.now();
 }
@@ -981,23 +1006,21 @@ function matchHistoryState() {
     ruleset: item.ruleset
   }));
 }
-function fullState() {
+function fullState(compact = false) {
   return {
-    type: "state",
+    type: compact ? 'statePatch' : 'state',
     recoveredFromUnexpectedShutdown,
+    storageHealthy: stateStorageHealthy && archiveStorageHealthy,
     arenaNumber,
     remoteButtons: [1, 2, 3, 4].map(corner => lastRemoteButtons.get(corner) || null),
     remoteScoreHighlights,
     remoteScoreValues,
     remoteScoreRevisions,
     match,
-    matchHistory: matchHistoryState(),
-    tournament,
-    manualCompetition,
+    ...(!compact ? { matchHistory: matchHistoryState(), tournament, manualCompetition } : {}),
     remotes: [...remoteStatuses.values()],
     usbImportOnly: USB_IMPORT_ONLY,
-    ruleset: activeRulesMetadata,
-    scoringRules: scoringRulesState()
+    ...(!compact ? { ruleset: activeRulesMetadata, scoringRules: scoringRulesState() } : {})
   };
 }
 function remoteState(ws) {
@@ -1024,11 +1047,17 @@ function remoteState(ws) {
 function state(persist = false, immediate = persist) {
   if (persist) persistState(immediate);
   let text = null;
+  let patchText = null;
   for (const ws of wss.clients) {
     if (ws.role === 'remote') sendText(ws, JSON.stringify(remoteState(ws)), 'remote state broadcast');
     else if (ws.role === 'host' || ws.role === 'referee') {
-      text ||= JSON.stringify(fullState());
-      sendText(ws, text, 'state broadcast');
+      if (ws.supportsStatePatch && !(persist && immediate)) {
+        patchText ||= JSON.stringify(fullState(true));
+        sendText(ws, patchText, 'state patch');
+      } else {
+        text ||= JSON.stringify(fullState());
+        sendText(ws, text, 'state broadcast');
+      }
     }
   }
   lastStateAt = Date.now();
@@ -1158,10 +1187,11 @@ function cancelSystemPower(ws) {
 
 function hostRequestAuthorized(req) {
   return Boolean(
+    !shuttingDown &&
     hostSocket &&
     hostSocket.readyState === 1 &&
     hostSocket.hostToken &&
-    req.get('x-sfts-host-token') === hostSocket.hostToken
+    tokenMatches(req.get('x-sfts-host-token'), hostSocket.hostToken)
   );
 }
 
@@ -1335,10 +1365,22 @@ async function selectedUsbFile(context, fileName, {
 }
 
 let usbOperation = Promise.resolve();
+let pendingUsbOperations = 0;
+let rulesUpdateInProgress = false;
 function withUsbOperation(action) {
-  const operation = usbOperation.then(action, action);
+  if (pendingUsbOperations >= 3) return Promise.reject(new Error('USB is busy; wait for the current operation to finish'));
+  pendingUsbOperations += 1;
+  const operation = usbOperation.then(action, action).finally(() => { pendingUsbOperations -= 1; });
   usbOperation = operation.catch(() => {});
   return operation;
+}
+
+function withRulesOperation(req, action) {
+  return withUsbOperation(async () => {
+    if (!hostRequestAuthorized(req) || tournamentMatchIsBusy()) throw new Error('Finish or reset the match before changing rules');
+    rulesUpdateInProgress = true;
+    try { return await action(); } finally { rulesUpdateInProgress = false; }
+  });
 }
 
 async function writePlayerTemplateToUsb(context) {
@@ -1349,7 +1391,20 @@ async function writePlayerTemplateToUsb(context) {
   } catch (error) {
     if (error.code !== 'ENOENT') throw error;
   }
-  await writeFile(target, createPlayerTemplateBuffer());
+  const output = await createPlayerTemplateBuffer();
+  const temporary = path.join(context.mountPath, `.sfts-template-${crypto.randomBytes(12).toString('hex')}.tmp`);
+  let handle;
+  try {
+    handle = await open(temporary, 'wx', 0o640);
+    await handle.writeFile(output);
+    await handle.sync();
+    await handle.close();
+    handle = null;
+    await rename(temporary, target);
+  } finally {
+    if (handle) await handle.close().catch(() => {});
+    await rm(temporary, { force: true }).catch(() => {});
+  }
   const details = await stat(target);
   return { fileName: USB_TEMPLATE_FILE, size: details.size };
 }
@@ -1374,7 +1429,7 @@ async function availableUsbTarget(context, requestedFileName) {
 
 async function writeManualCategoryPdfToUsb(context, category, records, options) {
   const generatedAt = new Date();
-  const pdf = await createManualCategoryPdf({
+  const result = await fileJobs.run('pdf', {
     category,
     records,
     options,
@@ -1382,7 +1437,7 @@ async function writeManualCategoryPdfToUsb(context, category, records, options) 
   });
   const destination = await availableUsbTarget(
     context,
-    manualCategoryPdfFileName(category, generatedAt)
+    result.fileName
   );
   const temporaryPath = path.join(
     context.mountPath,
@@ -1391,7 +1446,7 @@ async function writeManualCategoryPdfToUsb(context, category, records, options) 
   let handle;
   try {
     handle = await open(temporaryPath, 'wx', 0o640);
-    await handle.writeFile(pdf);
+    await handle.writeFile(Buffer.from(result.buffer));
     await handle.sync();
     await handle.close();
     handle = null;
@@ -1470,19 +1525,15 @@ function tournamentResultRows() {
   ));
 }
 
-function scheduleWorkbook() {
-  const workbook = XLSX.utils.book_new();
-  const sheet = XLSX.utils.json_to_sheet(tournamentScheduleRows());
-  XLSX.utils.book_append_sheet(workbook, sheet, 'Schedule');
+async function scheduleWorkbook(format = 'xlsx') {
   const resultRows = tournamentResultRows();
-  const resultSheet = resultRows.length
-    ? XLSX.utils.json_to_sheet(resultRows)
-    : XLSX.utils.aoa_to_sheet([[
+  return fileJobs.run('workbook', { format, sheets: [
+    { name: 'Schedule', rows: tournamentScheduleRows(), json: true },
+    { name: 'Results', json: resultRows.length > 0, rows: resultRows.length ? resultRows : [[
       'Bracket ID', 'Division', 'Gender', 'Weight Category', 'Category Group', 'Place', 'Player ID', 'Player',
       'State Code', 'District', 'Club'
-    ]]);
-  XLSX.utils.book_append_sheet(workbook, resultSheet, 'Results');
-  return workbook;
+    ]] }
+  ] });
 }
 
 function tournamentMatchIsBusy() {
@@ -2170,6 +2221,10 @@ async function announceAnnouncement(text, fields = {}) {
   try {
     audio = await tts.synthesize(text);
   } catch (error) {
+    if (error.code === 'TTS_BUSY') {
+      sendError(hostSocket, 'TTS_BUSY', error.message);
+      return;
+    }
     console.error('Local TTS failed:', error.message);
   }
   emit({
@@ -2184,8 +2239,7 @@ async function announceTournamentBout(bout) {
   await announceAnnouncement(bout.announcement, { boutNo: bout.boutNo });
 }
 
-function createPlayerTemplateBuffer() {
-  const workbook = XLSX.utils.book_new();
+async function createPlayerTemplateBuffer() {
   const playerHeaders = [
     'Player ID', 'Name', 'Gender', 'Division', 'Weight Category', 'Group',
     'State Code', 'District', 'Club'
@@ -2244,13 +2298,10 @@ function createPlayerTemplateBuffer() {
       }
     }
   }
-  const playersSheet = XLSX.utils.aoa_to_sheet([playerHeaders, ...playerExamples]);
-  playersSheet['!cols'] = [
+  const playerCols = [
     { wch: 14 }, { wch: 24 }, { wch: 12 }, { wch: 16 }, { wch: 22 },
     { wch: 14 }, { wch: 12 }, { wch: 22 }, { wch: 24 }
   ];
-  playersSheet['!autofilter'] = { ref: `A1:I${playerExamples.length + 1}` };
-  XLSX.utils.book_append_sheet(workbook, playersSheet, 'Players');
 
   const categoryRows = [['Division', 'Age Eligibility', 'Gender', 'Weight Category', 'Weight Limit', 'Group', 'Group Age Limit']];
   for (const division of tournamentDivisionDefinitions()) {
@@ -2266,14 +2317,11 @@ function createPlayerTemplateBuffer() {
       }
     }
   }
-  const categoriesSheet = XLSX.utils.aoa_to_sheet(categoryRows);
-  categoriesSheet['!cols'] = [
+  const categoryCols = [
     { wch: 16 }, { wch: 27 }, { wch: 18 }, { wch: 22 }, { wch: 29 }, { wch: 14 }, { wch: 25 }
   ];
-  categoriesSheet['!autofilter'] = { ref: `A1:G${categoryRows.length}` };
-  XLSX.utils.book_append_sheet(workbook, categoriesSheet, 'Categories');
 
-  const instructionsSheet = XLSX.utils.aoa_to_sheet([
+  const instructions = [
     ['SFTS TOURNAMENT PLAYER IMPORT'],
     ['Use the Players sheet for import. Replace the example rows with tournament players.'],
     ['Dummy data', 'Every row in the Players sheet is test data. Delete or replace all example rows before importing a real tournament.'],
@@ -2284,10 +2332,13 @@ function createPlayerTemplateBuffer() {
     ['Player ID', 'Optional, but every supplied ID must be unique.'],
     ['State Code / District / Club', 'Optional tournament and display information.'],
     ['Important', 'The importer validates division, gender, and category against the active rule pack.']
-  ]);
-  instructionsSheet['!cols'] = [{ wch: 30 }, { wch: 105 }];
-  XLSX.utils.book_append_sheet(workbook, instructionsSheet, 'Instructions');
-  return XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+  ];
+  const output = await fileJobs.run('workbook', { sheets: [
+    { name: 'Players', rows: [playerHeaders, ...playerExamples], cols: playerCols, filter: `A1:I${playerExamples.length + 1}` },
+    { name: 'Categories', rows: categoryRows, cols: categoryCols, filter: `A1:G${categoryRows.length}` },
+    { name: 'Instructions', rows: instructions, cols: [{ wch: 30 }, { wch: 105 }] }
+  ] });
+  return Buffer.from(output);
 }
 
 function rulesSummary(rulePack) {
@@ -2323,7 +2374,7 @@ async function readUsbRulesFile(fileName) {
     maxBytes: rulesConstants.maxBytes,
     extensionMessage: 'ONLY RULE PACK FILES CAN BE IMPORTED'
   });
-  return readRulesFile(filePath);
+  return validateRules(parseRulesText((await readBoundedFile(filePath, rulesConstants.maxBytes)).toString('utf8')));
 }
 
 app.get('/api/rules/status', requireHostRequest, async (req, res) => {
@@ -2356,7 +2407,7 @@ app.get('/api/rules/status', requireHostRequest, async (req, res) => {
   }
 });
 
-app.post('/api/rules/apply', requireHostRequest, express.json({ limit: '8kb' }), async (req, res) => {
+app.post('/api/rules/apply', requireHostRequest, express.json({ limit: '8kb', inflate: false }), async (req, res) => {
   if (!USB_IMPORT_ONLY) {
     res.status(404).json({ ok: false, message: 'USB RULE IMPORT IS DISABLED' });
     return;
@@ -2366,9 +2417,10 @@ app.post('/api/rules/apply', requireHostRequest, express.json({ limit: '8kb' }),
     return;
   }
   try {
-    const rulePack = await withUsbOperation(async () => {
+    const rulePack = await withRulesOperation(req, async () => {
       if (tournamentMatchIsBusy()) throw new Error('Finish or reset the current match before applying a ruleset');
       const nextRules = await readUsbRulesFile(req.body?.fileName);
+      if (!hostRequestAuthorized(req) || tournamentMatchIsBusy()) throw new Error('Match or host session changed; retry the ruleset operation');
       await writeRulesAtomically(nextRules, { backupRules: rules });
       configureRuntimeRules(nextRules);
       state(true);
@@ -2391,9 +2443,10 @@ app.post('/api/rules/default', requireHostRequest, async (req, res) => {
     return;
   }
   try {
-    const rulePack = await withUsbOperation(async () => {
+    const rulePack = await withRulesOperation(req, async () => {
       if (tournamentMatchIsBusy()) throw new Error('Finish or reset the current match before loading default rules');
       const defaultRules = await readRulesFile(rulesPaths.default);
+      if (!hostRequestAuthorized(req) || tournamentMatchIsBusy()) throw new Error('Match or host session changed; retry the ruleset operation');
       await writeRulesAtomically(defaultRules);
       configureRuntimeRules(defaultRules);
       state(true);
@@ -2434,7 +2487,7 @@ app.get('/api/usb/status', requireHostRequest, async (req, res) => {
   }
 });
 
-app.post('/api/usb/import', requireHostRequest, express.json({ limit: '8kb' }), async (req, res) => {
+app.post('/api/usb/import', requireHostRequest, express.json({ limit: '8kb', inflate: false }), async (req, res) => {
   if (!USB_IMPORT_ONLY) {
     res.status(404).json({ ok: false, message: 'USB IMPORT MODE IS DISABLED' });
     return;
@@ -2445,9 +2498,12 @@ app.post('/api/usb/import', requireHostRequest, express.json({ limit: '8kb' }), 
   }
   try {
     const result = await withUsbOperation(async () => {
+      if (!hostRequestAuthorized(req) || tournamentMatchIsBusy()) throw new Error('Match or host session changed; retry the import');
+      const importRules = rules;
       const context = await usbContext();
       const filePath = await selectedUsbFile(context, req.body?.fileName);
-      const players = importTournamentPlayers(await readFile(filePath));
+      const players = await importTournamentPlayers(await readBoundedFile(filePath, MAX_IMPORT_BYTES));
+      if (!hostRequestAuthorized(req) || tournamentMatchIsBusy() || rules !== importRules) throw new Error('Match, host session or rules changed; retry the import');
       tournament = generateTournament(players);
       state(true);
       return { ok: true, tournament: deep(tournament) };
@@ -2488,7 +2544,7 @@ app.post('/api/usb/unmount', requireHostRequest, async (req, res) => {
   }
 });
 
-app.post('/api/tournament/import', requireHostRequest, express.raw({ type: '*/*', limit: MAX_IMPORT_BYTES }), (req, res) => {
+app.post('/api/tournament/import', requireHostRequest, express.raw({ type: '*/*', limit: MAX_IMPORT_BYTES, inflate: false }), async (req, res) => {
   if (USB_IMPORT_ONLY) {
     res.status(403).json({ ok: false, message: 'USB IMPORT IS REQUIRED ON THIS DEPLOYMENT' });
     return;
@@ -2499,7 +2555,9 @@ app.post('/api/tournament/import', requireHostRequest, express.raw({ type: '*/*'
   }
   const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
   try {
-    const players = importTournamentPlayers(buffer);
+    const importRules = rules;
+    const players = await importTournamentPlayers(buffer);
+    if (!hostRequestAuthorized(req) || tournamentMatchIsBusy() || rules !== importRules) throw new Error('Match, host session or rules changed; retry the import');
     tournament = generateTournament(players);
     state(true);
     res.json({ ok: true, tournament: deep(tournament) });
@@ -2509,29 +2567,35 @@ app.post('/api/tournament/import', requireHostRequest, express.raw({ type: '*/*'
   }
 });
 
-app.get('/api/tournament/template.xlsx', requireHostRequest, (req, res) => {
+app.get('/api/tournament/template.xlsx', requireHostRequest, async (req, res, next) => {
   if (USB_IMPORT_ONLY) {
     res.status(403).json({ ok: false, message: 'SAVE THE TEMPLATE TO THE USB FROM PLAYER SETTINGS' });
     return;
   }
-  const output = createPlayerTemplateBuffer();
+  try {
+  const output = await createPlayerTemplateBuffer();
   res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.attachment('sfts-player-template.xlsx');
   res.send(output);
+  } catch (error) { next(error); }
 });
 
-app.get('/api/tournament/schedule.xlsx', requireHostRequest, (req, res) => {
-  const output = XLSX.write(scheduleWorkbook(), { type: 'buffer', bookType: 'xlsx' });
+app.get('/api/tournament/schedule.xlsx', requireHostRequest, async (req, res, next) => {
+  try {
+  const output = Buffer.from(await scheduleWorkbook());
   res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.attachment('sfts-tournament-schedule.xlsx');
   res.send(output);
+  } catch (error) { next(error); }
 });
 
-app.get('/api/tournament/schedule.csv', requireHostRequest, (req, res) => {
-  const output = XLSX.write(scheduleWorkbook(), { type: 'string', bookType: 'csv' });
+app.get('/api/tournament/schedule.csv', requireHostRequest, async (req, res, next) => {
+  try {
+  const output = await scheduleWorkbook('csv');
   res.type('text/csv');
   res.attachment('sfts-tournament-schedule.csv');
   res.send(output);
+  } catch (error) { next(error); }
 });
 
 app.get('/api/manual/categories', requireHostRequest, (req, res) => {
@@ -2549,7 +2613,7 @@ app.get('/api/manual/categories', requireHostRequest, (req, res) => {
   });
 });
 
-app.post('/api/manual/categories/pdf-usb', requireHostRequest, express.json({ limit: '8kb' }), async (req, res) => {
+app.post('/api/manual/categories/pdf-usb', requireHostRequest, express.json({ limit: '8kb', inflate: false }), async (req, res) => {
   if (!USB_IMPORT_ONLY) {
     res.status(403).json({ ok: false, message: 'USB PDF EXPORT IS DISABLED ON THIS DEPLOYMENT' });
     return;
@@ -2578,6 +2642,16 @@ app.post('/api/manual/categories/pdf-usb', requireHostRequest, express.json({ li
   }
 });
 
+app.use((error, req, res, next) => {
+  if (res.headersSent) return next(error);
+  const status = error.type === 'entity.too.large' ? 413
+    : error.type === 'encoding.unsupported' ? 415
+    : error.type === 'entity.parse.failed' ? 400 : 503;
+  res.status(status).json({ ok: false, message: status === 413 ? 'Request body is too large'
+    : status === 415 ? 'Compressed request bodies are not supported'
+    : status === 400 ? 'Invalid JSON request' : 'File operation unavailable; retry shortly' });
+});
+
 function validPlayer(player) {
   return player === 'RED' || player === 'BLUE';
 }
@@ -2594,7 +2668,7 @@ function technicalPointsFor(basePoints) {
 }
 
 function validInteger(value) {
-  return Number.isInteger(value) && Number.isFinite(value);
+  return Number.isSafeInteger(value);
 }
 
 function normalizeArenaNumber(value) {
@@ -2755,15 +2829,20 @@ function rememberBasePress(corner, vote, historyEntry) {
 function updateRemoteStatus(ws, fields = {}, broadcast = true) {
   const status = remoteStatuses.get(ws.deviceId);
   if (!status) return;
+  let changed = !status.connected;
+  const update = (field, value) => {
+    if (status[field] !== value) changed = true;
+    status[field] = value;
+  };
   status.connected = true;
   status.lastSeenAt = Date.now();
   if (ws.remoteSession) ws.remoteSession.lastSeenAt = status.lastSeenAt;
-  if (Object.prototype.hasOwnProperty.call(fields, 'rssi')) status.rssi = normalizeRssi(fields.rssi);
-  if (Object.prototype.hasOwnProperty.call(fields, 'battery')) status.battery = normalizeBattery(fields.battery);
+  if (Object.prototype.hasOwnProperty.call(fields, 'rssi')) update('rssi', normalizeRssi(fields.rssi));
+  if (Object.prototype.hasOwnProperty.call(fields, 'battery')) update('battery', normalizeBattery(fields.battery));
   for (const field of ['outboxDepth', 'droppedInputs', 'droppedEvents', 'retryCount', 'reconnectCount', 'lastAckSequence']) {
-    if (Object.prototype.hasOwnProperty.call(fields, field)) status[field] = normalizeRemoteCounter(fields[field]);
+    if (Object.prototype.hasOwnProperty.call(fields, field)) update(field, normalizeRemoteCounter(fields[field]));
   }
-  if (broadcast) state();
+  if (broadcast && changed) state();
 }
 
 function handleRemoteStatus(ws, msg) {
@@ -3073,6 +3152,7 @@ function assignRole(ws, role, corner, accessToken, kioskAuthorized = false) {
     releaseRole(ws);
     hostSocket = ws;
     ws.role = 'host';
+    clearTimeout(ws.authTimer);
     ws.corner = 0;
     ws.hostToken = crypto.randomBytes(24).toString('hex');
     send(ws, { type: 'roleAccepted', role: 'host', hostToken: ws.hostToken });
@@ -3097,6 +3177,7 @@ function assignRole(ws, role, corner, accessToken, kioskAuthorized = false) {
   releaseRole(ws);
   refereeSockets.set(corner, ws);
   ws.role = 'referee';
+  clearTimeout(ws.authTimer);
   ws.corner = corner;
   send(ws, { type: 'roleAccepted', role: 'referee', corner });
   send(ws, fullState());
@@ -4038,7 +4119,7 @@ function handleRemoteHello(ws, msg) {
       sendError(ws, 'REMOTE_NOT_CONFIGURED', `No token configured for ${deviceId}`);
       return;
     }
-    if (String(msg.token || '') !== expectedToken) {
+    if (!tokenMatches(msg.token, expectedToken)) {
       sendError(ws, 'UNAUTHORIZED_REMOTE', 'Remote authentication failed');
       return;
     }
@@ -4075,6 +4156,7 @@ function handleRemoteHello(ws, msg) {
     : { sessionId, lastSequence: 0, acks: new Map(), lastSeenAt: Date.now() };
 
   ws.role = 'remote';
+  clearTimeout(ws.authTimer);
   ws.deviceId = deviceId;
   ws.corner = corner;
   ws.sessionId = sessionId;
@@ -4291,6 +4373,12 @@ wss.on('connection', (ws, request) => {
   ws.remoteSession = null;
   ws.hostToken = null;
   ws.requestOrigin = String(request.headers.origin || '');
+  ws.peerAddress = normalizeAddress(request.socket.remoteAddress || '');
+  const byteLimit = createRateLimiter({ capacity: 256 * 1024, refillPerSecond: 128 * 1024, maxKeys: 1 });
+  ws.authTimer = setTimeout(() => {
+    if (ws.role === 'unknown') ws.terminate();
+  }, AUTH_TIMEOUT_MS);
+  ws.authTimer.unref?.();
   ws.messageWindowStartedAt = Date.now();
   ws.messageCount = 0;
   ws.isAlive = true;
@@ -4298,6 +4386,12 @@ wss.on('connection', (ws, request) => {
   syncTimer();
 
   ws.on('message', raw => {
+    try {
+    if (shuttingDown) return;
+    if (!byteLimit.take('socket', raw.length)) {
+      ws.terminate();
+      return;
+    }
     const now = Date.now();
     if (now - ws.messageWindowStartedAt >= WS_MESSAGE_WINDOW_MS) {
       ws.messageWindowStartedAt = now;
@@ -4311,7 +4405,11 @@ wss.on('connection', (ws, request) => {
     }
     let msg;
     try { msg = JSON.parse(String(raw)); } catch { return; }
-    if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return;
+    if (!msg || typeof msg !== 'object' || Array.isArray(msg) || typeof msg.type !== 'string') return;
+    if (ws.role === 'unknown' && !networkGuard.authentications.take(ws.peerAddress)) {
+      ws.close(1008, 'Authentication rate limit exceeded');
+      return;
+    }
     syncTimer();
 
     if (msg.type === 'remote_hello') {
@@ -4344,12 +4442,21 @@ wss.on('connection', (ws, request) => {
         msg.role === 'host' &&
         isLoopbackAddress(ws._socket?.remoteAddress) &&
         isTrustedKioskOrigin(ws.requestOrigin);
+      ws.supportsStatePatch = msg.supportsStatePatch === true;
       assignRole(ws, msg.role, Number(msg.corner), msg.accessToken, kioskAuthorized);
       return;
     }
 
     if (msg.type === 'host') {
       if (ws.role !== 'host') return;
+      if (rulesUpdateInProgress) {
+        sendError(ws, 'RULE_UPDATE_BUSY', 'Rules are being updated; retry shortly');
+        return;
+      }
+      if (!HOST_ACTIONS.has(msg.action)) {
+        sendError(ws, 'INVALID_ACTION', 'Unknown host action');
+        return;
+      }
 
       if (msg.action === 'systemPower') {
         scheduleSystemPower(ws, msg.powerAction);
@@ -4546,7 +4653,11 @@ wss.on('connection', (ws, request) => {
           return;
         }
         const parsed = Number(msg.value);
-        const value = validInteger(parsed) ? Math.max(0, parsed) : 0;
+        if (!validInteger(parsed)) {
+          sendError(ws, 'INVALID_SCORE', 'Score must be a safe whole number');
+          return;
+        }
+        const value = Math.max(0, parsed);
         const previous = side(msg.player).score;
         if (msg.player === 'RED') match.red.score = value;
         if (msg.player === 'BLUE') match.blue.score = value;
@@ -4723,12 +4834,19 @@ wss.on('connection', (ws, request) => {
         state(true, false);
       }
     }
+    } catch {
+      // Hostile object coercions must never escape this event handler and
+      // terminate the scoring process.
+      sendError(ws, 'INVALID_MESSAGE', 'Invalid message fields');
+    }
   });
 
   ws.on('error', error => {
     console.error('WebSocket connection error:', error.message);
   });
   ws.on('close', () => {
+    clearTimeout(ws.authTimer);
+    if (shuttingDown) return;
     const wasHost = hostSocket === ws;
     releaseRole(ws);
     if (wasHost && match.running) {
@@ -4789,6 +4907,9 @@ server.on('error', error => {
 });
 
 async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  setTimeout(() => process.exit(1), 10_000).unref();
   console.log(`${signal} received; shutting down`);
   if (pendingSystemPower) {
     clearTimeout(pendingSystemPower.timer);
@@ -4801,11 +4922,12 @@ async function shutdown(signal) {
     console.error(`Could not flush saved state during shutdown: ${error.message}`);
   }
   await persistence.release();
+  await fileJobs.close();
   for (const ws of wss.clients) ws.close(1001, 'Server shutting down');
   wss.close(() => server.close(() => process.exit(0)));
-  setTimeout(() => process.exit(1), 3000).unref();
 }
 
+let shuttingDown = false;
 process.once('SIGINT', () => shutdown('SIGINT'));
 process.once('SIGTERM', () => shutdown('SIGTERM'));
 
@@ -4815,6 +4937,6 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`Wi-Fi:  http://${getLocalIPv4()}:${PORT}`);
   const configuredRemoteIds = [...REMOTE_IDS].filter(deviceId => expectedRemoteToken(deviceId));
   console.log(`Remote authentication configured for: ${configuredRemoteIds.join(', ') || 'none'}`);
-  console.log(`Host access token: ${hostAccessToken}`);
+  if (!KIOSK_MODE) console.log(`Host access token: ${hostAccessToken}`);
   if (KIOSK_MODE) console.log('Kiosk mode: localhost host access is enabled');
 });

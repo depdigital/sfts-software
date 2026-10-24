@@ -7,6 +7,7 @@ let ws = null;
 let reconnectTimer = null;
 let reconnectDelay = 500;
 let lastState = null;
+let lastStateEnvelope = null;
 let lastTournament = null;
 let lastManualCompetition = { version: 1, categories: [] };
 let manualRecordsCache = [];
@@ -79,16 +80,24 @@ function connectSocket() {
         role: requestedRole,
         corner: requestedCorner,
         accessToken: hostAccessToken,
+        supportsStatePatch: true,
       });
     }
   };
   ws.onmessage = (event) => {
-    const msg = JSON.parse(event.data);
+    let msg = JSON.parse(event.data);
+    const statePatch = msg.type === "statePatch";
+    if (msg.type === "state" || statePatch) {
+      msg = SftsState.merge(lastStateEnvelope, msg);
+      if (!msg) return;
+      lastStateEnvelope = msg;
+    }
     if (msg.type === "roleAccepted") {
       role = msg.role || role;
       if (msg.role === "host") hostToken = msg.hostToken || "";
     }
     if (msg.type === "state") {
+      $("storageWarning")?.classList.toggle("hidden", msg.storageHealthy !== false);
       if (msg.recoveredFromUnexpectedShutdown === true && !recoveryNoticeShown) {
         recoveryNoticeShown = true;
         toast("RECOVERED AFTER UNEXPECTED SHUTDOWN - VERIFY MATCH STATE");
@@ -109,7 +118,7 @@ function connectSocket() {
       usbImportOnly = msg.usbImportOnly === true;
       activeRuleset = msg.ruleset || msg.match?.ruleset || activeRuleset;
       scoringRules = msg.scoringRules || scoringRules;
-      renderUsbImportMode();
+      if (!statePatch) renderUsbImportMode();
       renderState(msg.match);
       if (practiceLoadPending && msg.match?.mode === "PRACTICE") {
         practiceLoadPending = false;
@@ -117,16 +126,19 @@ function connectSocket() {
       }
       if (!$('cornerRefereeHistoryModal')?.classList.contains('hidden'))
         renderCornerRefereeHistory();
-      renderActiveRuleset(activeRuleset);
+      if (!statePatch) renderActiveRuleset(activeRuleset);
       renderScoringControls();
       renderRemoteStatuses(msg.remotes, msg.match?.remoteCount);
-      renderTournament(msg.tournament);
-      renderManualCategoryOptions();
+      if (!statePatch) {
+        renderTournament(msg.tournament);
+        renderManualCategoryOptions();
+      }
       handleManualEntryState(msg.match);
-      if (!$('manualCategoryResultsModal')?.classList.contains('hidden')) renderManualCategoryReport();
-      if (!$("scheduleModal").classList.contains("hidden"))
+      if (!statePatch && !$('manualCategoryResultsModal')?.classList.contains('hidden')) renderManualCategoryReport();
+      if (!statePatch && !$("scheduleModal").classList.contains("hidden"))
         renderSchedule(msg.tournament);
     }
+    if (msg.type === "storageStatus") $("storageWarning")?.classList.toggle("hidden", msg.ok !== false);
     if (msg.type === "scoreUpdate" && lastState?.matchNo === msg.matchNo && lastState.round === msg.round) {
       lastState.red.score = msg.redScore;
       lastState.blue.score = msg.blueScore;
@@ -617,7 +629,7 @@ function openHost() {
   requestedRole = "host";
   requestedCorner = 0;
   hostAccessToken = $("hostAccessToken")?.value.trim() || "";
-  send({ type: "role", role: "host", accessToken: hostAccessToken });
+  send({ type: "role", role: "host", accessToken: hostAccessToken, supportsStatePatch: true });
   showScreen("host");
   requestAnimationFrame(playLaunchBranding);
 }

@@ -8,6 +8,9 @@ const DEFAULT_TIMEOUT_MS = 20_000;
 const DEFAULT_CACHE_LIMIT = 100;
 const MEMORY_AUDIO_LIMIT = 20;
 const MEMORY_AUDIO_TTL_MS = 10 * 60 * 1000;
+const MAX_AUDIO_BYTES = 2 * 1024 * 1024;
+const MAX_MEMORY_AUDIO_BYTES = 8 * 1024 * 1024;
+const MAX_PENDING_ANNOUNCEMENTS = 4;
 
 function envNumber(name, fallback, minimum, maximum) {
   const value = Number(process.env[name]);
@@ -25,7 +28,7 @@ function cacheFileName(text, model) {
 
 function isUsableAudio(file) {
   return stat(file)
-    .then(result => result.isFile() && result.size > 44)
+    .then(result => result.isFile() && result.size > 44 && result.size <= MAX_AUDIO_BYTES)
     .catch(() => false);
 }
 
@@ -45,7 +48,7 @@ function runPiper({ command, model, text, outputFile, timeoutMs }) {
       else resolve();
     };
     const timer = setTimeout(() => {
-      child.kill();
+      child.kill('SIGKILL');
       finish(new Error(`Piper timed out after ${timeoutMs} ms`));
     }, timeoutMs);
 
@@ -54,6 +57,7 @@ function runPiper({ command, model, text, outputFile, timeoutMs }) {
       if (stderr.length > 2000) stderr = stderr.slice(-2000);
     });
     child.once('error', error => finish(error));
+    child.stdin.once('error', error => finish(error));
     child.once('close', code => {
       if (code === 0) finish();
       else finish(new Error(`Piper exited with code ${code}${stderr.trim() ? `: ${stderr.trim()}` : ''}`));
@@ -72,6 +76,8 @@ export function createTts({ logger = console } = {}) {
   const cacheLimit = envNumber('SFTS_TTS_CACHE_LIMIT', DEFAULT_CACHE_LIMIT, 1, 1000);
   const memoryAudio = new Map();
   let queue = Promise.resolve();
+  let pending = 0;
+  let memoryAudioBytes = 0;
   let warned = false;
 
   function warn(error) {
@@ -96,10 +102,15 @@ export function createTts({ logger = console } = {}) {
   function trimMemoryAudio() {
     const now = Date.now();
     for (const [fileName, item] of memoryAudio) {
-      if (item.expiresAt <= now) memoryAudio.delete(fileName);
+      if (item.expiresAt <= now) {
+        memoryAudioBytes -= item.buffer.length;
+        memoryAudio.delete(fileName);
+      }
     }
-    while (memoryAudio.size > MEMORY_AUDIO_LIMIT) {
-      memoryAudio.delete(memoryAudio.keys().next().value);
+    while (memoryAudio.size > MEMORY_AUDIO_LIMIT || memoryAudioBytes > MAX_MEMORY_AUDIO_BYTES) {
+      const oldest = memoryAudio.keys().next().value;
+      memoryAudioBytes -= memoryAudio.get(oldest).buffer.length;
+      memoryAudio.delete(oldest);
     }
   }
 
@@ -107,6 +118,7 @@ export function createTts({ logger = console } = {}) {
     trimMemoryAudio();
     const fileName = `memory-${randomBytes(18).toString('hex')}`;
     memoryAudio.set(fileName, { buffer, expiresAt: Date.now() + MEMORY_AUDIO_TTL_MS });
+    memoryAudioBytes += buffer.length;
     trimMemoryAudio();
     return { fileName };
   }
@@ -122,8 +134,19 @@ export function createTts({ logger = console } = {}) {
         signal: controller.signal
       });
       if (!response.ok) throw new Error(`Piper HTTP service returned ${response.status}`);
-      const buffer = Buffer.from(await response.arrayBuffer());
-      if (buffer.length <= 44 || buffer.toString('ascii', 0, 4) !== 'RIFF') {
+      if (Number(response.headers.get('content-length')) > MAX_AUDIO_BYTES) {
+        await response.body?.cancel();
+        throw new Error('Piper WAV exceeds the 2 MB limit');
+      }
+      const chunks = [];
+      let totalBytes = 0;
+      for await (const chunk of response.body) {
+        totalBytes += chunk.length;
+        if (totalBytes > MAX_AUDIO_BYTES) throw new Error('Piper WAV exceeds the 2 MB limit');
+        chunks.push(chunk);
+      }
+      const buffer = Buffer.concat(chunks, totalBytes);
+      if (buffer.length <= 44 || buffer.toString('ascii', 0, 4) !== 'RIFF' || buffer.toString('ascii', 8, 12) !== 'WAVE') {
         throw new Error('Piper HTTP service returned an invalid WAV file');
       }
       return storeMemoryAudio(buffer);
@@ -158,7 +181,13 @@ export function createTts({ logger = console } = {}) {
   }
 
   function synthesize(text) {
-    const next = queue.then(() => generate(text));
+    if (pending >= MAX_PENDING_ANNOUNCEMENTS) {
+      const error = new Error('Announcement queue is full; wait for the current announcements');
+      error.code = 'TTS_BUSY';
+      return Promise.reject(error);
+    }
+    pending += 1;
+    const next = queue.then(() => generate(text)).finally(() => { pending -= 1; });
     queue = next.catch(() => null);
     return next;
   }

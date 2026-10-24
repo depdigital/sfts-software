@@ -262,7 +262,9 @@ configure_piper() {
 step "Installing production dependencies"
 log "Using project directory: ${PROJECT_DIR}"
 log "Using service user: ${SERVICE_USER}"
-runuser -u "${SERVICE_USER}" -- env PATH="/usr/bin:/bin" "${NPM_BIN}" ci --omit=dev
+runuser -u "${SERVICE_USER}" -- env PATH="/usr/bin:/bin" npm_config_allow_remote=root "${NPM_BIN}" ci --omit=dev
+DEPENDENCY_HASH="$(sha256sum "${PROJECT_DIR}/package-lock.json" | awk '{print $1}')"
+runuser -u "${SERVICE_USER}" -- sh -c 'printf "%s\n" "$1" > "$2"' sh "${DEPENDENCY_HASH}" "${PROJECT_DIR}/node_modules/.sfts-production-lock.sha256"
 success "Production dependencies installed"
 
 step "Installing local Piper speech service"

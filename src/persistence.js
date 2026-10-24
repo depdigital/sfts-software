@@ -138,7 +138,7 @@ async function syncDirectory(dataDir) {
   }
 }
 
-export function createPersistence({ logger = console, dataDir: configuredDataDir = null } = {}) {
+export function createPersistence({ logger = console, dataDir: configuredDataDir = null, onStatus = () => {} } = {}) {
   const dataDir = path.resolve(configuredDataDir || process.env.SFTS_DATA_DIR || path.join(process.cwd(), 'data'));
   const stateFile = path.join(dataDir, 'sfts-state.json');
   const backupFile = path.join(dataDir, 'sfts-state.backup.json');
@@ -147,6 +147,8 @@ export function createPersistence({ logger = console, dataDir: configuredDataDir
   let queuedSnapshot = null;
   let saveTimer = null;
   let writeChain = Promise.resolve();
+  let writing = false;
+  let lastWriteError = null;
   let lockOwned = false;
 
   async function acquire() {
@@ -217,7 +219,7 @@ export function createPersistence({ logger = console, dataDir: configuredDataDir
 
   async function writeSnapshot(snapshot) {
     await mkdir(dataDir, { recursive: true });
-    const contents = `${JSON.stringify(snapshot, null, 2)}\n`;
+    const contents = `${JSON.stringify(snapshot)}\n`;
     if ((await readSnapshot(stateFile)).snapshot) {
       const backupTemp = `${backupFile}.${process.pid}.${Math.random().toString(16).slice(2)}.tmp`;
       await copyFile(stateFile, backupTemp);
@@ -240,12 +242,16 @@ export function createPersistence({ logger = console, dataDir: configuredDataDir
     for (let attempt = 0; attempt < WRITE_RETRIES; attempt += 1) {
       try {
         await writeSnapshot(snapshot);
+        if (lastWriteError) onStatus(true);
+        lastWriteError = null;
         return;
       } catch (error) {
         lastError = error;
         if (attempt < WRITE_RETRIES - 1) await new Promise(resolve => setTimeout(resolve, 50 * (attempt + 1)));
       }
     }
+    lastWriteError = lastError;
+    onStatus(false);
     throw lastError;
   }
 
@@ -255,13 +261,19 @@ export function createPersistence({ logger = console, dataDir: configuredDataDir
 
   function drainQueue() {
     saveTimer = null;
+    if (writing) return writeChain;
     const pendingSnapshot = queuedSnapshot;
     queuedSnapshot = null;
-    if (!pendingSnapshot) return;
-    writeChain = writeChain
+    if (!pendingSnapshot) return writeChain;
+    writing = true;
+    writeChain = Promise.resolve()
       .then(() => writeWithRetry(typeof pendingSnapshot === 'function' ? pendingSnapshot() : pendingSnapshot))
-      .catch(logWriteError);
-    if (queuedSnapshot && !saveTimer) saveTimer = setTimeout(drainQueue, saveDelayMs);
+      .catch(logWriteError)
+      .finally(() => {
+        writing = false;
+        if (queuedSnapshot && !saveTimer) saveTimer = setTimeout(drainQueue, saveDelayMs);
+      });
+    return writeChain;
   }
 
   function schedule(snapshot) {
@@ -270,20 +282,13 @@ export function createPersistence({ logger = console, dataDir: configuredDataDir
   }
 
   async function flush(snapshot = null) {
-    if (saveTimer) {
+    if (snapshot) queuedSnapshot = snapshot;
+    do {
       clearTimeout(saveTimer);
       saveTimer = null;
-    }
-    const queued = queuedSnapshot;
-    queuedSnapshot = null;
-    await writeChain;
-    if (queued || snapshot) {
-      const pendingSnapshot = snapshot || queued;
-      writeChain = writeChain
-        .then(() => writeWithRetry(typeof pendingSnapshot === 'function' ? pendingSnapshot() : pendingSnapshot))
-        .catch(logWriteError);
-      await writeChain;
-    }
+      await drainQueue();
+    } while (queuedSnapshot || writing);
+    if (lastWriteError) throw lastWriteError;
   }
 
   return { dataDir, stateFile, backupFile, lockFile, acquire, release, load, schedule, flush };
