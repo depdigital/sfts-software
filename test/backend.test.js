@@ -857,9 +857,9 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
     button: 'RED_TECHNICAL', ageMs: 0
   }));
   assert.equal((await waitForMessage(replacementRemote, message =>
-    message.type === 'remote_event_ack' && message.sequence === 2)).reason, 'TEST_PRESS_RECORDED');
-  assert.equal((await waitForMessage(host, message => message.type === 'testPress' &&
-    message.button === 'RED_TECHNICAL')).points, null);
+    message.type === 'remote_event_ack' && message.sequence === 2)).reason, 'TECHNICAL_PENDING');
+  const pendingTest = await waitForMessage(host, message => message.type === 'state' && message.match.test.active);
+  assert.equal(pendingTest.match.test.presses['1-RED_TECHNICAL'], undefined);
   replacementRemote.send(JSON.stringify({
     type: 'remote_event', deviceId: 'C1', sessionId: 'test-session-c1-reboot', sequence: 3,
     button: 'RED_TECHNICAL_3', ageMs: 0

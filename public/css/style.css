@@ -2505,7 +2505,7 @@ button {
 }
 .joystickBody {
   display: grid;
-  grid-template-columns: 1fr 110px 1fr;
+  grid-template-columns: minmax(0, 1fr) 110px minmax(0, 1fr);
   gap: 12px;
   align-items: center;
 }
@@ -2514,11 +2514,23 @@ button {
   gap: 10px;
 }
 .joyButtons i {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-style: normal;
+  font-size: clamp(11px, 1vw, 14px);
   text-align: center;
-  padding: 16px;
+  min-height: 52px;
+  padding: 8px;
   border-radius: 8px;
   font-weight: 900;
+}
+.remoteTestIcon {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  filter: brightness(0) invert(1);
+  pointer-events: none;
 }
 .redJoyBtns i {
   background: #721719;
@@ -2560,6 +2572,59 @@ button {
 .joyButtons i.litBlue {
   background: #09a7ef;
   box-shadow: 0 0 16px rgba(9, 167, 239, 0.55);
+}
+
+@media (max-height: 800px) and (min-width: 701px) {
+  .testHeader {
+    height: 68px;
+    grid-template-columns: 160px 1fr 180px 100px;
+    column-gap: 16px;
+  }
+  .testLogo {
+    width: 150px;
+    height: 48px;
+  }
+  .testHeaderTitle {
+    font-size: 28px;
+  }
+  .testHelp {
+    margin-top: 8px;
+    font-size: 13px;
+  }
+  .joystickGrid {
+    gap: 10px;
+    padding: 10px;
+  }
+  .joystickCard {
+    padding: 10px;
+  }
+  .joystickCard h3 {
+    margin-bottom: 6px;
+    font-size: 16px;
+  }
+  .remoteTelemetry {
+    margin-bottom: 6px;
+    font-size: 10px;
+  }
+  .joystickBody {
+    grid-template-columns: minmax(0, 1fr) 80px minmax(0, 1fr);
+    gap: 8px;
+  }
+  .joyButtons {
+    gap: 6px;
+  }
+  .joyButtons i {
+    min-height: 38px;
+    padding: 5px;
+  }
+  .remoteTestIcon {
+    width: 28px;
+    height: 28px;
+  }
+  .joyController {
+    width: 68px;
+    height: 68px;
+  }
 }
 
 @media (min-width: 1400px) and (min-height: 800px) {

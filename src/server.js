@@ -9,6 +9,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { WebSocketServer } from "ws";
 import { createFileJobs } from './fileJobs.js';
+import { createRemoteTestTracker } from './remoteTest.js';
 import { readBoundedFile } from './safeFiles.js';
 import { createNetworkGuard, createRateLimiter, isLoopback, normalizeAddress } from './networkGuard.js';
 import { createTts } from "./tts.js";
@@ -754,6 +755,7 @@ const remoteStatuses = new Map([...REMOTE_IDS].map(deviceId => [deviceId, {
 }]));
 const remoteTechnicalPending = new Map();
 const remoteLastBasePress = new Map();
+const remoteTestTracker = createRemoteTestTracker({ windowMs: () => TECHNICAL_COMBO_WINDOW_MS, technicalPointsFor });
 const lastRemoteButtons = new Map();
 const lastRemoteButtonTimers = new Map();
 const REMOTE_BUTTON_DISPLAY_MS = 250;
@@ -2700,6 +2702,7 @@ function normalizeRemoteCounter(value) {
 }
 
 function clearRemoteCombination(corner) {
+  remoteTestTracker.clear(corner);
   const pending = remoteTechnicalPending.get(corner);
   if (pending?.timer) clearTimeout(pending.timer);
   remoteTechnicalPending.delete(corner);
@@ -2707,6 +2710,7 @@ function clearRemoteCombination(corner) {
 }
 
 function clearAllRemoteCombinations() {
+  remoteTestTracker.reset();
   for (const corner of new Set([...remoteTechnicalPending.keys(), ...remoteLastBasePress.keys()])) {
     clearRemoteCombination(corner);
   }
@@ -4073,6 +4077,7 @@ function setRemoteCount(value) {
   }
   match.remoteCount = remoteCount;
   match.votes = {};
+  clearAllRemoteCombinations();
   clearVoteSettleGuard();
   clearRemoteScoreHighlights();
   if (match.test.active) {
@@ -4258,10 +4263,14 @@ function handleRemoteEvent(ws, msg) {
   }
   if (match.test.active) {
     showLastRemoteButton(ws.corner, vote.button);
-    match.test.presses[`${ws.corner}-${vote.button}`] = true;
-    emit({ type: 'testPress', corner: ws.corner, player: vote.player, points: vote.points, button: vote.button });
+    const testButton = remoteTestTracker.press(ws.corner, vote, occurredAt);
+    if (testButton) {
+      const testVote = remoteButton(testButton);
+      match.test.presses[`${ws.corner}-${testButton}`] = true;
+      emit({ type: 'testPress', corner: ws.corner, player: testVote.player, points: testVote.points, button: testButton });
+    }
     state();
-    const ack = remoteAck(ws, sequence, { accepted: true, reason: 'TEST_PRESS_RECORDED', test: true, awarded: false });
+    const ack = remoteAck(ws, sequence, { accepted: true, reason: testButton ? 'TEST_PRESS_RECORDED' : 'TECHNICAL_PENDING', test: true, awarded: false });
     rememberRemoteAck(session, sequence, ack);
     return;
   }
@@ -4800,6 +4809,7 @@ wss.on('connection', (ws, request) => {
       }
       if (msg.action === 'testStart') {
         setRunning(false);
+        clearAllRemoteCombinations();
         match.test.active = true;
         match.test.presses = {};
         match.votes = {};

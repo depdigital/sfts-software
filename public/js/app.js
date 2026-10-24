@@ -3218,23 +3218,23 @@ function markTest(corner, player, points, button = "") {
   const joy = $(`joy${corner}`);
   if (!joy) return;
   const buttonId = button || `${player}_${points}`;
-  const combined = /^(RED|BLUE)_TECHNICAL_([23])$/.exec(buttonId);
-  const keys = combined
-    ? [`${combined[1]}-TECHNICAL`, `${combined[1]}-${combined[2]}`]
-    : [buttonId.replace("_", "-")];
-  for (const key of keys) {
-    const item = joy.querySelector(`[data-key="${key}"]`);
-    if (item) item.classList.add(player === "RED" ? "litRed" : "litBlue");
-  }
+  const input = /^(RED|BLUE)_(?:([123])|TECHNICAL_([23]))$/.exec(buttonId);
+  if (!input) return;
+  const side = input[1];
+  const key = input[3] ? `${side}-TECHNICAL-${input[3]}` : `${side}-${input[2]}`;
+  const item = joy.querySelector(`[data-key="${key}"]`);
+  if (item) item.classList.add(side === "RED" ? "litRed" : "litBlue");
   const all = [
-    "RED-1",
-    "RED-2",
     "RED-3",
-    "RED-TECHNICAL",
-    "BLUE-1",
-    "BLUE-2",
+    "RED-2",
+    "RED-TECHNICAL-3",
+    "RED-TECHNICAL-2",
+    "RED-1",
     "BLUE-3",
-    "BLUE-TECHNICAL",
+    "BLUE-2",
+    "BLUE-TECHNICAL-3",
+    "BLUE-TECHNICAL-2",
+    "BLUE-1",
   ];
   const done = all.every((key) => {
     const el = joy.querySelector(`[data-key="${key}"]`);
@@ -3243,7 +3243,7 @@ function markTest(corner, player, points, button = "") {
       (el.classList.contains("litRed") || el.classList.contains("litBlue"))
     );
   });
-  if (done) joy.classList.add("passed");
+  joy.classList.toggle("passed", done);
 }
 
 function audio() {

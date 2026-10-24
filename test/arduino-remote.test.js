@@ -107,6 +107,25 @@ test('C1 firmware handshake authenticates, reports status and delivers an acknow
   const ack = await message(remote, msg => msg.type === 'remote_event_ack' && msg.sequence === 1);
   assert.equal(ack.accepted, true);
   assert.equal((await message(host, msg => msg.type === 'testPress')).corner, 1);
+
+  const press = async (sequence, button) => {
+    send(remote, { type: 'remote_event', deviceId: 'C1', sessionId: 'firmware-compat', sequence, button, ageMs: 0 });
+    return message(remote, msg => msg.type === 'remote_event_ack' && msg.sequence === sequence);
+  };
+  assert.equal((await press(2, 'RED_TECHNICAL')).reason, 'TECHNICAL_PENDING');
+  assert.equal((await press(3, 'RED_3')).reason, 'TEST_PRESS_RECORDED');
+  const technicalHead = await message(host, msg => msg.type === 'testPress' && msg.button === 'RED_TECHNICAL_3');
+  assert.equal(technicalHead.points, 6);
+  assert.equal((await press(4, 'BLUE_2')).reason, 'TEST_PRESS_RECORDED');
+  assert.equal((await press(5, 'BLUE_TECHNICAL')).reason, 'TEST_PRESS_RECORDED');
+  const technicalChest = await message(host, msg => msg.type === 'testPress' && msg.button === 'BLUE_TECHNICAL_2');
+  assert.equal(technicalChest.points, 4);
+  const tested = await message(host, msg => msg.type === 'state' && msg.match.test.presses['1-BLUE_TECHNICAL_2']);
+  assert.equal(tested.match.test.presses['1-RED_TECHNICAL_3'], true);
+  assert.equal(tested.match.test.presses['1-RED_TECHNICAL'], undefined);
+  assert.equal(tested.match.test.presses['1-RED_3'], undefined, 'combined head input is a separate check');
+  assert.equal(tested.match.red.score, 0);
+  assert.equal(tested.match.blue.score, 0);
 });
 
 test('Arduino compatibility does not admit arbitrary file or foreign browser origins', async () => {
