@@ -29,6 +29,14 @@
       </action>
     </keybind>
 
+    <!-- Emergency recovery: terminate only this user's Chromium processes.
+         The supervised kiosk launcher immediately opens a fresh dashboard. -->
+    <keybind key="C-A-S-r">
+      <action name="Execute">
+        <command>sh -c 'pkill -u "$(id -u)" -f -- "(^|/)chromium(-browser)? .*--user-data-dir=.*/sfts-scoreboard-kiosk" 2>/dev/null; true'</command>
+      </action>
+    </keybind>
+
     <!-- Consume Raspberry Pi desktop escape shortcuts. -->
     <keybind key="C-A-t" />
     <keybind key="C-A-space" />
@@ -60,6 +68,61 @@
     <keybind key="A-Down" />
     <keybind key="F11" />
     <keybind key="F12" />
+
+    <!-- Consume Chromium navigation, tab, window, browser-UI, developer-tool,
+         file-dialog, and page-management shortcuts. Plain R/B/S/Space remain
+         available to the scoreboard itself. -->
+    <keybind key="C-t" />
+    <keybind key="C-S-t" />
+    <keybind key="C-n" />
+    <keybind key="C-S-n" />
+    <keybind key="C-w" />
+    <keybind key="C-S-w" />
+    <keybind key="C-F4" />
+    <keybind key="C-Tab" />
+    <keybind key="C-S-Tab" />
+    <keybind key="C-Page_Up" />
+    <keybind key="C-Page_Down" />
+    <keybind key="C-1" />
+    <keybind key="C-2" />
+    <keybind key="C-3" />
+    <keybind key="C-4" />
+    <keybind key="C-5" />
+    <keybind key="C-6" />
+    <keybind key="C-7" />
+    <keybind key="C-8" />
+    <keybind key="C-9" />
+    <keybind key="C-l" />
+    <keybind key="C-k" />
+    <keybind key="C-e" />
+    <keybind key="A-d" />
+    <keybind key="A-Home" />
+    <keybind key="A-f" />
+    <keybind key="A-e" />
+    <keybind key="C-h" />
+    <keybind key="C-j" />
+    <keybind key="C-o" />
+    <keybind key="C-u" />
+    <keybind key="C-p" />
+    <keybind key="C-s" />
+    <keybind key="C-r" />
+    <keybind key="C-b" />
+    <keybind key="C-space" />
+    <keybind key="C-S-b" />
+    <keybind key="C-S-o" />
+    <keybind key="C-S-d" />
+    <keybind key="C-S-Delete" />
+    <keybind key="C-S-i" />
+    <keybind key="C-S-j" />
+    <keybind key="C-S-c" />
+    <keybind key="S-Escape" />
+    <keybind key="S-F10" />
+    <keybind key="Menu" />
+    <keybind key="F1" />
+    <keybind key="F3" />
+    <keybind key="F6" />
+    <keybind key="F7" />
+    <keybind key="F10" />
 
     <!-- Consume common virtual-terminal escape combinations. -->
     <keybind key="C-A-F1" />

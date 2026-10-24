@@ -1,0 +1,34 @@
+{
+  "URLBlocklist": [
+    "*"
+  ],
+  "URLAllowlist": [
+    "http://127.0.0.1:@PORT@/*",
+    "ws://127.0.0.1:@PORT@/*",
+    "blob:*"
+  ],
+  "HomepageLocation": "http://127.0.0.1:@PORT@/",
+  "HomepageIsNewTabPage": false,
+  "NewTabPageLocation": "http://127.0.0.1:@PORT@/",
+  "RestoreOnStartup": 4,
+  "RestoreOnStartupURLs": [
+    "http://127.0.0.1:@PORT@/"
+  ],
+  "DeveloperToolsAvailability": 2,
+  "IncognitoModeAvailability": 1,
+  "BrowserGuestModeEnabled": false,
+  "BrowserAddPersonEnabled": false,
+  "BrowserSignin": 0,
+  "SyncDisabled": true,
+  "PasswordManagerEnabled": false,
+  "ExtensionInstallBlocklist": [
+    "*"
+  ],
+  "BackgroundModeEnabled": false,
+  "DefaultBrowserSettingEnabled": false,
+  "TranslateEnabled": false,
+  "DefaultNotificationsSetting": 2,
+  "DefaultGeolocationSetting": 2,
+  "AllowFileSelectionDialogs": false,
+  "ExternalProtocolDialogShowAlwaysOpenCheckbox": false
+}

@@ -88,6 +88,7 @@ const USB_ALLOWED_EXTENSIONS = new Set(['.xlsx', '.xls', '.csv']);
 const USB_RULE_ALLOWED_EXTENSIONS = new Set(['.json']);
 const USB_TEMPLATE_FILE = 'sfts-player-template.xlsx';
 const KIOSK_MODE = process.env.SFTS_KIOSK_MODE === 'true';
+const KIOSK_ORIGIN = new URL(`http://127.0.0.1:${PORT}`).origin;
 const INDIAN_STATE_CODES = new Set([
   'AN', 'AP', 'AR', 'AS', 'BR', 'CH', 'CG', 'DD', 'DL', 'DN', 'GA', 'GJ',
   'HR', 'HP', 'JK', 'JH', 'KA', 'KL', 'LA', 'LD', 'MP', 'MH', 'MN', 'ML',
@@ -3050,6 +3051,15 @@ function isLoopbackAddress(address) {
   return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
 }
 
+function isTrustedKioskOrigin(origin) {
+  if (typeof origin !== 'string' || !origin) return false;
+  try {
+    return new URL(origin).origin === KIOSK_ORIGIN;
+  } catch {
+    return false;
+  }
+}
+
 function assignRole(ws, role, corner, accessToken, kioskAuthorized = false) {
   if (role === 'host') {
     if (!kioskAuthorized && !tokenMatches(accessToken, hostAccessToken)) {
@@ -4273,13 +4283,14 @@ function handleRemoteEvent(ws, msg) {
   }
 }
 
-wss.on('connection', ws => {
+wss.on('connection', (ws, request) => {
   ws.role = 'unknown';
   ws.corner = 0;
   ws.deviceId = null;
   ws.sessionId = null;
   ws.remoteSession = null;
   ws.hostToken = null;
+  ws.requestOrigin = String(request.headers.origin || '');
   ws.messageWindowStartedAt = Date.now();
   ws.messageCount = 0;
   ws.isAlive = true;
@@ -4329,7 +4340,10 @@ wss.on('connection', ws => {
         sendError(ws, 'ROLE_ALREADY_ASSIGNED', 'This connection already has a role');
         return;
       }
-      const kioskAuthorized = KIOSK_MODE && msg.role === 'host' && isLoopbackAddress(ws._socket?.remoteAddress);
+      const kioskAuthorized = KIOSK_MODE &&
+        msg.role === 'host' &&
+        isLoopbackAddress(ws._socket?.remoteAddress) &&
+        isTrustedKioskOrigin(ws.requestOrigin);
       assignRole(ws, msg.role, Number(msg.corner), msg.accessToken, kioskAuthorized);
       return;
     }

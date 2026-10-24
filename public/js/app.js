@@ -66,11 +66,13 @@ const AUTOMATIC_SCREENSAVER_DELAY_MS = 15_000;
 const $ = (id) => document.getElementById(id);
 
 function connectSocket() {
+  setServerConnectionState("connecting");
   ws = new WebSocket(
     (location.protocol === "https:" ? "wss://" : "ws://") + location.host,
   );
   ws.onopen = () => {
     reconnectDelay = 500;
+    setServerConnectionState("connected");
     if (requestedRole) {
       send({
         type: "role",
@@ -215,6 +217,7 @@ function connectSocket() {
   };
   ws.onclose = () => {
     remoteStatusSnapshot = null;
+    setServerConnectionState("disconnected");
     if (reconnectTimer) return;
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
@@ -222,7 +225,7 @@ function connectSocket() {
       connectSocket();
     }, reconnectDelay);
   };
-  ws.onerror = () => {};
+  ws.onerror = () => setServerConnectionState("disconnected");
 }
 connectSocket();
 preloadPointSounds();
@@ -308,6 +311,10 @@ document.addEventListener("keydown", (event) => {
   if (
     !["Space", "KeyR", "KeyB", "KeyS"].includes(event.code) ||
     event.repeat ||
+    event.ctrlKey ||
+    event.altKey ||
+    event.metaKey ||
+    event.shiftKey ||
     role !== "host"
   ) return;
   const target = event.target;
@@ -329,6 +336,10 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
+document.addEventListener("contextmenu", (event) => event.preventDefault(), true);
+document.addEventListener("dragover", (event) => event.preventDefault(), true);
+document.addEventListener("drop", (event) => event.preventDefault(), true);
+
 document.addEventListener("keydown", (event) => {
   if ($("userPermissionModal")?.classList.contains("hidden")) return;
   if (event.key === "Escape") {
@@ -343,6 +354,16 @@ document.addEventListener("keydown", (event) => {
 function send(data) {
   if (ws && ws.readyState === 1) ws.send(JSON.stringify(data));
   else toast("NOT CONNECTED");
+}
+
+function setServerConnectionState(state) {
+  const node = $("serverConnectionStatus");
+  if (!node) return;
+  const connected = state === "connected";
+  node.classList.toggle("hidden", connected);
+  node.textContent = state === "connecting"
+    ? "CONNECTING TO SCOREBOARD SERVER..."
+    : "SCOREBOARD SERVER DISCONNECTED - RECONNECTING...";
 }
 
 function toast(text) {

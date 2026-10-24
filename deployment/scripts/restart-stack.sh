@@ -6,13 +6,25 @@ SCOREBOARD_SERVICE="sfts-scoreboard.service"
 PIPER_SERVICE="sfts-piper.service"
 DISPLAY_SERVICE="lightdm.service"
 PIPER_URL="http://127.0.0.1:5000/info"
-SCOREBOARD_URL="http://127.0.0.1:8080/"
 WAIT_SECONDS=30
 PROJECT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 KIOSK_RC_SOURCE="${PROJECT_DIR}/deployment/config/labwc-kiosk-rc.xml"
 KIOSK_RC_DEST="/etc/sfts/sfts-scoreboard-kiosk/labwc/rc.xml"
+KIOSK_SCRIPT="${PROJECT_DIR}/deployment/scripts/start-kiosk.sh"
+KIOSK_AUTOSTART_DEST="/etc/sfts/sfts-scoreboard-kiosk/labwc/autostart"
+CHROMIUM_POLICY_SOURCE="${PROJECT_DIR}/deployment/config/chromium-kiosk-policy.json"
+ENV_FILE="/etc/sfts/sfts-scoreboard.env"
 PACKAGE_JSON="${PROJECT_DIR}/package.json"
 PACKAGE_LOCK="${PROJECT_DIR}/package-lock.json"
+CHROMIUM_POLICY_TMP=""
+
+cleanup() {
+  if [[ -n "${CHROMIUM_POLICY_TMP:-}" ]]; then
+    rm -f "${CHROMIUM_POLICY_TMP}"
+  fi
+}
+
+trap cleanup EXIT
 
 log() {
   printf '[sfts-restart] %s\n' "$*"
@@ -29,8 +41,19 @@ command -v curl >/dev/null 2>&1 || fail "curl is not available"
 command -v runuser >/dev/null 2>&1 || fail "runuser is not available"
 command -v flock >/dev/null 2>&1 || fail "flock is not available"
 [[ -f "${KIOSK_RC_SOURCE}" ]] || fail "kiosk Labwc configuration is missing"
+[[ -f "${KIOSK_SCRIPT}" ]] || fail "kiosk launcher is missing"
+[[ -f "${CHROMIUM_POLICY_SOURCE}" ]] || fail "Chromium kiosk policy template is missing"
 [[ -f "${PACKAGE_JSON}" ]] || fail "package.json is missing"
 [[ -f "${PACKAGE_LOCK}" ]] || fail "package-lock.json is missing"
+
+SERVER_PORT="8080"
+if [[ -r "${ENV_FILE}" ]]; then
+  configured_port="$(awk -F= '$1 == "PORT" {gsub(/[[:space:]\r"]/, "", $2); print $2; exit}' "${ENV_FILE}")"
+  if [[ "${configured_port}" =~ ^[0-9]+$ ]] && (( configured_port >= 1 && configured_port <= 65535 )); then
+    SERVER_PORT="${configured_port}"
+  fi
+fi
+SCOREBOARD_URL="http://127.0.0.1:${SERVER_PORT}/"
 
 systemctl cat "${PIPER_SERVICE}" >/dev/null 2>&1 || fail "${PIPER_SERVICE} is not installed"
 systemctl cat "${SCOREBOARD_SERVICE}" >/dev/null 2>&1 || fail "${SCOREBOARD_SERVICE} is not installed"
@@ -65,6 +88,23 @@ systemctl daemon-reload
 log "Installing kiosk Labwc restrictions"
 install -d -m 0755 -o root -g root "$(dirname -- "${KIOSK_RC_DEST}")"
 install -m 0644 -o root -g root "${KIOSK_RC_SOURCE}" "${KIOSK_RC_DEST}"
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  "while true; do \"${KIOSK_SCRIPT}\"; sleep 2; done &" \
+  > "${KIOSK_AUTOSTART_DEST}"
+chown root:root "${KIOSK_AUTOSTART_DEST}"
+chmod 0644 "${KIOSK_AUTOSTART_DEST}"
+chmod 0755 "${KIOSK_SCRIPT}"
+
+log "Installing Chromium kiosk policies"
+CHROMIUM_POLICY_TMP="$(mktemp)"
+sed "s|@PORT@|${SERVER_PORT}|g" "${CHROMIUM_POLICY_SOURCE}" > "${CHROMIUM_POLICY_TMP}"
+for chromium_policy_dir in /etc/chromium/policies/managed /etc/chromium-browser/policies/managed; do
+  install -d -m 0755 -o root -g root "${chromium_policy_dir}"
+  install -m 0644 -o root -g root "${CHROMIUM_POLICY_TMP}" "${chromium_policy_dir}/sfts-scoreboard-kiosk.json"
+done
+rm -f "${CHROMIUM_POLICY_TMP}"
+CHROMIUM_POLICY_TMP=""
 
 log "Restarting ${PIPER_SERVICE}"
 systemctl restart "${PIPER_SERVICE}"

@@ -139,7 +139,16 @@ readonly -a BROWSER_ARGS=(
   --noerrdialogs
   --disable-infobars
   --no-first-run
+  --no-default-browser-check
   --disable-session-crashed-bubble
+  --disable-background-mode
+  --disable-background-networking
+  --disable-default-apps
+  --disable-extensions
+  --disable-pinch
+  --disable-sync
+  --disable-translate
+  --overscroll-history-navigation=0
   --password-store=basic
   "--user-data-dir=${PROFILE_DIR}"
 )
@@ -148,7 +157,8 @@ log "Waiting for ${KIOSK_URL}"
 while true; do
   wait_for_server
   log "Launching scoreboard kiosk"
-  "${BROWSER}" "${BROWSER_ARGS[@]}" "${KIOSK_URL}"
-  log "Chromium exited; restarting kiosk in 2 seconds"
+  browser_status=0
+  "${BROWSER}" "${BROWSER_ARGS[@]}" "${KIOSK_URL}" || browser_status="$?"
+  log "Chromium exited with status ${browser_status}; restarting kiosk in 2 seconds"
   sleep 2
 done

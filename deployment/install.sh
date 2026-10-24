@@ -12,6 +12,7 @@ SERVICE_TMP=""
 PIPER_SERVICE_TMP=""
 LIGHTDM_MAIN_TMP=""
 ENV_TMP=""
+CHROMIUM_POLICY_TMP=""
 REBOOT_DELAY_SECONDS="${SFTS_REBOOT_DELAY_SECONDS:-10}"
 SKIP_REBOOT="${SFTS_SKIP_REBOOT:-false}"
 PIPER_MODEL_NAME="${SFTS_PIPER_MODEL:-en_GB-alan-medium}"
@@ -53,6 +54,9 @@ cleanup() {
   if [[ -n "${ENV_TMP:-}" ]]; then
     rm -f "${ENV_TMP}"
   fi
+  if [[ -n "${CHROMIUM_POLICY_TMP:-}" ]]; then
+    rm -f "${CHROMIUM_POLICY_TMP}"
+  fi
 }
 
 escape_sed_value() {
@@ -89,6 +93,7 @@ SERVICE_TEMPLATE="${PROJECT_DIR}/deployment/systemd/${SERVICE_NAME}.service"
 PIPER_SERVICE_TEMPLATE="${PROJECT_DIR}/deployment/systemd/${PIPER_SERVICE_NAME}.service"
 ENV_TEMPLATE="${PROJECT_DIR}/deployment/config/sfts-scoreboard.env.example"
 KIOSK_SCRIPT="${PROJECT_DIR}/deployment/scripts/start-kiosk.sh"
+CHROMIUM_POLICY_TEMPLATE="${PROJECT_DIR}/deployment/config/chromium-kiosk-policy.json"
 POLKIT_TEMPLATE="${PROJECT_DIR}/deployment/polkit/sfts-scoreboard-power.rules"
 POLKIT_DEST="/etc/polkit-1/rules.d/49-sfts-scoreboard-power.rules"
 KIOSK_RC_TEMPLATE="${PROJECT_DIR}/deployment/config/labwc-kiosk-rc.xml"
@@ -101,6 +106,7 @@ KIOSK_RC_TEMPLATE="${PROJECT_DIR}/deployment/config/labwc-kiosk-rc.xml"
 [[ -f "${PIPER_SERVICE_TEMPLATE}" ]] || die "Piper systemd service template is missing"
 [[ -f "${ENV_TEMPLATE}" ]] || die "environment template is missing"
 [[ -f "${KIOSK_SCRIPT}" ]] || die "kiosk launcher is missing"
+[[ -f "${CHROMIUM_POLICY_TEMPLATE}" ]] || die "Chromium kiosk policy template is missing"
 [[ -f "${KIOSK_RC_TEMPLATE}" ]] || die "kiosk Labwc configuration is missing"
 [[ -f "${POLKIT_TEMPLATE}" ]] || die "polkit power-permission template is missing"
 success "Installer prerequisites found"
@@ -337,10 +343,19 @@ configure_desktop_kiosk() {
   local kiosk_session_dir
   local kiosk_session
   local kiosk_session_tmp
+  local configured_port
+  local kiosk_port
+  local chromium_policy_dir
 
   service_user_home="$(getent passwd "${SERVICE_USER}" | cut -d: -f6)"
   [[ -n "${service_user_home}" && -d "${service_user_home}" ]] || die "could not determine ${SERVICE_USER}'s home directory"
   [[ -d /usr/share/wayland-sessions ]] || die "a Wayland desktop is not installed; install Raspberry Pi OS Desktop with labwc"
+
+  kiosk_port="8080"
+  configured_port="$(awk -F= '$1 == "PORT" {gsub(/[[:space:]\r"]/, "", $2); print $2; exit}' "${ENV_FILE}")"
+  if [[ "${configured_port}" =~ ^[0-9]+$ ]] && (( configured_port >= 1 && configured_port <= 65535 )); then
+    kiosk_port="${configured_port}"
+  fi
 
   labwc_bin="$(command -v labwc-pi || command -v labwc || true)"
   [[ -n "${labwc_bin}" ]] || die "labwc was not found; install Raspberry Pi OS Desktop with labwc"
@@ -409,9 +424,19 @@ configure_desktop_kiosk() {
   # desktop wallpaper, panel, notifications, and icons are never started.
   install -d -m 0755 -o root -g root "${kiosk_config_root}" "${kiosk_labwc_dir}"
   install -m 0644 -o root -g root "${KIOSK_RC_TEMPLATE}" "${kiosk_labwc_dir}/rc.xml"
+
+  CHROMIUM_POLICY_TMP="$(mktemp)"
+  sed "s|@PORT@|${kiosk_port}|g" "${CHROMIUM_POLICY_TEMPLATE}" > "${CHROMIUM_POLICY_TMP}"
+  for chromium_policy_dir in /etc/chromium/policies/managed /etc/chromium-browser/policies/managed; do
+    install -d -m 0755 -o root -g root "${chromium_policy_dir}"
+    install -m 0644 -o root -g root "${CHROMIUM_POLICY_TMP}" "${chromium_policy_dir}/sfts-scoreboard-kiosk.json"
+  done
+  rm -f "${CHROMIUM_POLICY_TMP}"
+  CHROMIUM_POLICY_TMP=""
+
   printf '%s\n' \
     '#!/usr/bin/env bash' \
-    "\"${KIOSK_SCRIPT}\" &" \
+    "while true; do \"${KIOSK_SCRIPT}\"; sleep 2; done &" \
     > "${kiosk_autostart}"
   chown root:root "${kiosk_autostart}"
   chmod 0644 "${kiosk_autostart}"
@@ -437,7 +462,7 @@ configure_desktop_kiosk() {
   rm -f "${kiosk_session_tmp}"
 
   chmod 0755 "${KIOSK_SCRIPT}"
-  log "Configured dedicated labwc kiosk session for ${SERVICE_USER}"
+  log "Configured dedicated labwc kiosk session and Chromium policies for ${SERVICE_USER}"
 }
 
 configure_power_permissions() {

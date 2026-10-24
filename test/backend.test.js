@@ -30,9 +30,9 @@ function waitForMessage(ws, predicate, timeoutMs = 3000) {
   });
 }
 
-function connect() {
+function connect(options) {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(url);
+    const ws = options ? new WebSocket(url, options) : new WebSocket(url);
     ws.messages = [];
     ws.waiters = [];
     clients.add(ws);
@@ -52,6 +52,14 @@ function connect() {
     ws.once('open', () => resolve(ws));
     ws.once('error', reject);
   });
+}
+
+async function closeSocket(ws) {
+  if (ws.readyState === WebSocket.CLOSED) return;
+  const closed = new Promise(resolve => ws.once('close', resolve));
+  ws.close();
+  await closed;
+  clients.delete(ws);
 }
 
 async function assign(ws, role, corner, accessToken = 'test-host-token') {
@@ -76,6 +84,7 @@ before(async () => {
       SFTS_BREAK_MS: '50',
       SFTS_KYESHI_LIMIT_MS: '1000',
       SFTS_HOST_TOKEN: 'test-host-token',
+      SFTS_KIOSK_MODE: 'true',
       SFTS_USB_IMPORT_ONLY: 'false'
     },
     stdio: ['ignore', 'pipe', 'pipe']
@@ -112,6 +121,14 @@ after(async () => {
 });
 
 test('WebSocket roles, majority scoring, timer expiry, and phase guards work', async () => {
+  const untrustedKioskPage = await connect({ headers: { Origin: 'https://example.invalid' } });
+  assert.equal((await assign(untrustedKioskPage, 'host', 0, '')).code, 'HOST_UNAUTHORIZED');
+  await closeSocket(untrustedKioskPage);
+
+  const trustedKioskPage = await connect({ headers: { Origin: `http://127.0.0.1:${port}` } });
+  assert.equal((await assign(trustedKioskPage, 'host', 0, '')).type, 'roleAccepted');
+  await closeSocket(trustedKioskPage);
+
   const unauthorizedHost = await connect();
   assert.equal((await assign(unauthorizedHost, 'host', 0, 'wrong-token')).code, 'HOST_UNAUTHORIZED');
   unauthorizedHost.close();
@@ -1367,4 +1384,43 @@ test('restart stack refreshes missing production dependencies before restarting 
   assert.ok(scoreboardRestart > dependencyInstall, 'dependencies must be installed before the scoreboard restarts');
   assert.match(script, /runuser -u "\$\{SERVICE_USER\}"/);
   assert.match(script, /npm is not installed/);
+});
+
+test('kiosk deployment blocks browser escapes and installs recovery controls', async () => {
+  const [launcher, labwcConfig, policyTemplate, installer, restartScript, appScript, html] = await Promise.all([
+    readFile(path.join(projectRoot, 'deployment', 'scripts', 'start-kiosk.sh'), 'utf8'),
+    readFile(path.join(projectRoot, 'deployment', 'config', 'labwc-kiosk-rc.xml'), 'utf8'),
+    readFile(path.join(projectRoot, 'deployment', 'config', 'chromium-kiosk-policy.json'), 'utf8'),
+    readFile(path.join(projectRoot, 'deployment', 'install.sh'), 'utf8'),
+    readFile(path.join(projectRoot, 'deployment', 'scripts', 'restart-stack.sh'), 'utf8'),
+    readFile(path.join(projectRoot, 'public', 'js', 'app.js'), 'utf8'),
+    readFile(path.join(projectRoot, 'public', 'index.html'), 'utf8')
+  ]);
+
+  for (const key of ['C-t', 'C-n', 'C-l', 'C-w', 'C-S-j', 'C-o', 'C-p', 'S-Escape', 'Menu', 'F6']) {
+    assert.ok(labwcConfig.includes(`<keybind key="${key}" />`), `missing blocked kiosk key: ${key}`);
+  }
+  assert.match(labwcConfig, /key="C-A-S-r"[\s\S]*pkill[\s\S]*sfts-scoreboard-kiosk/);
+
+  const policy = JSON.parse(policyTemplate.replaceAll('@PORT@', '8080'));
+  assert.deepEqual(policy.URLBlocklist, ['*']);
+  assert.ok(policy.URLAllowlist.includes('http://127.0.0.1:8080/*'));
+  assert.equal(policy.NewTabPageLocation, 'http://127.0.0.1:8080/');
+  assert.equal(policy.DeveloperToolsAvailability, 2);
+  assert.equal(policy.IncognitoModeAvailability, 1);
+  assert.equal(policy.BrowserGuestModeEnabled, false);
+  assert.deepEqual(policy.ExtensionInstallBlocklist, ['*']);
+
+  assert.match(launcher, /Chromium exited with status/);
+  assert.match(launcher, /\|\| browser_status=/);
+  assert.match(launcher, /--disable-background-mode/);
+  assert.match(installer, /sfts-scoreboard-kiosk\.json/);
+  assert.match(installer, /while true; do .*KIOSK_SCRIPT.*sleep 2; done &/);
+  assert.match(restartScript, /Installing Chromium kiosk policies/);
+  assert.match(restartScript, /KIOSK_AUTOSTART_DEST/);
+  assert.match(restartScript, /while true; do .*KIOSK_SCRIPT.*sleep 2; done &/);
+  assert.match(appScript, /event\.ctrlKey[\s\S]*event\.altKey[\s\S]*event\.metaKey[\s\S]*event\.shiftKey/);
+  assert.match(appScript, /addEventListener\("contextmenu"/);
+  assert.match(appScript, /addEventListener\("drop"/);
+  assert.match(html, /id="serverConnectionStatus"/);
 });

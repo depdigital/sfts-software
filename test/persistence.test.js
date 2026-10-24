@@ -27,7 +27,9 @@ function waitForMessage(ws, predicate, timeoutMs = 5000) {
 
 function connect(url) {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(url);
+    const origin = new URL(url);
+    origin.protocol = origin.protocol === 'wss:' ? 'https:' : 'http:';
+    const ws = new WebSocket(url, { headers: { Origin: origin.origin } });
     ws.messages = [];
     ws.waiters = [];
     ws.on('message', raw => {
