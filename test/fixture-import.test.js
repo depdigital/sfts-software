@@ -346,6 +346,14 @@ test('downloaded template runs all four stages with nine competitors and seven a
   assert.deepEqual(workbook.SheetNames, ['Matches', 'Categories', 'Instructions']);
   const rows = XLSX.utils.sheet_to_json(workbook.Sheets.Matches);
   assert.equal(rows.length, 8);
+  const players = new Map(rows.flatMap(row => ['Hong', 'Chung']
+    .filter(side => row[`${side} Name`] !== 'BYE')
+    .map(side => [row[`${side} Name`], row[`${side} Club`]])));
+  assert.equal(players.size, 9);
+  for (const [name, club] of players) {
+    assert.doesNotMatch(name, /Demo Player|\d/i);
+    assert.doesNotMatch(club, /Demo Club|\d/i);
+  }
   const byes = rows.filter(row => row['Chung Name'] === 'BYE');
   assert.equal(byes.length, 7);
   for (const row of byes) {
@@ -372,8 +380,10 @@ test('downloaded template runs all four stages with nine competitors and seven a
     stages.push(next.stage);
     host.send(JSON.stringify({ type: 'host', action: 'loadBout', boutNo: next.boutNo }));
     const loaded = await waitFor(host, msg => msg.type === 'state' && msg.tournament.activeBoutNo === next.boutNo);
-    assert.ok(loaded.match.red.playerName.startsWith('Demo Player '));
-    assert.ok(loaded.match.blue.playerName.startsWith('Demo Player '));
+    for (const side of ['red', 'blue']) {
+      assert.ok(players.has(loaded.match[side].playerName));
+      assert.equal(loaded.match[side].club, players.get(loaded.match[side].playerName));
+    }
     host.send(JSON.stringify({ type: 'host', action: 'manualMatchDecision', player: 'RED', decision: 'RSC' }));
     await waitFor(host, msg => msg.type === 'matchEnd');
     const completed = await waitFor(host, msg => msg.type === 'state' && msg.tournament.schedule[next.boutNo - 1].status === 'COMPLETED');

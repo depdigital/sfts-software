@@ -76,7 +76,7 @@ function visibleSteps(get) {
 test('decision cards validate the event and show one step at a time', async () => {
   const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
   const eventCard = html.slice(html.indexOf('<section id="importStep0"'), html.indexOf('<section id="importStep1"'));
-  assert.match(eventCard, /<button onclick="downloadPlayerTemplate\(\)">DOWNLOAD TEMPLATE<\/button>/);
+  assert.match(eventCard, /<button onclick="downloadPlayerTemplate\(\)">SAVE TEMPLATE TO US<\/button>/);
   const { context, get, requests } = await wizard();
   context.setImportStep(0);
   assert.deepEqual(visibleSteps(get), [0]);

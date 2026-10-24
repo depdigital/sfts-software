@@ -697,7 +697,7 @@
             <label>COMPETITION<select id="importCompetition"><option>KYORUGI</option><option>FRESHER KYORUGI</option></select></label>
           </div></div>
           <p class="manualHint">The template includes 9 dummy players and 7 byes to test preliminary, quarterfinal, semifinal and final rounds.</p>
-          <div class="manualActions"><button onclick="importEventNext()">NEXT: CHOOSE FILE</button><button onclick="downloadPlayerTemplate()">DOWNLOAD TEMPLATE</button><button id="importResumeButton" onclick="resumeImportedCategory()">RESUME CURRENT CATEGORY</button></div>
+          <div class="manualActions"><button onclick="importEventNext()">NEXT: CHOOSE FILE</button><button onclick="downloadPlayerTemplate()">SAVE TEMPLATE TO US</button><button id="importResumeButton" onclick="resumeImportedCategory()">RESUME CURRENT CATEGORY</button></div>
         </section>
         <section id="importStep1" class="manualWizardPanel hidden">
           <h3>CHOOSE THE OPENING FIXTURE</h3><p>One division, gender and category per file. Include every competitor and each BYE position.</p>
@@ -708,7 +708,7 @@
           <div id="usbTournamentImport" class="hidden">
             <div class="usbImportToolbar"><div id="usbDriveStatus" class="usbDriveStatus">USB NOT CHECKED</div><div class="usbDeviceActions"><button onclick="refreshUsbFiles()">REFRESH USB</button><button onclick="unmountUsb()">UNMOUNT USB SAFELY</button></div></div>
             <label class="usbFileLabel">USB FIXTURE FILES<select id="usbFileSelect" class="playerSettingsSelect" disabled><option value="">REFRESH USB TO LIST FILES</option></select></label>
-            <div class="tournamentImportActions"><button id="usbImportButton" onclick="importUsbFile()" disabled>REVIEW FIXTURE</button><button onclick="savePlayerTemplateToUsb()">SAVE TEMPLATE TO USB</button></div>
+            <div class="tournamentImportActions"><button id="usbImportButton" onclick="importUsbFile()" disabled>REVIEW FIXTURE</button></div>
           </div>
           <button onclick="setImportStep(0)">BACK: EVENT</button>
         </section>

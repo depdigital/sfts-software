@@ -2085,7 +2085,18 @@ async function createPlayerTemplateBuffer() {
   const weightCategory = definition.categoryType === 'WEIGHT' ? definition.weightCategories.MALE[0].name : '';
   const categoryGroup = definition.categoryType === 'GROUP' ? definition.groups[0].name : '';
   const playerHeaders = FIXTURE_HEADERS;
-  const dummyPlayer = number => [`Demo Player ${String(number).padStart(2, '0')}`, `Demo Club ${(number - 1) % 3 + 1}`, 'WB', 'Nadia'];
+  const dummyPlayers = [
+    ['Arjun Sen', 'Falcon Taekwondo'],
+    ['Rohan Das', 'Riverfront Martial Arts'],
+    ['Kabir Roy', 'Summit Taekwondo'],
+    ['Ishaan Ghosh', 'Falcon Taekwondo'],
+    ['Vivaan Dutta', 'Riverfront Martial Arts'],
+    ['Aarav Bose', 'Summit Taekwondo'],
+    ['Neel Banerjee', 'Falcon Taekwondo'],
+    ['Dhruv Pal', 'Riverfront Martial Arts'],
+    ['Aditya Saha', 'Summit Taekwondo']
+  ];
+  const dummyPlayer = number => [...dummyPlayers[number - 1], 'WB', 'Nadia'];
   const playerExamples = Array.from({ length: 8 }, (_, index) => [
     `DEMO-PRE-${String(index + 1).padStart(2, '0')}`, 'PRELIMINARY', definition.label, 'MALE', weightCategory, categoryGroup,
     ...dummyPlayer(index === 0 ? 1 : index + 2),

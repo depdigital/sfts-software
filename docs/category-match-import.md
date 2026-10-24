@@ -6,7 +6,7 @@ Data Import is a five-card workflow: **Event → File → Review → Matches →
 
 Enter tournament name, date (`YYYY-MM-DD`), venue, arena number (`1`–`999`) and competition (`KYORUGI` or `FRESHER KYORUGI`). Division, gender and weight category/group come from the spreadsheet.
 
-**Download Template** on the Event card downloads a ready-to-import test fixture with **9 dummy players and 7 BYEs** in a 16-slot bracket. This is the smallest standard bracket that includes a contested preliminary followed by four quarterfinals, two semifinals and a final (eight scored matches). The template uses a category from the active rulepack. In USB-only mode, the button saves the same template to USB.
+**SAVE TEMPLATE TO US** on the Event card downloads a ready-to-import test fixture with **9 dummy players and 7 BYEs** in a 16-slot bracket. This is the smallest standard bracket that includes a contested preliminary followed by four quarterfinals, two semifinals and a final (eight scored matches). The template uses a category from the active rulepack. In USB-only mode, the button saves the same template to USB.
 
 ## Opening fixture file
 
