@@ -2085,7 +2085,12 @@ async function createPlayerTemplateBuffer() {
   const weightCategory = definition.categoryType === 'WEIGHT' ? definition.weightCategories.MALE[0].name : '';
   const categoryGroup = definition.categoryType === 'GROUP' ? definition.groups[0].name : '';
   const playerHeaders = FIXTURE_HEADERS;
-  const playerExamples = [['EXAMPLE-01', 'FINAL', definition.label, 'MALE', weightCategory, categoryGroup, 'Example Hong', 'Hong Club', 'WB', 'Nadia', 'Example Chung', 'Chung Club', 'WB', 'Nadia']];
+  const dummyPlayer = number => [`Demo Player ${String(number).padStart(2, '0')}`, `Demo Club ${(number - 1) % 3 + 1}`, 'WB', 'Nadia'];
+  const playerExamples = Array.from({ length: 8 }, (_, index) => [
+    `DEMO-PRE-${String(index + 1).padStart(2, '0')}`, 'PRELIMINARY', definition.label, 'MALE', weightCategory, categoryGroup,
+    ...dummyPlayer(index === 0 ? 1 : index + 2),
+    ...(index === 0 ? dummyPlayer(2) : ['BYE', '', '', ''])
+  ]);
   const playerCols = playerHeaders.map(() => ({ wch: 22 }));
 
   const categoryRows = [['Division', 'Age Eligibility', 'Gender', 'Weight Category', 'Weight Limit', 'Group', 'Group Age Limit']];
@@ -2108,7 +2113,8 @@ async function createPlayerTemplateBuffer() {
 
   const instructions = [
     ['SFTS CATEGORY MATCH IMPORT'],
-    ['Matches', 'Supply the OPENING ROUND ONLY, in fixture position order. One division, gender and category per file. Replace the example row. SFTS builds the later rounds.'],
+    ['Matches', 'Supply the OPENING ROUND ONLY, in fixture position order. One division, gender and category per file. Import the dummy fixture as supplied for testing, or replace all demo rows for your category. SFTS builds the later rounds.'],
+    ['Test tournament', '9 dummy players and 7 BYEs in a 16-slot bracket: 1 contested preliminary, 4 quarterfinals, 2 semifinals and 1 final (8 scored matches). This is the minimum player count to test all four stages.'],
     ['Event details', 'Enter tournament name, date, venue, arena and competition in SFTS before importing.'],
     ['Required', 'Bout Number, Stage, Division, Gender, Weight Category (or Group), Hong Name, Hong Club, Chung Name, Chung Club.'],
     ['Optional', 'Hong/Chung State Code and District. State codes must be valid Indian state codes.'],

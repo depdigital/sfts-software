@@ -327,3 +327,63 @@ test('reviewed opening fixture advances locally, corrects winners safely and ret
   assert.equal((await byeArchive.json()).records.length, 2, 'a BYE must not create a fake scored record');
   host.close();
 });
+
+test('downloaded template runs all four stages with nine competitors and seven automatic BYEs', async () => {
+  const host = await connect();
+  host.send(JSON.stringify({ type: 'role', role: 'host', accessToken: 'fixture-host-token' }));
+  const role = await waitFor(host, msg => msg.type === 'roleAccepted');
+  await waitFor(host, msg => msg.type === 'state');
+  const headers = {
+    'X-SFTS-Host-Token': role.hostToken,
+    'Content-Type': 'application/octet-stream',
+    'X-SFTS-Import-Event': encodeURIComponent(JSON.stringify({ ...event, eventName: 'Template Test Tournament', autoAdvance: true }))
+  };
+  const download = await fetch(`http://127.0.0.1:${port}/api/tournament/template.xlsx`, { headers });
+  assert.equal(download.status, 200);
+  assert.match(download.headers.get('content-disposition'), /sfts-match-template\.xlsx/);
+  const buffer = Buffer.from(await download.arrayBuffer());
+  const workbook = XLSX.read(buffer, { type: 'buffer' });
+  assert.deepEqual(workbook.SheetNames, ['Matches', 'Categories', 'Instructions']);
+  const rows = XLSX.utils.sheet_to_json(workbook.Sheets.Matches);
+  assert.equal(rows.length, 8);
+  const byes = rows.filter(row => row['Chung Name'] === 'BYE');
+  assert.equal(byes.length, 7);
+  for (const row of byes) {
+    for (const field of ['Chung Club', 'Chung State Code', 'Chung District']) assert.equal(row[field] || '', '');
+  }
+  const previewResponse = await fetch(`http://127.0.0.1:${port}/api/tournament/import?preview=true`, { method: 'POST', headers, body: buffer });
+  const preview = await previewResponse.json();
+  assert.equal(previewResponse.status, 200, JSON.stringify(preview));
+  assert.equal(preview.tournament.players.length, 9);
+  assert.equal(preview.tournament.schedule.filter(bout => bout.status === 'BYE').length, 7);
+  assert.equal(preview.tournament.schedule.filter(bout => bout.status !== 'BYE').length, 8);
+  const startResponse = await fetch(`http://127.0.0.1:${port}/api/tournament/import`, {
+    method: 'POST', headers: { ...headers, 'X-SFTS-Import-Digest': preview.tournament.sourceDigest }, body: buffer
+  });
+  const started = await startResponse.json();
+  assert.equal(startResponse.status, 200, JSON.stringify(started));
+  host.messages.length = 0;
+  let fixture = started.tournament;
+  let category;
+  const stages = [];
+  while (fixture.schedule.some(bout => !['COMPLETED', 'BYE'].includes(bout.status))) {
+    const next = fixture.schedule.find(bout => !['COMPLETED', 'BYE'].includes(bout.status));
+    assert.equal(next.status, 'SCHEDULED');
+    stages.push(next.stage);
+    host.send(JSON.stringify({ type: 'host', action: 'loadBout', boutNo: next.boutNo }));
+    const loaded = await waitFor(host, msg => msg.type === 'state' && msg.tournament.activeBoutNo === next.boutNo);
+    assert.ok(loaded.match.red.playerName.startsWith('Demo Player '));
+    assert.ok(loaded.match.blue.playerName.startsWith('Demo Player '));
+    host.send(JSON.stringify({ type: 'host', action: 'manualMatchDecision', player: 'RED', decision: 'RSC' }));
+    await waitFor(host, msg => msg.type === 'matchEnd');
+    const completed = await waitFor(host, msg => msg.type === 'state' && msg.tournament.schedule[next.boutNo - 1].status === 'COMPLETED');
+    fixture = completed.tournament;
+    category = completed.manualCompetition.categories.find(item => item.id === fixture.categoryId);
+  }
+  assert.deepEqual(stages, ['PRELIMINARY', 'QUARTERFINAL', 'QUARTERFINAL', 'QUARTERFINAL', 'QUARTERFINAL', 'SEMIFINAL', 'SEMIFINAL', 'FINAL']);
+  assert.equal(Object.values(category.placements).filter(Boolean).length, 4);
+  const archiveResponse = await fetch(`http://127.0.0.1:${port}/api/manual/categories?categoryId=${category.id}`, { headers });
+  const archive = await archiveResponse.json();
+  assert.equal(archive.records.length, 8, 'BYEs advance without creating scored records');
+  host.close();
+});

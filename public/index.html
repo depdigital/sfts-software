@@ -696,7 +696,8 @@
             <label>ARENA NO.<input id="importArenaNumber" type="number" min="1" max="999" /></label>
             <label>COMPETITION<select id="importCompetition"><option>KYORUGI</option><option>FRESHER KYORUGI</option></select></label>
           </div></div>
-          <div class="manualActions"><button onclick="importEventNext()">NEXT: CHOOSE FILE</button><button id="importResumeButton" onclick="resumeImportedCategory()">RESUME CURRENT CATEGORY</button></div>
+          <p class="manualHint">The template includes 9 dummy players and 7 byes to test preliminary, quarterfinal, semifinal and final rounds.</p>
+          <div class="manualActions"><button onclick="importEventNext()">NEXT: CHOOSE FILE</button><button onclick="downloadPlayerTemplate()">DOWNLOAD TEMPLATE</button><button id="importResumeButton" onclick="resumeImportedCategory()">RESUME CURRENT CATEGORY</button></div>
         </section>
         <section id="importStep1" class="manualWizardPanel hidden">
           <h3>CHOOSE THE OPENING FIXTURE</h3><p>One division, gender and category per file. Include every competitor and each BYE position.</p>

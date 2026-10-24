@@ -6,6 +6,8 @@ Data Import is a five-card workflow: **Event → File → Review → Matches →
 
 Enter tournament name, date (`YYYY-MM-DD`), venue, arena number (`1`–`999`) and competition (`KYORUGI` or `FRESHER KYORUGI`). Division, gender and weight category/group come from the spreadsheet.
 
+**Download Template** on the Event card downloads a ready-to-import test fixture with **9 dummy players and 7 BYEs** in a 16-slot bracket. This is the smallest standard bracket that includes a contested preliminary followed by four quarterfinals, two semifinals and a final (eight scored matches). The template uses a category from the active rulepack. In USB-only mode, the button saves the same template to USB.
+
 ## Opening fixture file
 
 Only the first worksheet is read. One file contains one division/gender/category. Supply **only the opening positions**, in fixture order, with every competitor appearing exactly once. Repeat division, gender and category on every row. Bout references should be stored as text to retain leading zeroes.
@@ -44,7 +46,7 @@ SF-02,SEMIFINAL,SENIOR,MALE,FLYWEIGHT,,Vikram,Cochin Club,KL,Kochi,BYE,,,
 
 Vikram advances directly into the final without a scored match or fabricated match record. The SF-01 winner becomes HONG in the final; Vikram becomes CHUNG.
 
-The downloadable/USB template remains `sfts-match-template.xlsx`. **Matches** is first, followed by **Categories** and **Instructions**. Its example row must be replaced. Header matching ignores case, spacing and punctuation. Official Bout No/Bout No/Bout, Red/Blue Name/Club/State Code/District and Hong/Chung or Red/Blue Affiliation aliases remain supported. Duplicate or ambiguous headers are rejected.
+The downloadable/USB template remains `sfts-match-template.xlsx`. **Matches** is first, followed by **Categories** and **Instructions**. Import its eight opening rows unchanged for testing, or replace all demo rows with your actual fixture. Header matching ignores case, spacing and punctuation. Official Bout No/Bout No/Bout, Red/Blue Name/Club/State Code/District and Hong/Chung or Red/Blue Affiliation aliases remain supported. Duplicate or ambiguous headers are rejected.
 
 ## Review card
 
