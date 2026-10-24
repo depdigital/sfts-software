@@ -109,7 +109,7 @@ The service:
 
 ## USB tournament files
 
-In the deployment configuration, tournament player imports and the player template use the single USB storage device connected to the Pi. The dashboard does not open the Linux file picker: `REFRESH USB` checks for one USB storage partition, mounts it through UDisks when needed, and lists only `.xlsx`, `.xls`, and `.csv` files. `SAVE TEMPLATE TO USB` writes `sfts-player-template.xlsx` directly to that drive. Use `UNMOUNT USB SAFELY` before removing the drive.
+In the deployment configuration, category match imports and the match template use the single USB storage device connected to the Pi. The dashboard does not open the Linux file picker: `REFRESH USB` checks for one USB storage partition, mounts it through UDisks when needed, and lists only `.xlsx`, `.xls`, and `.csv` files. `SAVE TEMPLATE TO USB` writes `sfts-match-template.xlsx` directly to that drive. Enter tournament name, date, venue, arena and competition in Data Import; division, gender, category, bout stage and HONG/CHUNG matches come from the file. Imports preserve the fixture software's order and sides and use manual category results. See [the match file contract](../docs/category-match-import.md). Use `UNMOUNT USB SAFELY` before removing the drive.
 
 If more than one physical USB flash drive is visible, the dashboard refuses file operations. A drive with one mounted filesystem partition is supported; set `SFTS_USB_UUID` in `/etc/sfts/sfts-scoreboard.env` if the drive has multiple unmounted filesystem partitions or you want to pin the deployment to one specific drive. The USB must be writable for template export.
 

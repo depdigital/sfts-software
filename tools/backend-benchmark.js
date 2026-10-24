@@ -89,9 +89,10 @@ if (process.argv.includes('--server')) {
     const compact = !process.argv.includes('--legacy-state');
     const { socket: host, accepted } = await connect({ type: 'role', role: 'host', accessToken: token, supportsStatePatch: compact }, 'roleAccepted');
     const headers = { 'X-SFTS-Host-Token': accepted.hostToken };
-    const rows = ['Name,Gender,Division,Weight Category'];
-    for (let i = 0; i < 500; i += 1) rows.push(`Player ${i},MALE,SENIOR,FLYWEIGHT`);
-    const imported = await fetch(`http://127.0.0.1:${port}/api/tournament/import`, { method: 'POST', headers: { ...headers, 'Content-Type': 'text/csv' }, body: rows.join('\n') });
+    const rows = ['Bout Number,Stage,Division,Gender,Weight Category,Hong Name,Hong Club,Chung Name,Chung Club'];
+    for (let i = 0; i < 500; i += 1) rows.push(`${i + 1},PRELIMINARY,SENIOR,MALE,FLYWEIGHT,Player ${i},Club,Player ${(i + 1) % 500},Club`);
+    const event = { eventName: 'Benchmark', eventDate: '2026-10-24', venue: 'Benchmark Hall', arenaNumber: '1', competition: 'KYORUGI' };
+    const imported = await fetch(`http://127.0.0.1:${port}/api/tournament/import`, { method: 'POST', headers: { ...headers, 'Content-Type': 'text/csv', 'X-SFTS-Import-Event': encodeURIComponent(JSON.stringify(event)) }, body: rows.join('\n') });
     if (!imported.ok) throw new Error(`Benchmark import failed: ${await imported.text()}`);
     await imported.arrayBuffer();
     host.send(JSON.stringify({ type: 'host', action: 'playPause' }));
@@ -131,7 +132,7 @@ if (process.argv.includes('--server')) {
     const last = samples.at(-1);
     console.log(JSON.stringify({
       hardware: { platform: process.platform, arch: process.arch, totalRamMiB: Math.round(os.totalmem() / 1048576), node: process.version },
-      workload: '500 players, four authenticated remotes at 40 total events/sec, concurrent XLSX exports',
+      workload: '500 imported matches / 500 players, four authenticated remotes at 40 total events/sec, concurrent XLSX exports',
       stateFormat: compact ? 'compact' : 'legacy full',
       ackCount: latencies.length, unacknowledged: pending.size, ackP99Ms: +p99.toFixed(2),
       eventLoopP99Ms: +last.loopP99Ms.toFixed(2), eventLoopMaxMs: +last.loopMaxMs.toFixed(2),

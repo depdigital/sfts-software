@@ -233,15 +233,15 @@ test('server restores match history and tournament progress after restart', asyn
 
     const workbook = XLSX.utils.book_new();
     const sheet = XLSX.utils.json_to_sheet([
-      { Name: 'Persisted Red', Gender: 'MALE', Division: 'SENIOR', 'Weight Category': 'FLYWEIGHT', Group: '' },
-      { Name: 'Persisted Blue', Gender: 'MALE', Division: 'SENIOR', 'Weight Category': 'FLYWEIGHT', Group: '' }
+      { 'Bout Number': 'PERSIST-01', Stage: 'FINAL', Gender: 'MALE', Division: 'SENIOR', 'Weight Category': 'FLYWEIGHT', 'Hong Name': 'Persisted Red', 'Hong Club': 'Red Club', 'Chung Name': 'Persisted Blue', 'Chung Club': 'Blue Club' }
     ]);
     XLSX.utils.book_append_sheet(workbook, sheet, 'Players');
     const imported = await fetch(`http://127.0.0.1:${port}/api/tournament/import`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'X-SFTS-Host-Token': role.hostToken
+        'X-SFTS-Host-Token': role.hostToken,
+        'X-SFTS-Import-Event': encodeURIComponent(JSON.stringify({ eventName: 'Persistence Championship', eventDate: '2026-10-24', venue: 'Test Hall', arenaNumber: '7', competition: 'KYORUGI' }))
       },
       body: XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' })
     });
@@ -262,8 +262,8 @@ test('server restores match history and tournament progress after restart', asyn
     const completed = await waitForMessage(host, message => (
       message.type === 'state' && message.tournament.schedule[0].status === 'COMPLETED'
     ));
-    assert.equal(completed.tournament.groups[0].resultStatus, 'COMPLETED');
-    assert.deepEqual(completed.tournament.groups[0].placements.map(placement => placement.place), [1, 2]);
+    assert.equal(completed.manualCompetition.categories[0].placements.gold.playerName, 'Persisted Red');
+    assert.equal(completed.manualCompetition.categories[0].placements.silver.playerName, 'Persisted Blue');
     await new Promise(resolve => setTimeout(resolve, 400));
     host.close();
     await stopServer(serverProcess);
@@ -272,18 +272,58 @@ test('server restores match history and tournament progress after restart', asyn
     serverProcess = await startServer(port, dataDir);
     const restoredHost = await connect(url);
     restoredHost.send(JSON.stringify({ type: 'role', role: 'host' }));
-    await waitForMessage(restoredHost, message => message.type === 'roleAccepted');
+    const restoredRole = await waitForMessage(restoredHost, message => message.type === 'roleAccepted');
     const restored = await waitForMessage(restoredHost, message => message.type === 'state');
     assert.equal(restored.matchHistory.length, 1);
     assert.equal(restored.matchHistory[0].winner, 'RED');
     assert.equal(restored.tournament.players.length, 2);
     assert.equal(restored.tournament.schedule[0].status, 'COMPLETED');
-    assert.equal(restored.tournament.groups[0].resultStatus, 'COMPLETED');
-    assert.deepEqual(restored.tournament.groups[0].placements.map(placement => placement.place), [1, 2]);
+    assert.equal(restored.manualCompetition.categories[0].placements.gold.playerName, 'Persisted Red');
+    assert.equal(restored.manualCompetition.categories[0].placements.silver.playerName, 'Persisted Blue');
+    assert.equal(restored.match.manualBout.officialBoutNo, 'PERSIST-01');
     assert.equal(restored.match.phase, 'MATCH_END');
     assert.equal(restored.match.running, false);
     assert.equal(restored.arenaNumber, '7');
+    const nextBook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(nextBook, XLSX.utils.json_to_sheet([
+      { 'Bout Number': 'RESUME-02', Stage: 'SEMIFINAL', Division: 'SENIOR', Gender: 'MALE', 'Weight Category': 'FINWEIGHT', 'Hong Name': 'Resume Red', 'Hong Club': 'Red Club', 'Chung Name': 'Resume Blue', 'Chung Club': 'Blue Club' }
+    ]), 'Matches');
+    const nextImport = await fetch(`http://127.0.0.1:${port}/api/tournament/import`, {
+      method: 'POST', headers: {
+        'Content-Type': 'application/octet-stream', 'X-SFTS-Host-Token': restoredRole.hostToken,
+        'X-SFTS-Import-Event': encodeURIComponent(JSON.stringify({ eventName: 'Persistence Championship', eventDate: '2026-10-24', venue: 'Test Hall', arenaNumber: '7', competition: 'KYORUGI' }))
+      }, body: XLSX.write(nextBook, { type: 'buffer', bookType: 'xlsx' })
+    });
+    assert.equal(nextImport.status, 200);
+    await nextImport.arrayBuffer();
+    restoredHost.send(JSON.stringify({ type: 'host', action: 'loadBout', boutNo: 1 }));
+    await waitForMessage(restoredHost, message => message.type === 'state' && message.match.manualBout?.officialBoutNo === 'RESUME-02');
+    restoredHost.send(JSON.stringify({ type: 'host', action: 'playPause' }));
+    await waitForMessage(restoredHost, message => message.type === 'state' && message.match.running);
+    let checkpoint;
+    const checkpointDeadline = Date.now() + 3000;
+    do {
+      await new Promise(resolve => setTimeout(resolve, 30));
+      checkpoint = JSON.parse(await readFile(path.join(dataDir, 'sfts-state.json'), 'utf8'));
+    } while ((checkpoint.match.manualBout?.officialBoutNo !== 'RESUME-02' || !checkpoint.match.roundStarted || checkpoint.tournament.activeBoutNo !== 1) && Date.now() < checkpointDeadline);
+    assert.equal(checkpoint.match.manualBout?.officialBoutNo, 'RESUME-02');
+    assert.equal(checkpoint.match.roundStarted, true);
+    assert.equal(checkpoint.tournament.activeBoutNo, 1);
     restoredHost.close();
+    await stopServer(serverProcess);
+    serverProcess = await startServer(port, dataDir);
+    const resumedHost = await connect(url);
+    resumedHost.send(JSON.stringify({ type: 'role', role: 'host' }));
+    await waitForMessage(resumedHost, message => message.type === 'roleAccepted');
+    const resumed = await waitForMessage(resumedHost, message => message.type === 'state');
+    assert.equal(resumed.tournament.activeBoutNo, 1);
+    assert.equal(resumed.tournament.schedule[0].status, 'IN_PROGRESS');
+    assert.equal(resumed.match.manualBout.officialBoutNo, 'RESUME-02');
+    assert.equal(resumed.match.red.playerName, 'Resume Red');
+    assert.equal(resumed.match.running, false);
+    assert.equal(resumed.match.roundStarted, true);
+    assert.equal(resumed.manualCompetition.categories.length, 2);
+    resumedHost.close();
   } finally {
     if (host && host.readyState !== WebSocket.CLOSED) host.close();
     await stopServer(serverProcess);

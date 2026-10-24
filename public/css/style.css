@@ -1921,6 +1921,7 @@ button {
   margin: 0;
 }
 .manualEntryModal label,
+.dataImportModal label,
 .practiceModeModal label,
 .categoryResultsModal label,
 .manualEntryToolbar label {
@@ -1931,6 +1932,8 @@ button {
 }
 .manualEntryModal input,
 .manualEntryModal select,
+.dataImportModal input,
+.dataImportModal select,
 .practiceModeModal input,
 .categoryResultsModal select,
 .manualEntryToolbar select {

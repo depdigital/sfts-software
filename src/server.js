@@ -8,6 +8,7 @@ import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
 import { WebSocketServer } from "ws";
+import { FIXTURE_HEADERS, parseFixtureRows } from './fixtureImport.js';
 import { createFileJobs } from './fileJobs.js';
 import { createRemoteTestTracker } from './remoteTest.js';
 import { readBoundedFile } from './safeFiles.js';
@@ -66,8 +67,6 @@ const REMOTE_SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_WS_PAYLOAD = 64 * 1024;
 const MAX_BUFFERED_BYTES = 1024 * 1024;
 const MAX_IMPORT_BYTES = 4 * 1024 * 1024;
-const MAX_TOURNAMENT_PLAYERS = 500;
-const MAX_SCHEDULE_BOUTS = 5000;
 const REMOTE_PROTOCOL_VERSION = 2;
 const REMOTE_IDS = new Set(['C1', 'C2', 'C3', 'C4']);
 const REMOTE_ACK_CACHE_SIZE = 100;
@@ -101,7 +100,7 @@ const USB_IMPORT_ONLY = process.env.SFTS_USB_IMPORT_ONLY === 'true';
 const USB_EXPECTED_UUID = String(process.env.SFTS_USB_UUID || '').trim().toLowerCase();
 const USB_ALLOWED_EXTENSIONS = new Set(['.xlsx', '.xls', '.csv']);
 const USB_RULE_ALLOWED_EXTENSIONS = new Set(['.json']);
-const USB_TEMPLATE_FILE = 'sfts-player-template.xlsx';
+const USB_TEMPLATE_FILE = 'sfts-match-template.xlsx';
 const KIOSK_MODE = process.env.SFTS_KIOSK_MODE === 'true';
 const KIOSK_ORIGIN = new URL(`http://127.0.0.1:${PORT}`).origin;
 const INDIAN_STATE_CODES = new Set([
@@ -315,7 +314,7 @@ const GENDER_ALIASES = new Map([
 
 function makeTournament() {
   return {
-    format: 'SINGLE_ELIMINATION',
+    format: 'IMPORTED_MATCHES',
     placementPolicy: deep(rules.tournament.placements),
     seed: null,
     generatedAt: null,
@@ -338,10 +337,6 @@ function makeManualCompetition() {
 function normalizeGender(value) {
   const normalized = String(value || '').trim().toUpperCase();
   return GENDER_ALIASES.get(normalized) || '';
-}
-
-function normalizeColumn(value) {
-  return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
 function normalizeTournamentValue(value) {
@@ -375,47 +370,6 @@ function competitionCategory(entry) {
   return String(entry?.categoryGroup || entry?.weightCategory || '').trim();
 }
 
-function tournamentDivisionOrder(divisionId) {
-  const index = tournamentDivisionDefinitions().findIndex(division => division.id === divisionId);
-  return index < 0 ? Number.MAX_SAFE_INTEGER : index;
-}
-
-function tournamentCategoryOrder(entry) {
-  const division = resolveTournamentDivision(entry.division);
-  if (!division) return Number.MAX_SAFE_INTEGER;
-  const categories = division.categoryType === 'GROUP'
-    ? division.groups || []
-    : division.weightCategories?.[entry.gender] || [];
-  const normalized = normalizeTournamentValue(competitionCategory(entry));
-  const index = categories.findIndex(category => normalizeTournamentValue(category.name) === normalized);
-  return index < 0 ? Number.MAX_SAFE_INTEGER : index;
-}
-
-function hashSeed(seed) {
-  let value = 2166136261;
-  for (const char of String(seed)) {
-    value ^= char.charCodeAt(0);
-    value = Math.imul(value, 16777619);
-  }
-  return value >>> 0;
-}
-
-function seededRandom(seed) {
-  let value = hashSeed(seed);
-  return () => {
-    value = (Math.imul(value, 1664525) + 1013904223) >>> 0;
-    return value / 4294967296;
-  };
-}
-
-function shuffled(items, random) {
-  const result = [...items];
-  for (let index = result.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(random() * (index + 1));
-    [result[index], result[swapIndex]] = [result[swapIndex], result[index]];
-  }
-  return result;
-}
 
 function contestantReadyAnnouncement(hongName, chungName) {
   return `${hongName}, HONG, red chest guard, versus ${chungName}, CHUNG, blue chest guard; contestants, prepare for the match.`;
@@ -425,186 +379,6 @@ function scheduleAnnouncement(bout) {
   return contestantReadyAnnouncement(bout.redPlayerName, bout.bluePlayerName);
 }
 
-function bracketSizeFor(playerCount) {
-  let size = 1;
-  while (size < playerCount) size *= 2;
-  return size;
-}
-
-function bracketEntryForPlayer(player) {
-  return player ? { type: 'player', player } : null;
-}
-
-function bracketEntryForBout(boutNo) {
-  return { type: 'bout', boutNo };
-}
-
-function bracketEntryName(entry) {
-  if (!entry) return '';
-  if (entry.type === 'player') return entry.player.name;
-  return `Winner of Bout ${entry.boutNo}`;
-}
-
-function bracketPlayerId(entry) {
-  return entry?.type === 'player' ? entry.player.id : null;
-}
-
-function createBracketBout({ boutNo, group, round, left, right }) {
-  const bout = {
-    boutNo,
-    groupId: group.id,
-    division: group.division,
-    gender: group.gender,
-    weightCategory: group.weightCategory,
-    categoryGroup: group.categoryGroup,
-    round,
-    redPlayerId: bracketPlayerId(left),
-    redPlayerName: bracketEntryName(left),
-    redSourceBoutNo: left?.type === 'bout' ? left.boutNo : null,
-    bluePlayerId: bracketPlayerId(right),
-    bluePlayerName: bracketEntryName(right),
-    blueSourceBoutNo: right?.type === 'bout' ? right.boutNo : null,
-    status: left?.type === 'player' && right?.type === 'player' ? 'SCHEDULED' : 'PENDING',
-    winner: null,
-    winnerName: null,
-    tieReason: '',
-    announcement: ''
-  };
-  bout.announcement = scheduleAnnouncement(bout);
-  return bout;
-}
-
-function addBracketBye({ byes, group, round, entry }) {
-  if (!entry) return;
-  const playerId = bracketPlayerId(entry);
-  const playerName = bracketEntryName(entry);
-  if (playerId) group.byePlayerIds.push(playerId);
-  byes.push({
-    groupId: group.id,
-    division: group.division,
-    gender: group.gender,
-    weightCategory: group.weightCategory,
-    categoryGroup: group.categoryGroup,
-    round,
-    playerId,
-    playerName,
-    sourceBoutNo: entry.type === 'bout' ? entry.boutNo : null,
-    status: 'BYE',
-    announcement: `${playerName} advances by bye in round ${round}, ${[group.division, group.gender, competitionCategory(group)].filter(Boolean).join(', ')}`
-  });
-}
-
-function generateTournament(players, seed = crypto.randomBytes(8).toString('hex')) {
-  const random = seededRandom(seed);
-  const grouped = new Map();
-  for (const player of players) {
-    const key = `${player.division}|${player.gender}|${normalizeTournamentValue(competitionCategory(player))}`;
-    if (!grouped.has(key)) grouped.set(key, []);
-    grouped.get(key).push(player);
-  }
-
-  const groups = [...grouped.entries()]
-    .sort(([, left], [, right]) => {
-      const divisionOrder = tournamentDivisionOrder(left[0].division) - tournamentDivisionOrder(right[0].division);
-      const genderOrder = left[0].gender.localeCompare(right[0].gender);
-      const categoryOrder = tournamentCategoryOrder(left[0]) - tournamentCategoryOrder(right[0]);
-      return divisionOrder || genderOrder || categoryOrder || competitionCategory(left[0]).localeCompare(competitionCategory(right[0]), undefined, { numeric: true });
-    });
-  const expectedBouts = groups.reduce((total, [, groupPlayers]) => total + Math.max(0, groupPlayers.length - 1), 0);
-  if (expectedBouts > MAX_SCHEDULE_BOUTS) {
-    throw new TournamentImportError(`The generated single-elimination schedule would contain ${expectedBouts} bouts; maximum is ${MAX_SCHEDULE_BOUTS}`);
-  }
-  const schedule = [];
-  const byes = [];
-  const tournamentGroups = [];
-  let boutNo = 1;
-
-  groups.forEach(([, groupPlayers], groupIndex) => {
-    const ordered = shuffled(groupPlayers, random);
-    const bracketSize = bracketSizeFor(ordered.length);
-    const group = {
-      id: `G${String(groupIndex + 1).padStart(3, '0')}`,
-      division: groupPlayers[0].division,
-      gender: groupPlayers[0].gender,
-      weightCategory: groupPlayers[0].weightCategory,
-      categoryGroup: groupPlayers[0].categoryGroup,
-      playerIds: groupPlayers.map(player => player.id),
-      byePlayerIds: [],
-      bracketSize,
-      matchCount: 0,
-      championId: null,
-      championName: null,
-      resultStatus: rules.tournament.placements.enabled ? 'PENDING' : 'DISABLED',
-      placements: []
-    };
-
-    if (ordered.length === 1) {
-      group.championId = ordered[0].id;
-      group.championName = ordered[0].name;
-      addBracketBye({ byes, group, round: 1, entry: bracketEntryForPlayer(ordered[0]) });
-      tournamentGroups.push(group);
-      return;
-    }
-
-    const byeCount = bracketSize - ordered.length;
-    const slots = [];
-    let playerIndex = 0;
-    for (let pair = 0; pair < bracketSize / 2; pair += 1) {
-      if (pair < byeCount) {
-        slots.push(bracketEntryForPlayer(ordered[playerIndex++]));
-        slots.push(null);
-      } else {
-        slots.push(bracketEntryForPlayer(ordered[playerIndex++]));
-        slots.push(bracketEntryForPlayer(ordered[playerIndex++]));
-      }
-    }
-
-    let round = 1;
-    let entries = slots;
-    while (entries.length > 1) {
-      const nextEntries = [];
-      for (let index = 0; index < entries.length; index += 2) {
-        const left = entries[index];
-        const right = entries[index + 1];
-        if (left && right) {
-          const redFirst = random() < 0.5;
-          const bout = createBracketBout({
-            boutNo,
-            group,
-            round,
-            left: redFirst ? left : right,
-            right: redFirst ? right : left
-          });
-          schedule.push(bout);
-          group.matchCount += 1;
-          nextEntries.push(bracketEntryForBout(boutNo));
-          boutNo += 1;
-        } else {
-          const advancing = left || right;
-          if (advancing) addBracketBye({ byes, group, round, entry: advancing });
-          nextEntries.push(advancing);
-        }
-      }
-      entries = nextEntries;
-      round += 1;
-    }
-    tournamentGroups.push(group);
-  });
-
-  const generatedTournament = {
-    format: 'SINGLE_ELIMINATION',
-    placementPolicy: deep(rules.tournament.placements),
-    seed,
-    generatedAt: new Date().toISOString(),
-    players: deep(players),
-    groups: tournamentGroups,
-    schedule,
-    byes,
-    activeBoutNo: null
-  };
-  refreshTournamentBracket(generatedTournament);
-  return generatedTournament;
-}
 
 class TournamentImportError extends Error {
   constructor(message, errors = []) {
@@ -614,116 +388,49 @@ class TournamentImportError extends Error {
   }
 }
 
-const TOURNAMENT_COLUMN_ALIASES = {
-  id: new Set(['id', 'playerid', 'competitorid', 'registrationid']),
-  name: new Set(['name', 'playername', 'competitor', 'competitorname']),
-  gender: new Set(['gender', 'sex']),
-  division: new Set(['division', 'agedivision', 'agecategory']),
-  weightCategory: new Set(['weight', 'weightcategory', 'weightclass', 'category']),
-  categoryGroup: new Set(['group', 'subjuniorgroup', 'categorygroup']),
-  stateCode: new Set(['state', 'statecode']),
-  district: new Set(['district', 'city']),
-  club: new Set(['club', 'clubname', 'team', 'teamname'])
-};
-
-async function importTournamentPlayers(buffer) {
+async function importFixture(buffer, event) {
   let rows;
-  try {
-    rows = await fileJobs.run('readPlayers', buffer);
-  } catch (error) {
-    throw new TournamentImportError(`The uploaded file is not a readable Excel or CSV file: ${error.message}`);
-  }
-  if (!rows.length) throw new TournamentImportError('The worksheet is empty');
-
-  const headers = rows[0].map(normalizeColumn);
-  const columns = {};
-  for (const [field, aliases] of Object.entries(TOURNAMENT_COLUMN_ALIASES)) {
-    const index = headers.findIndex(header => aliases.has(header));
-    if (index >= 0) columns[field] = index;
-  }
-  const missing = ['name', 'gender', 'division']
-    .filter(field => columns[field] === undefined);
-  if (missing.length) {
-    throw new TournamentImportError(`Missing required column(s): ${missing.join(', ')}`);
-  }
-
-  const players = [];
-  const errors = [];
-  const ids = new Set();
-  const dataRows = rows.slice(1);
-  if (dataRows.length > MAX_TOURNAMENT_PLAYERS) {
-    errors.push(`The file contains more than ${MAX_TOURNAMENT_PLAYERS} player rows`);
-  }
-
-  dataRows.slice(0, MAX_TOURNAMENT_PLAYERS).forEach((row, index) => {
-    const rowNumber = index + 2;
-    const value = field => String(row[columns[field]] ?? '').trim();
-    if (row.every(cell => String(cell ?? '').trim() === '')) return;
-
-    const name = value('name').slice(0, 64);
-    const gender = normalizeGender(value('gender'));
-    const divisionDefinition = resolveTournamentDivision(value('division'));
-    const division = divisionDefinition?.id || '';
-    const rawWeightCategory = value('weightCategory').slice(0, 32);
-    const rawCategoryGroup = value('categoryGroup').slice(0, 32);
-    let weightCategory = '';
-    let categoryGroup = '';
-    const rawId = value('id');
-    const id = (rawId || `P${String(players.length + 1).padStart(3, '0')}`).slice(0, 40);
-    const stateCode = value('stateCode').toUpperCase();
-
-    if (!name) errors.push(`Row ${rowNumber}: player name is required`);
-    if (!gender) errors.push(`Row ${rowNumber}: gender must be MALE/M or FEMALE/F`);
-    if (!divisionDefinition) {
-      const accepted = tournamentDivisionDefinitions().map(item => item.label).join(', ');
-      errors.push(`Row ${rowNumber}: division must be one of ${accepted}`);
-    } else if (divisionDefinition.categoryType === 'GROUP') {
-      const groupDefinition = resolveCategoryGroup(divisionDefinition, rawCategoryGroup);
-      if (!groupDefinition) {
-        const accepted = (divisionDefinition.groups || []).map(item => item.name).join(', ');
-        errors.push(`Row ${rowNumber}: group must be one of ${accepted} for ${divisionDefinition.label}`);
-      } else {
-        categoryGroup = groupDefinition.name;
-      }
-      if (rawWeightCategory) errors.push(`Row ${rowNumber}: weight category must be blank for ${divisionDefinition.label}`);
-    } else {
-      const categoryDefinition = gender
-        ? resolveWeightCategory(divisionDefinition, gender, rawWeightCategory)
-        : null;
-      if (!categoryDefinition) {
-        const accepted = gender
-          ? (divisionDefinition.weightCategories?.[gender] || []).map(item => item.name).join(', ')
-          : 'a category valid for the player gender';
-        errors.push(`Row ${rowNumber}: weight category must be ${accepted} for ${divisionDefinition.label} ${gender || 'player'}`);
-      } else {
-        weightCategory = categoryDefinition.name;
-      }
-      if (rawCategoryGroup) errors.push(`Row ${rowNumber}: group must be blank for ${divisionDefinition.label}`);
-    }
-    if (ids.has(id.toLowerCase())) errors.push(`Row ${rowNumber}: duplicate player ID ${id}`);
-    if (stateCode && !INDIAN_STATE_CODES.has(stateCode)) errors.push(`Row ${rowNumber}: invalid state code ${stateCode}`);
-    const categoryIsValid = divisionDefinition?.categoryType === 'GROUP'
-      ? Boolean(categoryGroup) && !rawWeightCategory
-      : Boolean(weightCategory) && !rawCategoryGroup;
-    if (!name || !gender || !division || !categoryIsValid || ids.has(id.toLowerCase()) || (stateCode && !INDIAN_STATE_CODES.has(stateCode))) return;
-
-    ids.add(id.toLowerCase());
-    players.push({
-      id,
-      name,
-      gender,
-      division,
-      weightCategory,
-      categoryGroup,
-      stateCode,
-      district: value('district').slice(0, 48),
-      club: value('club').slice(0, 64)
-    });
+  try { rows = await fileJobs.run('readPlayers', buffer); }
+  catch (error) { throw new TournamentImportError(`The file is not a readable Excel or CSV file: ${error.message}`); }
+  const parsed = parseFixtureRows(rows, { event, categoryFromInput: manualCategoryFromInput, playerDetails: manualPlayerDetails });
+  if (parsed.errors.length) throw new TournamentImportError('The match file could not be imported', parsed.errors);
+  const category = manualCompetition.categories.find(item => manualCategoryIdentity(item) === manualCategoryIdentity(parsed.category));
+  if (category?.status === 'FINALIZED') throw new TournamentImportError('This category is finalized and cannot accept another import');
+  const result = { ...makeTournament(), generatedAt: new Date().toISOString(), event: parsed.category, categoryId: category?.id || null };
+  const { division, gender, weightCategory, categoryGroup } = parsed.category;
+  const profile = { division, gender, weightCategory, categoryGroup };
+  const completedRecords = new Map(manualMatchRecords.filter(record => category && record.manualBout?.categoryId === category.id).map(record => [String(record.manualBout.officialBoutNo).toUpperCase(), record]));
+  const players = new Map();
+  const playerId = details => {
+    const key = `${details.playerName.toUpperCase()}|${details.club.toUpperCase()}`;
+    if (!players.has(key)) players.set(key, { id: `P${players.size + 1}`, name: details.playerName, ...details, ...profile });
+    return players.get(key).id;
+  };
+  result.schedule = parsed.bouts.map((bout, index) => {
+    const completed = completedRecords.get(bout.officialBoutNo.toUpperCase());
+    if (completed && (completed.manualBout.stage !== bout.stage || ['RED', 'BLUE'].some(side => {
+      const recorded = completed[side.toLowerCase()];
+      return recorded.playerName !== bout[side].playerName || recorded.club !== bout[side].club;
+    }))) throw new TournamentImportError(`Completed bout ${bout.officialBoutNo} has different competitors or stage; its saved result cannot be replaced`);
+    return {
+      ...bout, ...profile, boutNo: index + 1, groupId: '', round: 1,
+      redPlayerId: playerId(bout.RED), bluePlayerId: playerId(bout.BLUE),
+      redPlayerName: bout.RED.playerName, bluePlayerName: bout.BLUE.playerName,
+      status: completed ? 'COMPLETED' : 'SCHEDULED', winner: completed?.winner || null,
+      winnerName: completed?.winnerName || null,
+      announcement: scheduleAnnouncement({ redPlayerName: bout.RED.playerName, bluePlayerName: bout.BLUE.playerName })
+    };
   });
+  result.players = [...players.values()];
+  return result;
+}
 
-  if (errors.length) throw new TournamentImportError('The player sheet could not be imported', errors.slice(0, 30));
-  if (!players.length) throw new TournamentImportError('The worksheet does not contain any player rows');
-  return players;
+function importEventHeader(req) {
+  try {
+    const encoded = req.get('X-SFTS-Import-Event') || '';
+    if (encoded.length > 4096) throw new Error();
+    return JSON.parse(decodeURIComponent(encoded));
+  } catch { throw new TournamentImportError('Enter tournament name, date, venue, arena and competition before importing'); }
 }
 
 let match = makeMatch();
@@ -1468,6 +1175,13 @@ async function unmountUsb(context) {
 }
 
 function tournamentScheduleRows() {
+  if (tournament.format === 'IMPORTED_MATCHES') return tournament.schedule.map(bout => ({
+    'Bout Number': bout.officialBoutNo, Stage: bout.stage, Division: bout.division, Gender: bout.gender,
+    'Weight Category': bout.weightCategory, Group: bout.categoryGroup,
+    'Hong Name': bout.RED.playerName, 'Hong Club': bout.RED.club, 'Hong State Code': bout.RED.stateCode, 'Hong District': bout.RED.district,
+    'Chung Name': bout.BLUE.playerName, 'Chung Club': bout.BLUE.club, 'Chung State Code': bout.BLUE.stateCode, 'Chung District': bout.BLUE.district,
+    Status: bout.status, Winner: bout.winnerName || ''
+  }));
   const bouts = tournament.schedule.map(bout => ({
     Bout: bout.boutNo,
     'Bracket ID': bout.groupId,
@@ -1501,6 +1215,13 @@ function tournamentScheduleRows() {
 }
 
 function tournamentResultRows() {
+  if (tournament.format === 'IMPORTED_MATCHES') {
+    const category = manualCompetition.categories.find(item => item.id === tournament.categoryId);
+    return Object.entries(category?.placements || {}).filter(([, player]) => player).map(([place, player]) => ({
+      Division: category.division, Gender: category.gender, 'Weight Category': category.weightCategory, Group: category.categoryGroup,
+      Place: ({ gold: '1ST', silver: '2ND', bronze1: '3RD', bronze2: '3RD' })[place], Player: player.playerName, Club: player.club, Status: category.status
+    }));
+  }
   const labels = tournament.placementPolicy?.labels || rules.tournament.placements.labels;
   return tournament.groups.flatMap(group => (
     group.resultStatus !== 'COMPLETED' ? [] : (group.placements || []).map(placement => {
@@ -2052,6 +1773,7 @@ function refreshTournamentGroupResults(tournamentState, group, groupBouts) {
 }
 
 function refreshTournamentBracket(tournamentState = tournament) {
+  if (tournamentState.format === 'IMPORTED_MATCHES') return;
   tournamentState.placementPolicy ||= deep(rules.tournament.placements);
   for (const bout of tournamentState.schedule) {
     for (const playerSide of ['red', 'blue']) {
@@ -2109,6 +1831,31 @@ function refreshTournamentBracket(tournamentState = tournament) {
 }
 
 function loadTournamentBout(bout) {
+  if (tournament.format === 'IMPORTED_MATCHES') {
+    if (tournamentMatchIsBusy() || practiceMatchIsBusy()) return { ok: false, code: 'MATCH_BUSY', message: 'Finish or reset the current match before loading an imported bout' };
+    if (bout.status !== 'SCHEDULED') return { ok: false, code: 'BOUT_UNAVAILABLE', message: 'This bout is already completed' };
+    const category = tournament.categoryId ? manualCompetition.categories.find(item => item.id === tournament.categoryId) : null;
+    if (tournament.categoryId && !category) return { ok: false, code: 'MANUAL_CATEGORY_NOT_FOUND', message: 'This category was deleted; import the file again' };
+    if (category?.status === 'FINALIZED') return { ok: false, code: 'MANUAL_CATEGORY_FINALIZED', message: 'This category is finalized' };
+    if (manualMatchRecords.some(record => record.manualBout?.categoryId === category?.id && record.manualBout?.officialBoutNo.toUpperCase() === bout.officialBoutNo.toUpperCase())) return { ok: false, code: 'DUPLICATE_OFFICIAL_BOUT', message: 'This official bout is already completed' };
+    const previous = match;
+    const remoteCount = match.remoteCount;
+    match = makeMatch(match.mode === 'PRACTICE' ? match.matchNo : match.phase === 'MATCH_END' ? match.matchNo + 1 : match.matchNo, 'HONG', 'CHUNG', match.configuredRoundMs);
+    match.remoteCount = remoteCount;
+    const saved = saveManualBout({ ...tournament.event, categoryId: tournament.categoryId || '', officialBoutNo: bout.officialBoutNo, stage: bout.stage, RED: bout.RED, BLUE: bout.BLUE });
+    if (!saved.ok) { match = previous; return saved; }
+    tournament.categoryId = saved.categoryId;
+    match.manualBout.importedBoutNo = bout.boutNo;
+    bout.status = 'IN_PROGRESS';
+    tournament.activeBoutNo = bout.boutNo;
+    clearAllRemoteCombinations();
+    clearLastRemoteButtons();
+    clearRemoteScoreHighlights();
+    clearVoteSettleGuard();
+    timerLastAt = null;
+    kyeShiLastAt = null;
+    return { ok: true };
+  }
   if (tournamentMatchIsBusy()) {
     return { ok: false, code: 'MATCH_BUSY', message: 'Finish or reset the current match before loading a scheduled bout' };
   }
@@ -2152,6 +1899,13 @@ function completeTournamentBout(winner) {
   if (!tournament.activeBoutNo) return;
   const bout = findTournamentBout(tournament.activeBoutNo);
   if (!bout) return;
+  if (tournament.format === 'IMPORTED_MATCHES') {
+    bout.status = 'COMPLETED';
+    bout.winner = winner;
+    bout.winnerName = winner ? playerDisplayName(side(winner)) : 'DRAW';
+    tournament.activeBoutNo = null;
+    return { completed: true };
+  }
   if (!winner) {
     bout.status = 'TIE_PENDING';
     bout.winner = null;
@@ -2242,68 +1996,12 @@ async function announceTournamentBout(bout) {
 }
 
 async function createPlayerTemplateBuffer() {
-  const playerHeaders = [
-    'Player ID', 'Name', 'Gender', 'Division', 'Weight Category', 'Group',
-    'State Code', 'District', 'Club'
-  ];
-  const sampleProfiles = {
-    MALE: [
-      ['Arjun Mehta', 'DL', 'New Delhi', 'Capital Taekwondo Academy'],
-      ['Rohan Singh', 'UP', 'Noida', 'Noida Warriors TKD'],
-      ['Vikram Nair', 'KL', 'Kochi', 'Cochin Martial Arts Club'],
-      ['Aditya Rao', 'KA', 'Bengaluru', 'Karnataka Taekwondo Centre'],
-      ['Karan Patel', 'GJ', 'Ahmedabad', 'Sabarmati TKD Club'],
-      ['Dev Sharma', 'RJ', 'Jaipur', 'Pink City Taekwondo'],
-      ['Ishaan Das', 'WB', 'Kolkata', 'Bengal Tigers TKD'],
-      ['Nikhil Verma', 'MP', 'Indore', 'Indore Combat Academy']
-    ],
-    FEMALE: [
-      ['Ananya Kapoor', 'MH', 'Mumbai', 'Mumbai Elite Taekwondo'],
-      ['Meera Iyer', 'TN', 'Chennai', 'Chennai TKD Academy'],
-      ['Priya Reddy', 'TS', 'Hyderabad', 'Deccan Taekwondo Club'],
-      ['Kavya Menon', 'KL', 'Thiruvananthapuram', 'Travancore TKD'],
-      ['Simran Kaur', 'PB', 'Chandigarh', 'Punjab Champions TKD'],
-      ['Riya Gupta', 'HR', 'Gurugram', 'Gurugram Taekwondo Academy'],
-      ['Tania Bose', 'WB', 'Kolkata', 'Eastern Kick Academy'],
-      ['Aarohi Joshi', 'MH', 'Pune', 'Pune Warriors Taekwondo']
-    ]
-  };
-  const profileIndexes = { MALE: 0, FEMALE: 0 };
-  const playerExamples = [];
-  for (const [divisionIndex, division] of tournamentDivisionDefinitions().entries()) {
-    for (const gender of ['MALE', 'FEMALE']) {
-      const weightCategory = division.categoryType === 'WEIGHT'
-        ? division.weightCategories[gender][Math.min(
-          divisionIndex + (gender === 'FEMALE' ? 1 : 0),
-          division.weightCategories[gender].length - 1
-        )].name
-        : '';
-      const categoryGroup = division.categoryType === 'GROUP'
-        ? division.groups[Math.min(gender === 'MALE' ? 0 : 1, division.groups.length - 1)].name
-        : '';
-      const idPrefix = `${division.id.replace(/[^A-Z0-9]/g, '').slice(0, 3)}-${gender[0]}`;
-      for (let index = 1; index <= 2; index += 1) {
-        const profiles = sampleProfiles[gender];
-        const profile = profiles[profileIndexes[gender] % profiles.length];
-        profileIndexes[gender] += 1;
-        playerExamples.push([
-          `${idPrefix}-${String(index).padStart(2, '0')}`,
-          profile[0],
-          gender,
-          division.label,
-          weightCategory,
-          categoryGroup,
-          profile[1],
-          profile[2],
-          profile[3]
-        ]);
-      }
-    }
-  }
-  const playerCols = [
-    { wch: 14 }, { wch: 24 }, { wch: 12 }, { wch: 16 }, { wch: 22 },
-    { wch: 14 }, { wch: 12 }, { wch: 22 }, { wch: 24 }
-  ];
+  const definition = tournamentDivisionDefinitions().find(item => item.categoryType === 'WEIGHT') || tournamentDivisionDefinitions()[0];
+  const weightCategory = definition.categoryType === 'WEIGHT' ? definition.weightCategories.MALE[0].name : '';
+  const categoryGroup = definition.categoryType === 'GROUP' ? definition.groups[0].name : '';
+  const playerHeaders = FIXTURE_HEADERS;
+  const playerExamples = [['EXAMPLE-01', 'FINAL', definition.label, 'MALE', weightCategory, categoryGroup, 'Example Hong', 'Hong Club', 'WB', 'Nadia', 'Example Chung', 'Chung Club', 'WB', 'Nadia']];
+  const playerCols = playerHeaders.map(() => ({ wch: 22 }));
 
   const categoryRows = [['Division', 'Age Eligibility', 'Gender', 'Weight Category', 'Weight Limit', 'Group', 'Group Age Limit']];
   for (const division of tournamentDivisionDefinitions()) {
@@ -2324,19 +2022,19 @@ async function createPlayerTemplateBuffer() {
   ];
 
   const instructions = [
-    ['SFTS TOURNAMENT PLAYER IMPORT'],
-    ['Use the Players sheet for import. Replace the example rows with tournament players.'],
-    ['Dummy data', 'Every row in the Players sheet is test data. Delete or replace all example rows before importing a real tournament.'],
-    ['Required columns', 'Name, Gender, Division, plus Weight Category or Group when required by the selected rulepack division.'],
-    ['Gender', 'Use MALE/M or FEMALE/F.'],
-    ['Weight divisions', 'Enter a valid Weight Category from the Categories sheet and leave Group blank.'],
-    ['Group divisions', 'Enter a valid Group from the Categories sheet and leave Weight Category blank.'],
-    ['Player ID', 'Optional, but every supplied ID must be unique.'],
-    ['State Code / District / Club', 'Optional tournament and display information.'],
-    ['Important', 'The importer validates division, gender, and category against the active rule pack.']
+    ['SFTS CATEGORY MATCH IMPORT'],
+    ['Matches', 'The first worksheet supplies explicit matches in row order. One division, gender and category per file. Replace the example row.'],
+    ['Event details', 'Enter tournament name, date, venue, arena and competition in SFTS before importing.'],
+    ['Required', 'Bout Number, Stage, Division, Gender, Weight Category (or Group), Hong Name, Hong Club, Chung Name, Chung Club.'],
+    ['Optional', 'Hong/Chung State Code and District. State codes must be valid Indian state codes.'],
+    ['Stage', 'PRELIMINARY, QUARTERFINAL, SEMIFINAL, FINAL. Required for the shared manual category results.'],
+    ['Sides', 'Hong is RED; Chung is BLUE. Supply actual competitors from the fixture software.'],
+    ['Progression', 'SFTS does not create brackets, BYEs or resolve winner placeholders. Import an updated file when later-round competitors are known.'],
+    ['Results', 'Completed official bout numbers retain their results; their sides and stages cannot be changed.'],
+    ['Limits', 'Maximum 500 match rows; 4 MB file. Only the first worksheet is read.']
   ];
   const output = await fileJobs.run('workbook', { sheets: [
-    { name: 'Players', rows: [playerHeaders, ...playerExamples], cols: playerCols, filter: `A1:I${playerExamples.length + 1}` },
+    { name: 'Matches', rows: [playerHeaders, ...playerExamples], cols: playerCols, filter: `A1:N${playerExamples.length + 1}` },
     { name: 'Categories', rows: categoryRows, cols: categoryCols, filter: `A1:G${categoryRows.length}` },
     { name: 'Instructions', rows: instructions, cols: [{ wch: 30 }, { wch: 105 }] }
   ] });
@@ -2494,19 +2192,19 @@ app.post('/api/usb/import', requireHostRequest, express.json({ limit: '8kb', inf
     res.status(404).json({ ok: false, message: 'USB IMPORT MODE IS DISABLED' });
     return;
   }
-  if (tournamentMatchIsBusy()) {
-    res.status(409).json({ ok: false, message: 'Finish or reset the current match before importing a new player sheet' });
+  if (tournamentMatchIsBusy() || practiceMatchIsBusy()) {
+    res.status(409).json({ ok: false, message: 'Finish or reset the current match before importing a match file' });
     return;
   }
   try {
     const result = await withUsbOperation(async () => {
-      if (!hostRequestAuthorized(req) || tournamentMatchIsBusy()) throw new Error('Match or host session changed; retry the import');
+      if (!hostRequestAuthorized(req) || tournamentMatchIsBusy() || practiceMatchIsBusy()) throw new Error('Match or host session changed; retry the import');
       const importRules = rules;
       const context = await usbContext();
       const filePath = await selectedUsbFile(context, req.body?.fileName);
-      const players = await importTournamentPlayers(await readBoundedFile(filePath, MAX_IMPORT_BYTES));
-      if (!hostRequestAuthorized(req) || tournamentMatchIsBusy() || rules !== importRules) throw new Error('Match, host session or rules changed; retry the import');
-      tournament = generateTournament(players);
+      const imported = await importFixture(await readBoundedFile(filePath, MAX_IMPORT_BYTES), req.body?.event);
+      if (!hostRequestAuthorized(req) || tournamentMatchIsBusy() || practiceMatchIsBusy() || rules !== importRules) throw new Error('Match, host session or rules changed; retry the import');
+      tournament = imported;
       state(true);
       return { ok: true, tournament: deep(tournament) };
     });
@@ -2551,16 +2249,16 @@ app.post('/api/tournament/import', requireHostRequest, express.raw({ type: '*/*'
     res.status(403).json({ ok: false, message: 'USB IMPORT IS REQUIRED ON THIS DEPLOYMENT' });
     return;
   }
-  if (tournamentMatchIsBusy()) {
-    res.status(409).json({ ok: false, message: 'Finish or reset the current match before importing a new player sheet' });
+  if (tournamentMatchIsBusy() || practiceMatchIsBusy()) {
+    res.status(409).json({ ok: false, message: 'Finish or reset the current match before importing a match file' });
     return;
   }
   const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
   try {
     const importRules = rules;
-    const players = await importTournamentPlayers(buffer);
-    if (!hostRequestAuthorized(req) || tournamentMatchIsBusy() || rules !== importRules) throw new Error('Match, host session or rules changed; retry the import');
-    tournament = generateTournament(players);
+    const imported = await importFixture(buffer, importEventHeader(req));
+    if (!hostRequestAuthorized(req) || tournamentMatchIsBusy() || practiceMatchIsBusy() || rules !== importRules) throw new Error('Match, host session or rules changed; retry the import');
+    tournament = imported;
     state(true);
     res.json({ ok: true, tournament: deep(tournament) });
   } catch (error) {
@@ -2577,7 +2275,7 @@ app.get('/api/tournament/template.xlsx', requireHostRequest, async (req, res, ne
   try {
   const output = await createPlayerTemplateBuffer();
   res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  res.attachment('sfts-player-template.xlsx');
+  res.attachment('sfts-match-template.xlsx');
   res.send(output);
   } catch (error) { next(error); }
 });
@@ -3863,7 +3561,7 @@ function resetCurrentMatch() {
   }
   const remoteCount = match.remoteCount;
   const resetMode = match.mode;
-  const manualBout = resetMode === 'PRACTICE' ? null : match.manualBout ? deep(match.manualBout) : null;
+  const manualBout = resetMode === 'PRACTICE' || match.manualBout?.importedBoutNo ? null : match.manualBout ? deep(match.manualBout) : null;
   match = makeMatch(
     match.matchNo,
     match.red.name,

@@ -397,7 +397,7 @@
           </button>
           <button onclick="openDataImport()">
             <strong>DATA IMPORT</strong>
-            <span>Import tournament players and generate a schedule.</span>
+            <span>Load category matches supplied by your fixture software.</span>
           </button>
           <button onclick="openPracticeMode()">
             <strong>PRACTICE MODE</strong>
@@ -683,6 +683,20 @@
     <section id="dataImportModal" class="overlay hidden">
       <div class="modalCard playerSettingsModal dataImportModal">
         <h2>DATA IMPORT</h2>
+        <section class="manualSection">
+          <h3>EVENT &amp; CATEGORY</h3>
+          <div class="manualFieldGrid">
+            <label>TOURNAMENT NAME<input id="importEventName" maxlength="96" autocomplete="off" /></label>
+            <label>DATE<input id="importEventDate" type="date" /></label>
+            <label>VENUE<input id="importVenue" maxlength="128" autocomplete="off" /></label>
+            <label>ARENA NO.<input id="importArenaNumber" type="number" min="1" max="999" /></label>
+            <label>COMPETITION<select id="importCompetition"><option>KYORUGI</option><option>FRESHER KYORUGI</option></select></label>
+            <label>DIVISION<input id="importDivision" readonly placeholder="FROM FILE" /></label>
+            <label>GENDER<input id="importGender" readonly placeholder="FROM FILE" /></label>
+            <label><span id="importCategoryLabel">WEIGHT CATEGORY</span><input id="importWeightCategory" readonly placeholder="FROM FILE" /></label>
+          </div>
+          <p id="importCategorySummary" class="manualHint">Division, gender and weight category will be read from the file.</p>
+        </section>
         <div class="playerSettingsGrid">
           <div class="playerSettingsPanel redPlayerPanel">
             <h3>HONG</h3>
@@ -848,8 +862,8 @@
           ANNOUNCE RED VS BLUE
         </button>
         <section class="tournamentImportPanel">
-          <h3>TOURNAMENT PLAYERS &amp; SCHEDULE</h3>
-          <p>Upload a sheet with Name, Gender, Division, and the category required by the active rulepack.</p>
+          <h3>CATEGORY MATCH FILE</h3>
+          <p>One category per file. Include bout number, stage and the assigned HONG/CHUNG competitors. Matches keep the file's order.</p>
           <div id="nativeTournamentImport">
             <input
               id="playerSheetFile"
@@ -859,7 +873,7 @@
             />
             <div class="tournamentImportActions">
               <button onclick="uploadPlayerSheet()">
-                IMPORT &amp; GENERATE SCHEDULE
+                IMPORT MATCHES
               </button>
               <button onclick="downloadPlayerTemplate()">
                 DOWNLOAD TEMPLATE
@@ -875,14 +889,14 @@
               </div>
             </div>
             <label class="usbFileLabel">
-              USB PLAYER SHEETS
+              USB MATCH FILES
               <select id="usbFileSelect" class="playerSettingsSelect" disabled>
                 <option value="">REFRESH USB TO LIST FILES</option>
               </select>
             </label>
             <div class="tournamentImportActions">
               <button id="usbImportButton" onclick="importUsbFile()" disabled>
-                IMPORT &amp; GENERATE SCHEDULE
+                IMPORT MATCHES
               </button>
               <button onclick="savePlayerTemplateToUsb()">
                 SAVE TEMPLATE TO USB
@@ -890,10 +904,11 @@
             </div>
           </div>
           <div class="tournamentImportActions scheduleViewAction">
-            <button onclick="openSchedule()">VIEW SCHEDULE</button>
+            <button onclick="openSchedule()">VIEW IMPORTED MATCHES</button>
+            <button onclick="openManualCategoryResults(true)">CATEGORY RESULTS</button>
           </div>
           <div id="tournamentImportStatus" class="tournamentImportStatus">
-            NO TOURNAMENT SHEET IMPORTED
+            NO CATEGORY MATCH FILE IMPORTED
           </div>
         </section>
         <button class="hidden" onclick="savePlayerSettings()">SAVE PLAYER SETTINGS</button>
@@ -936,7 +951,7 @@
 
     <section id="scheduleModal" class="overlay hidden">
       <div class="modalCard scheduleModal">
-        <h2>TOURNAMENT SCHEDULE</h2>
+        <h2>IMPORTED MATCHES</h2>
         <div id="scheduleSummary" class="scheduleSummary"></div>
         <div class="scheduleActions">
           <button onclick="downloadTournamentSchedule('xlsx')">

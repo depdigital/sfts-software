@@ -4,6 +4,8 @@
 
 Planning context only. No official-fixture import functionality has been implemented from this document.
 
+The approved Data Import baseline now uses explicit category match files and the manual-entry results flow, rather than this proposed bracket-graph importer. See [the implemented match file contract](category-match-import.md). The graph/PDF plans below remain historical future planning and do not describe the current importer.
+
 ## Source Fixture Reviewed
 
 `docs/Nadia_Single_Elimination_Fixtures_2026.pdf`

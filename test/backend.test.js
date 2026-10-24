@@ -217,98 +217,46 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   const powerCancelled = await waitForMessage(host, message => message.type === 'systemPowerCancelled');
   assert.equal(powerCancelled.action, 'reboot');
 
-  const workbook = XLSX.utils.book_new();
-  const players = XLSX.utils.json_to_sheet([
-    { 'Player ID': 'M1', Name: 'Male One', Gender: 'MALE', Division: 'SENIOR', 'Weight Category': 'FLYWEIGHT' },
-    { 'Player ID': 'M2', Name: 'Male Two', Gender: 'M', Division: 'Senior', 'Weight Category': 'flyweight' },
-    { 'Player ID': 'F1', Name: 'Female One', Gender: 'FEMALE', Division: 'SENIOR', 'Weight Category': 'FINWEIGHT' },
-    { 'Player ID': 'F2', Name: 'Female Two', Gender: 'F', Division: 'SENIOR', 'Weight Category': 'FINWEIGHT' },
-    { 'Player ID': 'J1', Name: 'Junior One', Gender: 'MALE', Division: 'JUNIOR', 'Weight Category': 'FLYWEIGHT' },
-    { 'Player ID': 'J2', Name: 'Junior Two', Gender: 'M', Division: 'JUNIOR', 'Weight Category': 'flyweight' },
-    { 'Player ID': 'S1', Name: 'Sub Junior One', Gender: 'MALE', Division: 'SUB JUNIOR', 'Weight Category': 'UNDER 16 KG' },
-    { 'Player ID': 'S2', Name: 'Sub Junior Two', Gender: 'M', Division: 'SUB_JUNIOR', 'Weight Category': 'under 16 kg' }
-  ]);
-  XLSX.utils.book_append_sheet(workbook, players, 'Players');
-  const workbookBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
-  const unauthorized = await fetch(`http://127.0.0.1:${port}/api/tournament/template.xlsx`);
-  assert.equal(unauthorized.status, 401);
-  const templateResponse = await fetch(`http://127.0.0.1:${port}/api/tournament/template.xlsx`, {
-    headers: { 'X-SFTS-Host-Token': hostRole.hostToken }
+  const event = { eventName: 'Imported Test Event', eventDate: '2026-10-24', venue: 'Test Hall', arenaNumber: '7', competition: 'KYORUGI' };
+  const importHeaders = { 'Content-Type': 'application/octet-stream', 'X-SFTS-Host-Token': hostRole.hostToken, 'X-SFTS-Import-Event': encodeURIComponent(JSON.stringify(event)) };
+  const fixtureRow = (bout, red, blue, stage = 'PRELIMINARY', division = 'SUB JUNIOR', weight = 'UNDER 16 KG') => ({
+    'Bout Number': bout, Stage: stage, Division: division, Gender: 'MALE', 'Weight Category': weight,
+    'Hong Name': red, 'Hong Club': 'Hong Club', 'Chung Name': blue, 'Chung Club': 'Chung Club'
   });
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(Array.from({ length: 4 }, (_, i) => fixtureRow(`B-${i + 1}`, `Red ${i}`, `Blue ${i}`))), 'Matches');
+  const workbookBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+  assert.equal((await fetch(`http://127.0.0.1:${port}/api/tournament/template.xlsx`)).status, 401);
+  const templateResponse = await fetch(`http://127.0.0.1:${port}/api/tournament/template.xlsx`, { headers: { 'X-SFTS-Host-Token': hostRole.hostToken } });
   assert.equal(templateResponse.status, 200);
   const templateBuffer = Buffer.from(await templateResponse.arrayBuffer());
   const templateWorkbook = XLSX.read(templateBuffer, { type: 'buffer' });
-  assert.deepEqual(templateWorkbook.SheetNames, ['Players', 'Categories', 'Instructions']);
-  const templateSheet = templateWorkbook.Sheets[templateWorkbook.SheetNames[0]];
-  const templateRows = XLSX.utils.sheet_to_json(templateSheet);
-  assert.equal(templateRows.length, 16);
-  assert.deepEqual(XLSX.utils.sheet_to_json(templateSheet, { header: 1, defval: '' })[0], [
-    'Player ID', 'Name', 'Gender', 'Division', 'Weight Category', 'Group', 'State Code', 'District', 'Club'
-  ]);
-  assert.ok(templateRows.some(row => row.Name === 'Arjun Mehta'));
-  assert.ok(templateRows.every(row => row['State Code'] && row.District && row.Club));
-  assert.ok(templateRows.some(row => row.Division === 'SUB JUNIOR' && row.Gender === 'MALE' && row['Weight Category'] === 'UNDER 23 KG' && !row.Group));
-  assert.ok(templateRows.some(row => row.Division === 'SUB JUNIOR' && row.Gender === 'FEMALE' && row['Weight Category'] === 'UNDER 22 KG' && !row.Group));
-  const categoryRows = XLSX.utils.sheet_to_json(templateWorkbook.Sheets.Categories);
-  assert.ok(categoryRows.some(row => row.Division === 'SENIOR' && row.Gender === 'MALE' && row['Weight Category'] === 'FINWEIGHT'));
-  assert.ok(categoryRows.some(row => row.Division === 'SUB JUNIOR' && row.Gender === 'MALE' && row['Weight Category'] === 'UNDER 16 KG'));
-  assert.ok(categoryRows.some(row => row.Division === 'SUB JUNIOR' && row.Gender === 'FEMALE' && row['Weight Category'] === 'UNDER 57 KG'));
-  const templateImport = await fetch(`http://127.0.0.1:${port}/api/tournament/import`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'X-SFTS-Host-Token': hostRole.hostToken },
-    body: templateBuffer
-  });
+  assert.deepEqual(templateWorkbook.SheetNames, ['Matches', 'Categories', 'Instructions']);
+  assert.equal(XLSX.utils.sheet_to_json(templateWorkbook.Sheets.Matches).length, 1);
+  const templateImport = await fetch(`http://127.0.0.1:${port}/api/tournament/import`, { method: 'POST', headers: importHeaders, body: templateBuffer });
   assert.equal(templateImport.status, 200);
-  const templateImportBody = await templateImport.json();
-  assert.equal(templateImportBody.tournament.players.length, 16);
-  assert.equal(templateImportBody.tournament.groups.length, 8);
-  const imported = await fetch(`http://127.0.0.1:${port}/api/tournament/import`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'X-SFTS-Host-Token': hostRole.hostToken },
-    body: workbookBuffer
-  });
+  await templateImport.arrayBuffer();
+  const imported = await fetch(`http://127.0.0.1:${port}/api/tournament/import`, { method: 'POST', headers: importHeaders, body: workbookBuffer });
   assert.equal(imported.status, 200);
   const importedBody = await imported.json();
+  assert.equal(importedBody.tournament.format, 'IMPORTED_MATCHES');
   assert.equal(importedBody.tournament.players.length, 8);
-  assert.equal(importedBody.tournament.groups.length, 4);
+  assert.equal(importedBody.tournament.groups.length, 0);
+  assert.equal(importedBody.tournament.byes.length, 0);
   assert.equal(importedBody.tournament.schedule.length, 4);
-  assert.equal(importedBody.tournament.placementPolicy.enabled, true);
-  assert.equal(importedBody.tournament.placementPolicy.thirdPlacePolicy, 'BOTH_SEMIFINAL_LOSERS');
   const firstBout = importedBody.tournament.schedule[0];
-  const firstBoutPlayers = new Map(importedBody.tournament.players.map(player => [player.id, player]));
-  assert.equal(firstBoutPlayers.get(firstBout.redPlayerId).gender, firstBoutPlayers.get(firstBout.bluePlayerId).gender);
-  assert.equal(firstBoutPlayers.get(firstBout.redPlayerId).division, firstBoutPlayers.get(firstBout.bluePlayerId).division);
-  assert.equal(firstBoutPlayers.get(firstBout.redPlayerId).weightCategory, firstBoutPlayers.get(firstBout.bluePlayerId).weightCategory);
-  const subJuniorGroup = importedBody.tournament.groups.find(group => group.division === 'SUB_JUNIOR');
-  assert.equal(subJuniorGroup.categoryGroup, '');
-  assert.equal(subJuniorGroup.weightCategory, 'UNDER 16 KG');
-  assert.equal(importedBody.tournament.groups.filter(group => (
-    group.gender === 'MALE' && group.weightCategory === 'FLYWEIGHT'
-  )).length, 2);
-
+  assert.equal(firstBout.redPlayerName, 'Red 0');
+  assert.equal(firstBout.bluePlayerName, 'Blue 0');
   const invalidWorkbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(invalidWorkbook, XLSX.utils.json_to_sheet([
-    { Name: 'Invalid Category', Gender: 'FEMALE', Division: 'SENIOR', 'Weight Category': 'LT MIDDLEWEIGHT', Group: '' },
-    { Name: 'Invalid Sub Junior Category', Gender: 'MALE', Division: 'SUB JUNIOR', 'Weight Category': 'UNDER 14 KG' }
-  ]), 'Players');
-  const invalidImport = await fetch(`http://127.0.0.1:${port}/api/tournament/import`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'X-SFTS-Host-Token': hostRole.hostToken },
-    body: XLSX.write(invalidWorkbook, { type: 'buffer', bookType: 'xlsx' })
-  });
+  XLSX.utils.book_append_sheet(invalidWorkbook, XLSX.utils.json_to_sheet([fixtureRow('BAD', 'Invalid Red', 'Invalid Blue', 'FINAL', 'SUB JUNIOR', 'UNDER 14 KG')]), 'Matches');
+  const invalidImport = await fetch(`http://127.0.0.1:${port}/api/tournament/import`, { method: 'POST', headers: importHeaders, body: XLSX.write(invalidWorkbook, { type: 'buffer', bookType: 'xlsx' }) });
   assert.equal(invalidImport.status, 400);
-  const invalidImportBody = await invalidImport.json();
-  assert.ok(invalidImportBody.errors.some(error => /weight category must be/.test(error)));
-  const downloaded = await fetch(`http://127.0.0.1:${port}/api/tournament/schedule.xlsx`, {
-    headers: { 'X-SFTS-Host-Token': hostRole.hostToken }
-  });
+  assert.ok((await invalidImport.json()).errors.some(error => /weight category/.test(error)));
+  const downloaded = await fetch(`http://127.0.0.1:${port}/api/tournament/schedule.xlsx`, { headers: { 'X-SFTS-Host-Token': hostRole.hostToken } });
   assert.equal(downloaded.status, 200);
-  assert.match(downloaded.headers.get('content-type'), /spreadsheetml/);
   const downloadedWorkbook = XLSX.read(Buffer.from(await downloaded.arrayBuffer()), { type: 'buffer' });
   assert.deepEqual(downloadedWorkbook.SheetNames, ['Schedule', 'Results']);
-  const downloadedRows = XLSX.utils.sheet_to_json(downloadedWorkbook.Sheets.Schedule);
-  assert.ok(downloadedRows.every(row => row.Division && row['Bracket ID']));
-  assert.ok(downloadedRows.some(row => row.Division === 'SUB_JUNIOR' && row['Weight Category'] === 'UNDER 16 KG' && !row['Category Group']));
+  assert.deepEqual(XLSX.utils.sheet_to_json(downloadedWorkbook.Sheets.Schedule).map(row => row['Bout Number']), ['B-1', 'B-2', 'B-3', 'B-4']);
   host.send(JSON.stringify({ type: 'host', action: 'announceBout', boutNo: 1 }));
   const announcement = await waitForMessage(host, message => message.type === 'announcement' && message.boutNo === 1);
   assert.equal(
@@ -907,29 +855,22 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
     message.type === 'state' && message.tournament.players.length === 8 && message.tournament.activeBoutNo === null
   ));
 
-  const bracketPlayers = XLSX.utils.json_to_sheet([
-    { 'Player ID': 'B1', Name: 'Bracket One', Gender: 'MALE', Division: 'SENIOR', 'Weight Category': 'FLYWEIGHT', Group: '' },
-    { 'Player ID': 'B2', Name: 'Bracket Two', Gender: 'MALE', Division: 'SENIOR', 'Weight Category': 'FLYWEIGHT', Group: '' },
-    { 'Player ID': 'B3', Name: 'Bracket Three', Gender: 'MALE', Division: 'SENIOR', 'Weight Category': 'FLYWEIGHT', Group: '' },
-    { 'Player ID': 'B4', Name: 'Bracket Four', Gender: 'MALE', Division: 'SENIOR', 'Weight Category': 'FLYWEIGHT', Group: '' },
-    { 'Player ID': 'B5', Name: 'Bracket Five', Gender: 'MALE', Division: 'SENIOR', 'Weight Category': 'FLYWEIGHT', Group: '' }
-  ]);
   const bracketWorkbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(bracketWorkbook, bracketPlayers, 'Players');
+  XLSX.utils.book_append_sheet(bracketWorkbook, XLSX.utils.json_to_sheet([
+    fixtureRow('P1', 'Bracket One', 'Bracket Five', 'PRELIMINARY', 'SENIOR', 'FLYWEIGHT'),
+    fixtureRow('S2', 'Bracket Three', 'Bracket Four', 'SEMIFINAL', 'SENIOR', 'FLYWEIGHT'),
+    fixtureRow('S3', 'Bracket One', 'Bracket Two', 'SEMIFINAL', 'SENIOR', 'FLYWEIGHT'),
+    fixtureRow('F4', 'Bracket One', 'Bracket Four', 'FINAL', 'SENIOR', 'FLYWEIGHT')
+  ]), 'Matches');
   const bracketImport = await fetch(`http://127.0.0.1:${port}/api/tournament/import`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'X-SFTS-Host-Token': hostRole.hostToken },
-    body: XLSX.write(bracketWorkbook, { type: 'buffer', bookType: 'xlsx' })
+    method: 'POST', headers: importHeaders, body: XLSX.write(bracketWorkbook, { type: 'buffer', bookType: 'xlsx' })
   });
   assert.equal(bracketImport.status, 200);
   const bracketBody = await bracketImport.json();
-  assert.equal(bracketBody.tournament.format, 'SINGLE_ELIMINATION');
+  assert.equal(bracketBody.tournament.format, 'IMPORTED_MATCHES');
   assert.equal(bracketBody.tournament.schedule.length, 4);
-  assert.equal(bracketBody.tournament.groups[0].bracketSize, 8);
-  assert.equal(bracketBody.tournament.byes.length, 3);
-  assert.equal(bracketBody.tournament.schedule.filter(bout => bout.status === 'SCHEDULED').length, 2);
-  assert.equal(bracketBody.tournament.schedule.filter(bout => bout.status === 'PENDING').length, 2);
-  assert.ok(bracketBody.tournament.schedule.slice(2).every(bout => bout.redSourceBoutNo || bout.blueSourceBoutNo));
+  assert.equal(bracketBody.tournament.byes.length, 0);
+  assert.ok(bracketBody.tournament.schedule.every(bout => bout.status === 'SCHEDULED'));
   const initialBoutTwo = bracketBody.tournament.schedule.find(bout => bout.boutNo === 2);
 
   host.send(JSON.stringify({ type: 'host', action: 'loadBout', boutNo: 1 }));
@@ -954,7 +895,8 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   ));
   const advancedBout = advanced.tournament.schedule.find(bout => bout.boutNo === 3);
   assert.ok(advancedBout.redPlayerId && advancedBout.bluePlayerId);
-  assert.ok(advancedBout.redSourceBoutNo === 1 || advancedBout.blueSourceBoutNo === 1);
+  assert.equal(advancedBout.redPlayerName, 'Bracket One');
+  assert.equal(advancedBout.redSourceBoutNo, undefined);
 
   host.send(JSON.stringify({ type: 'host', action: 'loadBout', boutNo: 2 }));
   const secondBracketLoad = await waitForMessage(host, message => (
@@ -983,7 +925,7 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   ));
   assert.deepEqual(tied.match.tieDecision.options, ['GOLDEN_ROUND', 'WOO_SE_GIROK']);
   assert.equal(tied.tournament.schedule.find(bout => bout.boutNo === 2).status, 'IN_PROGRESS');
-  assert.equal(tied.tournament.schedule.find(bout => bout.boutNo === 4).status, 'PENDING');
+  assert.equal(tied.tournament.schedule.find(bout => bout.boutNo === 4).status, 'SCHEDULED');
   host.send(JSON.stringify({ type: 'host', action: 'decideWooSeGirok', player: 'BLUE' }));
   await waitForMessage(host, message => message.type === 'matchEnd' && message.winner === 'BLUE' && message.reason === 'SUP - WOO-SE-GIROK');
   const tieResolved = await waitForMessage(host, message => (
@@ -1007,14 +949,13 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   host.send(JSON.stringify({ type: 'host', action: 'manualMatchDecision', player: 'BLUE', decision: 'RSC' }));
   await waitForMessage(host, message => message.type === 'matchEnd' && message.winner === 'BLUE');
   const categoryComplete = await waitForMessage(host, message => (
-    message.type === 'state' && message.tournament.groups[0]?.resultStatus === 'COMPLETED'
+    message.type === 'state' && message.tournament.schedule[3].status === 'COMPLETED'
   ));
-  const completedGroup = categoryComplete.tournament.groups[0];
-  assert.deepEqual(completedGroup.placements.map(placement => placement.place), [1, 2, 3, 3]);
-  assert.equal(completedGroup.placements[0].playerId, finalBout.bluePlayerId);
-  assert.equal(completedGroup.placements[1].playerId, finalBout.redPlayerId);
-  assert.ok(completedGroup.placements.slice(2).every(placement => placement.basis === 'SEMIFINAL_LOSER'));
-  assert.equal(new Set(completedGroup.placements.map(placement => placement.playerId)).size, 4);
+  const completedGroup = categoryComplete.manualCompetition.categories.find(category => category.id === categoryComplete.tournament.categoryId);
+  assert.equal(completedGroup.placements.gold.playerName, finalBout.bluePlayerName);
+  assert.equal(completedGroup.placements.silver.playerName, finalBout.redPlayerName);
+  assert.equal(completedGroup.placements.bronze1.playerName, 'Bracket Three');
+  assert.equal(completedGroup.placements.bronze2.playerName, 'Bracket Two');
 
   const completedDownload = await fetch(`http://127.0.0.1:${port}/api/tournament/schedule.xlsx`, {
     headers: { 'X-SFTS-Host-Token': hostRole.hostToken }

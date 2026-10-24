@@ -16,9 +16,8 @@ The event does not need internet. The dashboard, JavaScript, CSS, logo, tourname
 
 - Best-of-three scoring with +1, +2, +3, gam-jeom, timer, breaks, and winner display.
 - Four-corner referee voting. Three matching votes award a point.
-- Tournament player import from Excel/CSV, grouped by gender and weight category.
-- Random single-elimination brackets with byes and result-based next matches.
-- Tie-pending matches that must be resolved before the bracket continues.
+- Category match import from Excel/CSV with explicit HONG/CHUNG sides and supplied match order.
+- Shared manual/imported category results, placement review, finalization and PDF export.
 - Schedule viewing, announcements, Excel/CSV download, and printing.
 - Local state recovery after restart, with a backup snapshot.
 - Optional local Piper text-to-speech; browser speech is only a fallback.
@@ -158,33 +157,38 @@ Each corner card shows `CONNECTED` or `DISCONNECTED`, the latest RSSI in dBm, an
 
 For one-remote use, select mode 1 before scoring. With the match running, verify repeated identical +1/+2/+3 taps less than 750 ms apart, mixed-side taps, a short tap, technical +2/+3, technical +1 rejection, and a disconnect/reconnect. Every accepted press should change the score exactly once; `QUEUED` should return to 0 and `DROPPED` should stay at 0. The four-remote voting and near-simultaneous-incident cases require a separate physical test with all four devices before an event.
 
-## Tournament workflow
+## Category match import
 
-1. Open **PLAYER SETTINGS**.
-2. Download the template or prepare your own sheet.
-3. Upload it and select **IMPORT & GENERATE SCHEDULE**.
-4. Open **VIEW SCHEDULE**.
-5. Load only a bout marked **SCHEDULED**.
-6. Finish the match. The winner automatically advances to the next bracket bout.
-7. If the match is tied, select **RED WINS** or **BLUE WINS** after the official tie-break decision.
-8. Download or print the schedule and use **ANNOUNCE** when required.
+1. Open **PLAYER SETTINGS → DATA IMPORT**.
+2. Enter tournament name, date, venue, arena number and competition.
+3. Save the template to USB, or use a matching export from your fixture software.
+4. Select the category file and choose **IMPORT MATCHES**.
+5. Review the imported division, gender, category, bout numbers, stages and HONG/CHUNG sides.
+6. Select **LOAD** for the required match, then operate the scoreboard as with manual entry.
+7. Open **CATEGORY RESULTS** for the same placement review, finalization and PDF export used by manual entry.
 
-Import is blocked while a match is active, has scores/penalties/votes, is in a break, or has a loaded tournament bout. This prevents the current match from being replaced accidentally.
+SFTS preserves the supplied pairings and row order. It does not generate draws, assign BYEs, resolve winner placeholders or advance competitors. The fixture software supplies actual competitors for later rounds when known. Import an updated category file when those matches are ready.
 
-## Excel player template
+An import replaces the current imported match list, while completed category records remain in the shared manual results archive. Reimporting the same event/category preserves completed official bout numbers and rejects changes to their competitors or stages. Finalized categories cannot accept another import. Previously saved legacy brackets remain recoverable.
 
-The first worksheet must have these required columns:
+Import and match loading are blocked during an unfinished match, including a paused match that has already started. Finish or reset it first. Restart recovery restores the imported list, progress and loaded bout with the timer paused.
+
+## Excel / CSV match template
+
+The first worksheet must contain one row per match, all for the same division, gender and weight category (or rulepack group). The template contains **Matches**, **Categories** and **Instructions** sheets. Event information is entered in SFTS.
 
 ```csv
-Player ID,Name,Gender,Weight Category,State Code,District,Club
-M58-01,Arjun Mehta,MALE,58 kg,DL,New Delhi,SFTS Demo Club
-M58-02,Rohan Singh,MALE,58 kg,UP,Noida,SFTS Demo Club
-F49-01,Ananya Kapoor,FEMALE,49 kg,MH,Pune,SFTS Demo Club
+Bout Number,Stage,Division,Gender,Weight Category,Group,Hong Name,Hong Club,Hong State Code,Hong District,Chung Name,Chung Club,Chung State Code,Chung District
+SF-01,SEMIFINAL,SENIOR,MALE,FLYWEIGHT,,Arjun Mehta,Capital TKD,DL,New Delhi,Rohan Singh,Warriors TKD,UP,Noida
 ```
 
-`Name`, `Gender`, and `Weight Category` are required. The other columns are optional. Use `MALE` or `M`, and `FEMALE` or `F`. Player IDs must be unique; if blank, the system creates one. Use formats such as `58 kg`, `49 kg`, or `68 kg`. Players are never paired across gender or weight category.
+Bout number, stage, division, gender, the applicable category, both names and both clubs/affiliations are required. State code and district are optional. Use category names from the template's **Categories** sheet, which reflects the active rulepack. Accepted stages are **PRELIMINARY**, **QUARTERFINAL**, **SEMIFINAL** and **FINAL**. HONG means red and CHUNG means blue.
 
-The **DOWNLOAD TEMPLATE** button contains dummy players in several groups so byes and multiple brackets can be tested safely.
+Gold/silver follow the recorded final winner/loser; the two semifinal losers receive bronze through the existing manual results logic. The operator can review, override and finalize those placements.
+
+Supported files: `.xlsx`, `.xls`, `.csv`; maximum **500 matches per file / 4 MB**, with bounded spreadsheet parsing in the existing worker. The Pi uses the same restricted USB file selection. Roster-only files from the previous import flow must be re-exported in the match format.
+
+See [the fixture exporter contract](docs/category-match-import.md) for the complete field reference.
 
 ## Saved data and safe restart
 
@@ -193,6 +197,7 @@ The server saves local data in the `data` folder:
 - `sfts-state.json` — current match, history, and tournament progress.
 - `sfts-state.backup.json` — previous valid snapshot.
 - `sfts-state.lock` — prevents two servers using the same data folder.
+- `manual-results.json` and its backup — shared manual/imported category records and placements, retained independently of the recent match-history list.
 
 Important actions are saved immediately; timer snapshots are saved periodically. On restart, the match is paused and temporary votes/test presses are cleared. The host must reconnect and press **PLAY**. If the main file is damaged, the backup is used automatically.
 
