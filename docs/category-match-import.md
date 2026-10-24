@@ -6,7 +6,7 @@ Data Import is a five-card workflow: **Event → File → Review → Matches →
 
 Enter tournament name, date (`YYYY-MM-DD`), venue, arena number (`1`–`999`) and competition (`KYORUGI` or `FRESHER KYORUGI`) manually. These apply to the entire file. Division, gender and weight category/group come from the spreadsheet. Competition is not taken from Excel; keep regular and fresher competitions in separate files.
 
-**SAVE TEMPLATE TO USB** on the Event card saves the template through the existing USB drive workflow. Browser template downloads are disabled. With the default rulepack, the sample contains **15 fictional players in 4 categories across 2 divisions**: a **9-player male bracket with 7 BYEs** to test all rounds, another **2-player male category in the same division**, a **2-player female category in that division**, and a **2-player male category in another division**. This is the minimum dataset that exercises each dependent selector independently while preserving the full-round test. Custom rulepacks include only the available sample categories.
+**SAVE TEMPLATE TO USB** on the Event card saves the complete test template through the existing USB drive workflow. Browser template downloads are disabled. Every valid division/gender/weight-category or group combination in the active rulepack receives **9 fictional players and 7 BYEs**, the minimum needed for a contested preliminary followed by four quarterfinals, two semifinals and a final. With the default rulepack this covers **84 categories across 4 divisions**, **756 players**, **588 BYEs** and **672 opening rows**. Both Hong-side and Chung-side BYEs are included, and the contested opening position varies between categories.
 
 ## Opening fixture file
 
@@ -46,7 +46,7 @@ SF-02,SEMIFINAL,SENIOR,MALE,FLYWEIGHT,,Vikram,Cochin Club,KL,Kochi,BYE,,,
 
 Vikram advances directly into the final without a scored match or fabricated match record. The SF-01 winner becomes HONG in the final; Vikram becomes CHUNG.
 
-The USB template remains `sfts-match-template.xlsx`. **Matches** is first, followed by **Categories** and **Instructions**. Import its eleven default sample rows unchanged for testing, or replace all sample rows with your tournament's opening fixtures. Header matching ignores case, spacing and punctuation. Official Bout No/Bout No/Bout, Red/Blue Name/Club/State Code/District and Hong/Chung or Red/Blue Affiliation aliases remain supported. Duplicate or ambiguous headers are rejected.
+The USB template remains `sfts-match-template.xlsx`. **Matches** is first, followed by **Categories**, **Instructions** and **Exclusions**. Matches contains only valid opening fixtures. Categories lists each tested combination and its expected player/BYE/round counts. Exclusions documents unsupported cross-combinations from the rulepack category names without putting invalid data in the import sheet. Import all 672 default sample rows unchanged for testing, or replace all sample rows with your tournament's opening fixtures. Header matching ignores case, spacing and punctuation. Official Bout No/Bout No/Bout, Red/Blue Name/Club/State Code/District and Hong/Chung or Red/Blue Affiliation aliases remain supported. Duplicate or ambiguous headers are rejected.
 
 ## Review card
 

@@ -10,6 +10,7 @@ import vm from 'node:vm';
 import { createFixtureTemplateSheets } from '../src/fixtureTemplate.js';
 import { createFileJobs } from '../src/fileJobs.js';
 import { readRulesFile } from '../src/rules.js';
+import { nextFixtureBout, refreshFixtureProgression, validFixtureGraph } from '../src/fixtureProgression.js';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dataDir = path.join(projectRoot, 'data', `fixture-import-test-${process.pid}`);
@@ -361,10 +362,12 @@ test('USB template supports multiple categories and runs all four stages with ni
   try { buffer = Buffer.from(await jobs.run('workbook', { sheets: createFixtureTemplateSheets(rules.tournament.divisions) })); }
   finally { await jobs.close(); }
   const workbook = XLSX.read(buffer, { type: 'buffer' });
-  assert.deepEqual(workbook.SheetNames, ['Matches', 'Categories', 'Instructions']);
+  assert.deepEqual(workbook.SheetNames, ['Matches', 'Categories', 'Instructions', 'Exclusions']);
   const allRows = XLSX.utils.sheet_to_json(workbook.Sheets.Matches);
-  assert.equal(allRows.length, 11);
-  const rows = allRows.filter(row => row.Stage === 'PRELIMINARY');
+  const expectedProfiles = rules.tournament.divisions.flatMap(division => ['MALE', 'FEMALE'].flatMap(gender =>
+    (division.categoryType === 'WEIGHT' ? division.weightCategories[gender] : division.groups).map(category => [division.id, gender, category.name])));
+  assert.equal(allRows.length, expectedProfiles.length * 8);
+  const rows = allRows.slice(0, 8);
   assert.equal(rows.length, 8);
   const players = new Map(rows.flatMap(row => ['Hong', 'Chung']
     .filter(side => row[`${side} Name`] !== 'BYE')
@@ -374,32 +377,58 @@ test('USB template supports multiple categories and runs all four stages with ni
     assert.doesNotMatch(name, /Demo Player|\d/i);
     assert.doesNotMatch(club, /Demo Club|\d/i);
   }
-  const byes = rows.filter(row => row['Chung Name'] === 'BYE');
+  const byes = rows.filter(row => row['Chung Name'] === 'BYE' || row['Hong Name'] === 'BYE');
   assert.equal(byes.length, 7);
   for (const row of byes) {
-    for (const field of ['Chung Club', 'Chung State Code', 'Chung District']) assert.equal(row[field] || '', '');
+    const side = row['Hong Name'] === 'BYE' ? 'Hong' : 'Chung';
+    for (const field of ['Club', 'State Code', 'District']) assert.equal(row[`${side} ${field}`] || '', '');
   }
   const previewResponse = await fetch(`http://127.0.0.1:${port}/api/tournament/import?preview=true`, { method: 'POST', headers, body: buffer });
   const preview = await previewResponse.json();
   assert.equal(previewResponse.status, 200, JSON.stringify(preview));
   assert.equal(preview.tournament.players.length, 9);
   const categories = preview.workbook.categories;
-  assert.equal(categories.length, 4);
-  assert.equal(categories.reduce((total, category) => total + category.competitorCount, 0), 15);
-  assert.equal(new Set(categories.map(category => category.event.division)).size, 2);
+  assert.equal(categories.length, expectedProfiles.length);
+  assert.deepEqual(new Set(categories.map(category => JSON.stringify([category.event.division, category.event.gender, category.event.weightCategory || category.event.categoryGroup]))), new Set(expectedProfiles.map(profile => JSON.stringify(profile))));
+  assert.equal(categories.reduce((total, category) => total + category.competitorCount, 0), expectedProfiles.length * 9);
+  assert.equal(new Set(categories.map(category => category.event.division)).size, rules.tournament.divisions.length);
   const primaryDivision = categories.filter(category => category.event.division === categories[0].event.division);
   assert.deepEqual([...new Set(primaryDivision.map(category => category.event.gender))].sort(), ['FEMALE', 'MALE']);
   const maleCategories = primaryDivision.filter(category => category.event.gender === 'MALE');
-  assert.equal(maleCategories.length, 2, 'the category dropdown has two options within one division and gender');
-  assert.equal(new Set(maleCategories.map(category => category.event.weightCategory || category.event.categoryGroup)).size, 2);
-  for (const category of categories.slice(1)) {
-    assert.equal(category.competitorCount, 2, 'additional categories use the minimum two competitors');
-    assert.equal(category.fixture.schedule.length, 1);
-    assert.equal(category.fixture.schedule[0].stage, 'FINAL');
+  assert.ok(maleCategories.length > 1, 'the category dropdown has multiple options within one division and gender');
+  const names = new Set();
+  for (const category of categories) {
+    assert.equal(category.competitorCount, 9);
+    assert.equal(category.byeCount, 7);
+    assert.equal(category.fixture.openingBoutCount, 8);
+    assert.equal(category.fixture.schedule.length, 15);
+    assert.ok(category.fixture.schedule.slice(0, 8).every(bout => bout.stage === 'PRELIMINARY'));
+    assert.ok(category.fixture.schedule.some(bout => bout.status === 'BYE' && bout.RED === null));
+    assert.ok(category.fixture.schedule.some(bout => bout.status === 'BYE' && bout.BLUE === null));
     for (const player of category.fixture.players) {
       assert.doesNotMatch(player.playerName, /Demo Player|\d/i);
       assert.doesNotMatch(player.club, /Demo Club|\d/i);
+      assert.ok(!names.has(player.playerName), 'fictional names are unique across the workbook');
+      names.add(player.playerName);
     }
+    const simulated = structuredClone(category.fixture);
+    const stages = [];
+    for (let bout; (bout = nextFixtureBout(simulated));) {
+      stages.push(bout.stage);
+      bout.winner = stages.length % 2 ? 'BLUE' : 'RED';
+      bout.winnerName = bout[bout.winner].playerName;
+      bout.status = 'COMPLETED';
+      refreshFixtureProgression(simulated);
+    }
+    assert.deepEqual(stages, ['PRELIMINARY', 'QUARTERFINAL', 'QUARTERFINAL', 'QUARTERFINAL', 'QUARTERFINAL', 'SEMIFINAL', 'SEMIFINAL', 'FINAL']);
+    assert.ok(validFixtureGraph(simulated));
+  }
+  const exclusions = XLSX.utils.sheet_to_json(workbook.Sheets.Exclusions);
+  assert.ok(exclusions.length > 0);
+  for (const row of exclusions) {
+    const division = rules.tournament.divisions.find(item => item.label === row.Division);
+    const valid = division.categoryType === 'WEIGHT' ? division.weightCategories[row.Gender] : division.groups;
+    assert.ok(!valid.some(category => category.name === (row['Excluded Weight Category'] || row['Excluded Group'])));
   }
   assert.equal(preview.tournament.schedule.filter(bout => bout.status === 'BYE').length, 7);
   assert.equal(preview.tournament.schedule.filter(bout => bout.status !== 'BYE').length, 8);
@@ -433,12 +462,13 @@ test('USB template supports multiple categories and runs all four stages with ni
   const archiveResponse = await fetch(`http://127.0.0.1:${port}/api/manual/categories?categoryId=${category.id}`, { headers });
   const archive = await archiveResponse.json();
   assert.equal(archive.records.length, 8, 'BYEs advance without creating scored records');
+  await waitForSnapshot(snapshot => snapshot.match.phase === 'MATCH_END' && snapshot.tournament.activeBoutNo === null && snapshot.tournament.schedule.every(bout => ['COMPLETED', 'BYE'].includes(bout.status)));
   host.close();
 });
 
 test('one workbook preserves interleaved category order, independent progress, finalization and loaded-match recovery', async () => {
   // Start with a fresh HTTP rate-limit window after the import rejection tests.
-  await waitForSnapshot(snapshot => snapshot.tournament.event?.eventName === 'Template Test Tournament' && snapshot.match.phase === 'MATCH_END' && snapshot.tournament.activeBoutNo === null);
+  await waitForSnapshot(snapshot => snapshot.tournament.event?.eventName === 'Template Test Tournament' && snapshot.match.phase === 'MATCH_END' && snapshot.tournament.activeBoutNo === null && snapshot.tournament.schedule.every(bout => ['COMPLETED', 'BYE'].includes(bout.status)));
   await new Promise(resolve => { server.once('exit', resolve); server.kill(); });
   await startFixtureServer();
   let host = await connect();
@@ -543,6 +573,7 @@ test('one workbook preserves interleaved category order, independent progress, f
   const reimport = await upload(role.hostToken, rows, { metadata, preview: true });
   assert.equal(reimport.status, 200, JSON.stringify(reimport.body));
   assert.equal(reimport.body.workbook.categories.find(item => item.key === seniorFemale.key).status, 'FINALIZED');
+  await waitForSnapshot(snapshot => snapshot.importedWorkbook?.selectedKey === seniorFemale.key && snapshot.match.phase === 'MATCH_END' && snapshot.match.manualBout?.categoryId === unfinishedId);
   host.close();
 });
 

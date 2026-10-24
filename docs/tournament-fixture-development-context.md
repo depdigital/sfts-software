@@ -34,7 +34,7 @@ The fixture application may display the entire bracket with future winner refere
 - One exported file represents one manually selected competition and may contain multiple divisions, genders and weight categories or groups on its first worksheet. Repeat the category fields on every row. SFTS groups rows by division, gender and weight category/group while preserving each group's row order.
 - Export `.xlsx` as the primary format. SFTS also accepts `.xls` and `.csv`.
 - The first worksheet must contain the import table. Use `Matches` as its name and put the column headers in row 1, without title rows above them.
-- The established template also has `Categories` and `Instructions` worksheets after `Matches`. SFTS reads only the first worksheet. Any additional sheets are reference material.
+- The complete test template also has `Categories`, `Instructions` and `Exclusions` worksheets after `Matches`. SFTS reads only the first worksheet. The remaining sheets document valid coverage, expected counts, testing steps and unsupported cross-combinations.
 - Export only opening positions. Each athlete appears exactly once within its category. Do not include later-round placeholders or repeat athletes in future bouts.
 - Row order determines bracket connections. Bout numbers are references, not sorting instructions. Never alphabetically or numerically re-sort approved export rows.
 - Hong means Red. Chung means Blue. SFTS uses the supplied assignments without randomization.
@@ -130,7 +130,7 @@ SM-FLY-P07,PRELIMINARY,SENIOR,MALE,FLYWEIGHT,,Dhruv Pal,Riverfront Martial Arts,
 SM-FLY-P08,PRELIMINARY,SENIOR,MALE,FLYWEIGHT,,Aditya Saha,Summit Taekwondo,WB,Nadia,BYE,,,
 ```
 
-Here, the first quarterfinal is the winner of Arjun/Rohan versus Kabir. The second is Ishaan versus Vivaan, the third is Aarav versus Neel, and the fourth is Dhruv versus Aditya. The generator chooses these positions before export; SFTS does not redraw them. Add other categories' opening rows under the same headers to build a combined tournament file. With the default rulepack, the USB template adds three two-player finals: another category under the same division and gender, a female category within that division, and a male category in another division. Its 15 fictional players across four categories exercise all three selectors independently while retaining the full-round/BYE test.
+Here, the first quarterfinal is the winner of Arjun/Rohan versus Kabir. The second is Ishaan versus Vivaan, the third is Aarav versus Neel, and the fourth is Dhruv versus Aditya. The generator chooses these positions before export; SFTS does not redraw them. Add other categories' opening rows under the same headers to build a combined tournament file. The USB test template now supplies every valid rulepack combination with its own nine-player/seven-BYE bracket, rotating the contested opening position and including BYEs on both sides. The default rulepack yields 84 categories, 756 fictional players and 672 opening rows. Each category independently runs preliminary through final. Unsupported cross-combinations are documented separately in Exclusions.
 
 ## Draw policies to define in the fixture application
 

@@ -238,8 +238,9 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   try { templateBuffer = Buffer.from(await templateJobs.run('workbook', { sheets: createFixtureTemplateSheets(templateRules.tournament.divisions) })); }
   finally { await templateJobs.close(); }
   const templateWorkbook = XLSX.read(templateBuffer, { type: 'buffer' });
-  assert.deepEqual(templateWorkbook.SheetNames, ['Matches', 'Categories', 'Instructions']);
-  assert.equal(XLSX.utils.sheet_to_json(templateWorkbook.Sheets.Matches).length, 11);
+  assert.deepEqual(templateWorkbook.SheetNames, ['Matches', 'Categories', 'Instructions', 'Exclusions']);
+  const expectedTemplateCategories = templateRules.tournament.divisions.reduce((total, division) => total + (division.categoryType === 'WEIGHT' ? division.weightCategories.MALE.length + division.weightCategories.FEMALE.length : division.groups.length * 2), 0);
+  assert.equal(XLSX.utils.sheet_to_json(templateWorkbook.Sheets.Matches).length, expectedTemplateCategories * 8);
   const templateImport = await fetch(`http://127.0.0.1:${port}/api/tournament/import?preview=true`, {
     method: 'POST',
     headers: { ...importHeaders, 'X-SFTS-Import-Event': encodeURIComponent(JSON.stringify({ ...event, autoAdvance: true })) },
@@ -248,7 +249,7 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   assert.equal(templateImport.status, 200);
   const templatePreview = await templateImport.json();
   assert.equal(templatePreview.tournament.players.length, 9);
-  assert.equal(templatePreview.workbook.categories.length, 4);
+  assert.equal(templatePreview.workbook.categories.length, expectedTemplateCategories);
   assert.equal(templatePreview.tournament.schedule.filter(bout => bout.status === 'BYE').length, 7);
   const imported = await fetch(`http://127.0.0.1:${port}/api/tournament/import`, { method: 'POST', headers: importHeaders, body: workbookBuffer });
   assert.equal(imported.status, 200);
