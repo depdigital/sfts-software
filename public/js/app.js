@@ -3,6 +3,7 @@ let hostToken = "";
 let hostAccessToken = "";
 let requestedRole = null;
 let requestedCorner = 0;
+let launchPending = false;
 let ws = null;
 let reconnectTimer = null;
 let reconnectDelay = 500;
@@ -68,11 +69,20 @@ const AUTOMATIC_SCREENSAVER_DELAY_MS = 15_000;
 const $ = (id) => document.getElementById(id);
 
 function connectSocket() {
+  // The home screen has no authenticated role. Opening a socket there would
+  // repeatedly hit the backend's unauthenticated-connection deadline.
+  if (!requestedRole || (ws && ws.readyState < 2)) return;
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
   setServerConnectionState("connecting");
-  ws = new WebSocket(
+  const socket = new WebSocket(
     (location.protocol === "https:" ? "wss://" : "ws://") + location.host,
   );
-  ws.onopen = () => {
+  ws = socket;
+  socket.onopen = () => {
+    if (ws !== socket) return;
     reconnectDelay = 500;
     setServerConnectionState("connected");
     if (requestedRole) {
@@ -85,7 +95,8 @@ function connectSocket() {
       });
     }
   };
-  ws.onmessage = (event) => {
+  socket.onmessage = (event) => {
+    if (ws !== socket) return;
     let msg = JSON.parse(event.data);
     const statePatch = msg.type === "statePatch";
     if (msg.type === "state" || statePatch) {
@@ -95,7 +106,14 @@ function connectSocket() {
     }
     if (msg.type === "roleAccepted") {
       role = msg.role || role;
-      if (msg.role === "host") hostToken = msg.hostToken || "";
+      if (msg.role === "host") {
+        hostToken = msg.hostToken || "";
+        if (launchPending) {
+          launchPending = false;
+          showScreen("host");
+          requestAnimationFrame(playLaunchBranding);
+        }
+      }
     }
     if (msg.type === "state") {
       $("storageWarning")?.classList.toggle("hidden", msg.storageHealthy !== false);
@@ -173,10 +191,13 @@ function connectSocket() {
         showManualEntryError(msg.message || "COULD NOT PREPARE THE NEXT BOUT");
         renderManualWizard();
       }
-      if (msg.code === "HOST_UNAUTHORIZED") {
+      if (["HOST_UNAUTHORIZED", "HOST_BUSY"].includes(msg.code)) {
         requestedRole = null;
         role = "unknown";
+        hostToken = "";
+        launchPending = false;
         showScreen("home");
+        ws.close(1000, "Host access not granted");
       }
       if (
         [
@@ -228,8 +249,15 @@ function connectSocket() {
       closePowerModal();
     }
   };
-  ws.onclose = () => {
+  socket.onclose = () => {
+    if (ws !== socket) return;
     remoteStatusSnapshot = null;
+    role = "unknown";
+    hostToken = "";
+    if (!requestedRole) {
+      setServerConnectionState("idle");
+      return;
+    }
     setServerConnectionState("disconnected");
     if (reconnectTimer) return;
     reconnectTimer = setTimeout(() => {
@@ -238,7 +266,9 @@ function connectSocket() {
       connectSocket();
     }, reconnectDelay);
   };
-  ws.onerror = () => setServerConnectionState("disconnected");
+  socket.onerror = () => {
+    if (ws === socket) setServerConnectionState(requestedRole ? "disconnected" : "idle");
+  };
 }
 connectSocket();
 preloadPointSounds();
@@ -372,7 +402,7 @@ function send(data) {
 function setServerConnectionState(state) {
   const node = $("serverConnectionStatus");
   if (!node) return;
-  const connected = state === "connected";
+  const connected = state === "connected" || state === "idle";
   node.classList.toggle("hidden", connected);
   node.textContent = state === "connecting"
     ? "CONNECTING TO SCOREBOARD SERVER..."
@@ -626,13 +656,12 @@ function parseTime(value) {
 }
 
 function openHost() {
-  role = "host";
+  if (requestedRole === "host") return;
   requestedRole = "host";
   requestedCorner = 0;
   hostAccessToken = $("hostAccessToken")?.value.trim() || "";
-  send({ type: "role", role: "host", accessToken: hostAccessToken, supportsStatePatch: true });
-  showScreen("host");
-  requestAnimationFrame(playLaunchBranding);
+  launchPending = true;
+  connectSocket();
 }
 
 function playLaunchBranding() {

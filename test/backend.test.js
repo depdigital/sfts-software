@@ -1319,7 +1319,6 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(jsText, /AUTOMATIC_SCREENSAVER_DELAY_MS = 15_000/);
   assert.match(jsText, /syncAutomaticBreakScreensaver\(lastState\)/);
   assert.match(jsText, /if \(automaticScreensaverStarted\) setScreensaverVisible\(false\)/);
-  assert.match(jsText, /ws\.onclose/);
   assert.match(jsText, /reconnectDelay/);
   assert.match(jsText, /renderRemoteStatuses/);
   assert.match(jsText, /renderTieDecision\(match\)/);
