@@ -50,7 +50,7 @@ function renderImportCategorySelectors() {
   fill('importGender', genders, selected.event.gender);
   fill('importWeightCategory', categories, selected.key);
   $('importCategoryLabel').textContent = selected.event.categoryGroup ? 'CATEGORY GROUP' : 'WEIGHT CATEGORY';
-  $('importWorkbookSummary').textContent = `${entries.length} ${entries.length === 1 ? 'category' : 'categories'} available. ${(pendingImportReview?.workbook || lastFixtureWorkbook)?.schedulePolicy ? 'Matches follow the official workbook schedule with a one-match rest gap. Select any category to review its bracket or results.' : 'Select a division, gender and category to review or continue.'}`;
+  $('importWorkbookSummary').textContent = `${entries.length} ${entries.length === 1 ? 'category' : 'categories'} available. Select a division, gender and category to continue. Category changes are manual.`;
   $('importCategoryLockHint').classList.toggle('hidden', !importSelectionLocked());
 }
 
@@ -238,7 +238,7 @@ function renderImportWizard() {
   const fixture = lastTournament;
   const active = fixture.schedule.find(bout => bout.boutNo === fixture.activeBoutNo);
   const unfinished = fixture.schedule.find(bout => !['COMPLETED', 'BYE'].includes(bout.status));
-  const scheduled = lastFixtureWorkbook?.nextMatch;
+  const scheduled = lastFixtureWorkbook?.nextMatch && lastFixtureWorkbook.nextMatch.categoryKey === lastFixtureWorkbook.selectedKey ? lastFixtureWorkbook.nextMatch : null;
   const next = active || (lastFixtureWorkbook?.schedulePolicy ? scheduled?.bout : unfinished);
   const category = lastManualCompetition.categories.find(item => item.id === fixture.categoryId);
   const event = fixture.event;
@@ -249,9 +249,11 @@ function renderImportWizard() {
     const nextEvent = scheduled && !active ? scheduled.event : event;
     const nextContext = `${nextEvent.eventName} · ${nextEvent.divisionLabel || nextEvent.division} · ${nextEvent.gender} · ${nextEvent.categoryGroup || nextEvent.weightCategory}`;
     const recoveryError = scheduled && !active ? scheduled.recoveryError : fixture.recoveryError;
-    const canLoad = next.status === 'SCHEDULED' && (!category?.finalizedAt || scheduled) && !pendingImportedLoad && !recoveryError;
-    const scheduleHint = lastFixtureWorkbook?.schedulePolicy ? `<p>OFFICIAL SCHEDULE · MATCH ${escapeHtml(next.matchOrder)} · MINIMUM 1 MATCH GAP</p>` : '';
-    $('importRunCard').innerHTML = `<p class="manualHint">${escapeHtml(nextContext)}</p>${scheduleHint}<p class="importProgress">${escapeHtml(progress)}</p><h3>BOUT ${escapeHtml(next.officialBoutNo)}</h3><div class="importMatchSides">${importPlayerCard(next.RED, 'HONG / RED')}${importPlayerCard(next.BLUE, 'CHUNG / BLUE')}</div><p>${escapeHtml(recoveryError || (next.status === 'TIE_PENDING' ? 'Select this scheduled category and confirm its winner below before continuing.' : active ? 'This match is loaded on the scoreboard.' : 'Review these competitors, then load the next match.'))}</p><button onclick="${active ? 'returnToImportedScoreboard()' : 'loadNextImportedBout()'}" ${!active && !canLoad ? 'disabled' : ''}>${active ? 'RETURN TO SCOREBOARD' : pendingImportedLoad ? 'LOADING…' : 'LOAD NEXT MATCH'}</button>`;
+    const resting = !active && scheduled?.restRequired?.length;
+    const restMessage = resting ? `REST REQUIRED: ${scheduled.restRequired.join(' and ')} competed in the previous match. Select another category manually, finish at least one match, then return here.` : '';
+    const canLoad = next.status === 'SCHEDULED' && !category?.finalizedAt && !pendingImportedLoad && !recoveryError && !resting;
+    const scheduleHint = lastFixtureWorkbook?.schedulePolicy ? `<p>CATEGORY MATCH ${escapeHtml(next.matchOrder)} · MINIMUM 1 MATCH GAP</p>` : '';
+    $('importRunCard').innerHTML = `<p class="manualHint">${escapeHtml(nextContext)}</p>${scheduleHint}<p class="importProgress">${escapeHtml(progress)}</p><h3>BOUT ${escapeHtml(next.officialBoutNo)}</h3><div class="importMatchSides">${importPlayerCard(next.RED, 'HONG / RED')}${importPlayerCard(next.BLUE, 'CHUNG / BLUE')}</div><p>${escapeHtml(recoveryError || restMessage || (next.status === 'TIE_PENDING' ? 'Confirm this category\'s winner below before continuing.' : active ? 'This match is loaded on the scoreboard.' : 'Review these competitors, then load the next match.'))}</p><button onclick="${active ? 'returnToImportedScoreboard()' : 'loadNextImportedBout()'}" ${!active && !canLoad ? 'disabled' : ''}>${active ? 'RETURN TO SCOREBOARD' : pendingImportedLoad ? 'LOADING…' : 'LOAD NEXT MATCH'}</button>`;
   } else {
     $('importRunCard').innerHTML = `<p>${escapeHtml(context)}</p><h3>CATEGORY MATCHES COMPLETE</h3><p>Review the category results and finalize the placements.</p><button onclick="setImportStep(4)">CONTINUE TO RESULTS</button>`;
   }
@@ -353,12 +355,12 @@ async function startImportedCategory() {
 function loadNextImportedBout(expectedBoutNo) {
   if (lastFixtureWorkbook?.schedulePolicy) {
     const next = lastFixtureWorkbook.nextMatch;
-    if (!next || next.bout.status !== 'SCHEDULED' || pendingImportedLoad) return;
+    if (!next || next.categoryKey !== lastFixtureWorkbook.selectedKey || next.bout.status !== 'SCHEDULED' || next.restRequired?.length || pendingImportedLoad) return;
     if (expectedBoutNo && (lastFixtureWorkbook.selectedKey !== next.categoryKey || expectedBoutNo !== next.bout.boutNo)) { renderImportWizard(); return; }
     if (!hostToken || !ws || ws.readyState !== 1) { importWizardError('Wait for the server connection before loading the next match.'); return; }
     pendingImportedLoad = next.bout.boutNo;
     pendingImportedCategoryKey = next.categoryKey;
-    send({ type: 'host', action: 'loadScheduledBout', workbookId: lastFixtureWorkbook.sourceDigest, matchOrder: next.bout.matchOrder });
+    send({ type: 'host', action: 'loadScheduledBout', workbookId: lastFixtureWorkbook.sourceDigest, categoryKey: lastFixtureWorkbook.selectedKey, matchOrder: next.bout.matchOrder });
     renderImportWizard();
     return;
   }

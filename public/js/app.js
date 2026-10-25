@@ -2782,7 +2782,7 @@ function renderSchedule(tournament) {
       : tournament.schedule.find(bout => !["COMPLETED", "BYE"].includes(bout.status));
     const automatic = tournament.progressionMode === "OPENING_FIXTURE";
     const rows = (tournament.schedule || []).map(bout => {
-      const loadable = bout.status === "SCHEDULED" && (!automatic || bout === next);
+      const loadable = bout.status === "SCHEDULED" && (!automatic || bout === next) && !lastFixtureWorkbook?.nextMatch?.restRequired?.length;
       const actions = loadable ? `<button onclick="loadScheduledBout(${bout.boutNo})" ${busy || tournament.activeBoutNo ? "disabled" : ""}>LOAD</button><button onclick="announceScheduledBout(${bout.boutNo})">ANNOUNCE</button>` : "";
       return `<tr><td>${escapeHtml(bout.officialBoutNo)}</td><td>${escapeHtml(bout.stage)}</td><td>${escapeHtml(bout.RED?.playerName || bout.redPlayerName || "BYE")}<br>${escapeHtml(bout.RED?.club || "")}</td><td>${escapeHtml(bout.BLUE?.playerName || bout.bluePlayerName || "BYE")}<br>${escapeHtml(bout.BLUE?.club || "")}</td><td>${escapeHtml(bout.status)}</td><td>${escapeHtml(bout.winnerName || "—")}</td><td>${actions}</td></tr>`;
     });

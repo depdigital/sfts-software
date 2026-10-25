@@ -120,35 +120,43 @@ test('preview shows category, sides and BYEs; only confirmation commits and load
   assert.ok(get('dataImportModal').classList.contains('hidden'));
 });
 
-test('the next match card follows the workbook schedule across categories and protects a pending load', async () => {
+test('the next match stays in the selected category and rest requires a manual category change', async () => {
   const { context, get, fixture, actions } = await wizard();
   context.lastTournament = fixture;
   const nextEvent = { ...fixture.event, gender: 'FEMALE', weightCategory: 'FINWEIGHT' };
   const nextBout = { ...fixture.schedule[0], RED: { playerName: 'Ananya', club: 'Club A' }, BLUE: { playerName: 'Meera', club: 'Club B' }, matchOrder: 2 };
   context.lastFixtureWorkbook = {
     sourceDigest: 'scheduled-file', selectedKey: 'male', schedulePolicy: { minimumMatchGap: 1 },
-    nextMatch: { categoryKey: 'female', event: nextEvent, bout: nextBout, roundMatchIndex: 1, roundMatchCount: 1 },
+    nextMatch: { categoryKey: 'male', event: fixture.event, bout: nextBout, roundMatchIndex: 1, roundMatchCount: 1, restRequired: ['Ananya'] },
     categories: [{ key: 'male', event: fixture.event }, { key: 'female', event: nextEvent }]
   };
   context.setImportStep(3);
-  assert.match(get('importRunCard').innerHTML, /FEMALE.*FINWEIGHT/);
-  assert.match(get('importRunCard').innerHTML, /OFFICIAL SCHEDULE.*MATCH 2.*MINIMUM 1 MATCH GAP/);
+  assert.match(get('importRunCard').innerHTML, /SENIOR.*MALE.*FLYWEIGHT/);
+  assert.match(get('importRunCard').innerHTML, /REST REQUIRED.*Select another category manually/);
+  context.loadNextImportedBout();
+  assert.equal(actions.length, 0);
+  context.lastFixtureWorkbook.nextMatch.restRequired = [];
+  context.renderImportWizard();
+  assert.match(get('importRunCard').innerHTML, /CATEGORY MATCH 2.*MINIMUM 1 MATCH GAP/);
   context.loadNextImportedBout();
   context.loadNextImportedBout();
   assert.equal(actions.length, 1);
   assert.equal(actions[0].action, 'loadScheduledBout');
   assert.equal(actions[0].matchOrder, 2);
   assert.equal(actions[0].workbookId, 'scheduled-file');
+  assert.equal(actions[0].categoryKey, 'male');
   fixture.activeBoutNo = nextBout.boutNo;
+  context.lastFixtureWorkbook.selectedKey = 'female';
   context.handleImportedState({ manualBout: { importedBoutNo: nextBout.boutNo } });
   assert.ok(!get('dataImportModal').classList.contains('hidden'), 'another category with the same local bout number cannot acknowledge the load');
-  context.lastFixtureWorkbook.selectedKey = 'female';
+  context.lastFixtureWorkbook.selectedKey = 'male';
   context.handleImportedState({ manualBout: { importedBoutNo: nextBout.boutNo } });
   assert.ok(get('dataImportModal').classList.contains('hidden'));
   fixture.schedule.forEach(bout => { bout.status = 'COMPLETED'; });
+  context.lastFixtureWorkbook.nextMatch = null;
   get('dataImportModal').classList.remove('hidden');
   context.resumeImportedCategory();
-  assert.deepEqual(visibleSteps(get), [3], 'completing one category still returns to the next match in the official schedule');
+  assert.deepEqual(visibleSteps(get), [4], 'completing a category goes to its results without selecting another');
 });
 
 test('event changes invalidate the reviewed file; USB uses the same review and digest sequence', async () => {

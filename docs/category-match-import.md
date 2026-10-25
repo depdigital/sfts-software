@@ -1,6 +1,6 @@
 # Tournament fixture import
 
-The current template includes an official `Schedule` sheet and enforces a one-match rest gap across categories. Follow [the scheduled fixture format](scheduled-fixture-format.md) for the complete current exporter contract. The opening-position format below remains compatible; descriptions of category-only progression and first-sheet-only reading apply to legacy files without Schedule. With Schedule, SFTS also reads that sheet and Load Next Match follows its order across categories.
+The current template includes a `Schedule` sheet for match order within the selected category. SFTS never alternates categories automatically. When a rest gap is required, manually play one or two matches in another category and return. Follow [the category fixture format](scheduled-fixture-format.md) for the complete exporter contract. Opening-only files remain compatible without Schedule and retain their legacy flow.
 
 Data Import is a five-card workflow: **Event → File → Review → Matches → Results**. The fixture software supplies one tournament file with the opening positions for multiple divisions, genders and categories. SFTS groups the rows, preserves each category's bracket order, and continues the selected category locally through the final using the normal scoring and category result records.
 
@@ -8,11 +8,11 @@ Data Import is a five-card workflow: **Event → File → Review → Matches →
 
 Enter tournament name, date (`YYYY-MM-DD`), venue, arena number (`1`–`999`) and competition (`KYORUGI` or `FRESHER KYORUGI`) manually. These apply to the entire file. Division, gender and weight category/group come from the spreadsheet. Competition is not taken from Excel; keep regular and fresher competitions in separate files.
 
-**SAVE TEMPLATE TO USB** on the Event card saves the complete test template through the existing USB drive workflow. Browser template downloads are disabled. Every valid division/gender/weight-category or group combination in the active rulepack receives **9 fictional players and 7 BYEs**, the minimum needed for a contested preliminary followed by four quarterfinals, two semifinals and a final. With the default rulepack this covers **84 categories across 4 divisions**, **756 players**, **588 BYEs** and **672 opening rows**. Both Hong-side and Chung-side BYEs are included, and the contested opening position varies between categories.
+**SAVE TEMPLATE TO USB** saves the complete test template through the existing USB workflow. Browser template downloads are disabled. Each valid category receives **15 fictional players and exactly one preliminary BYE**: seven preliminaries, four quarterfinals, two semifinals and a final. The default rulepack covers **84 categories across 4 divisions**, **1,260 players**, **84 BYEs**, **672 opening rows** and **1,176 scored matches**. The single BYE's position rotates, covering Hong-side and Chung-side BYEs across categories.
 
 ## Opening fixture file
 
-Only the first worksheet is read. One file can contain multiple divisions/genders/categories. Supply **only the opening positions** for each category, in fixture order, with every competitor appearing exactly once within that category. Repeat division, gender and category on every row. Rows from different categories can be interleaved; grouping preserves their relative order within each category. Bout references should be stored as text to retain leading zeroes.
+The first worksheet defines opening positions. An optional `Schedule` worksheet defines each category's later bout order and enables rest checks. Supply **only the opening positions** in Matches, with every competitor appearing once per category. Repeat division, gender and category on every row. Grouping preserves each category's bracket positions. Store bout references as text to retain leading zeroes.
 
 | Column | Required | Values |
 | --- | --- | --- |
@@ -48,7 +48,7 @@ SF-02,SEMIFINAL,SENIOR,MALE,FLYWEIGHT,,Vikram,Cochin Club,KL,Kochi,BYE,,,
 
 Vikram advances directly into the final without a scored match or fabricated match record. The SF-01 winner becomes HONG in the final; Vikram becomes CHUNG.
 
-The USB template remains `sfts-match-template.xlsx`. **Matches** is first, followed by **Categories**, **Instructions** and **Exclusions**. Matches contains only valid opening fixtures. Categories lists each tested combination and its expected player/BYE/round counts. Exclusions documents unsupported cross-combinations from the rulepack category names without putting invalid data in the import sheet. Import all 672 default sample rows unchanged for testing, or replace all sample rows with your tournament's opening fixtures. Header matching ignores case, spacing and punctuation. Official Bout No/Bout No/Bout, Red/Blue Name/Club/State Code/District and Hong/Chung or Red/Blue Affiliation aliases remain supported. Duplicate or ambiguous headers are rejected.
+The USB template remains `sfts-match-template.xlsx`. Sheets are **Matches**, **Schedule**, **Categories**, **Instructions** and **Exclusions**. Import the complete sample unchanged for testing, or replace Matches and Schedule with matching tournament data. Schedule numbers bouts within each category; it never activates another category. The reference sheets list coverage, counts and unsupported combinations. Header matching ignores case, spacing and punctuation; existing aliases remain supported. Duplicate or ambiguous headers are rejected.
 
 ## Review card
 
@@ -63,6 +63,8 @@ Deleting the selected category selects another remaining category. Deleting the 
 ## Match card
 
 The next card shows stage, match number within that round, bout reference and both competitors. Choose **Load Next Match**, then score normally. After the winner screen, **Continue Category** returns to the cards. A recovered loaded match offers **Return to Scoreboard**.
+
+For a workbook with Schedule, **REST REQUIRED** blocks a match if either player competed in the previous completed match at the same event and arena. Use **Select Another Category** manually, finish one or two matches, then return. The waiting bout and results survive restart. Finishing a category leads to its results without selecting another category.
 
 Adjacent row winners meet without a redraw: row 1 winner becomes HONG and row 2 winner becomes CHUNG, then row 3 meets row 4, and so on. This repeats each round through quarterfinal, semifinal and final. Additional preliminary rounds are created when needed. Future references are generated deterministically, such as `AUTO-R2-001`, with collision checks.
 

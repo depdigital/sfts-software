@@ -1,109 +1,102 @@
-# SFTS scheduled fixture format v1
+# SFTS category fixture format
 
-Use this contract to build the fixture application's Excel exporter. The fixture application owns the approved match running order. SFTS validates that order and follows it without reshuffling opponents or matches.
+The fixture application defines bracket positions and match order **within each category**. SFTS stays in the operator's selected Division, Gender and Weight Category/Group. Category changes are always manual.
 
-## Workbook layout
+## Workbook
 
-Export one `.xlsx` workbook per arena and competition. Event name, date, venue, arena and competition are still entered in SFTS before import. Use categories from the target machine's active rulepack. Import through Data Import, which sends `autoAdvance: true`.
+Export XLSX with headers in row 1:
 
-1. `Matches` must be the first worksheet. It defines each category's opening bracket positions, including BYEs, using the existing 14 columns below.
-2. `Schedule` must have this exact worksheet name. It defines the official running order of every scored bout through the finals. Put its headers in row 1.
-3. `Categories`, `Instructions` and `Exclusions` are reference sheets. They are not imported.
+1. **Matches** first: opening bracket positions, including BYEs.
+2. **Schedule**: every scored bout through the final, grouped by category.
+3. **Categories**, **Instructions**, **Exclusions**: reference sheets, not imported.
 
-The default template covers all 84 valid categories, 756 fictional players, 588 BYEs, 672 opening rows and 672 scored bouts. It alternates two categories until both finals finish. If the category count is odd, the last group contains three categories. Each category has nine players: one preliminary, four quarterfinals, two semifinals and one final. BYEs advance immediately and are excluded from Schedule.
+Enter event name, date, venue, arena and competition in SFTS before import. Use the active rulepack. Keep KYORUGI and FRESHER KYORUGI in separate files.
 
-## Matches: bracket positions
+The default template covers 84 categories, 1,260 fictional players, 84 BYEs, 672 opening rows and 1,176 scored bouts. Each category has **15 players and exactly one preliminary BYE**: seven played preliminaries, four quarterfinals, two semifinals and one final.
 
-Exact columns, in order:
+## Matches columns
+
+Keep these 14 headers:
 
 ```text
 Bout Number,Stage,Division,Gender,Weight Category,Group,Hong Name,Hong Club,Hong State Code,Hong District,Chung Name,Chung Club,Chung State Code,Chung District
 ```
 
-Preserve relative row order within each category. Every player appears once in their category's opening positions. Player identity is the trimmed, uppercased name plus club. Keep names and clubs stable. Distinct players with the same name and club need distinct approved display identities; registration IDs are not part of this contract.
+- Preserve opening row order within each category. Adjacent winners meet next: row 1 winner is Hong/Red, row 2 winner is Chung/Blue. Repeat through the bracket without a redraw.
+- Each athlete appears once in their category's opening positions. Identity is the trimmed, uppercased player name plus club. Keep both stable.
+- Bout Number is text, unique within its category ignoring case, at most 40 characters.
+- Use a valid rulepack division ID/label and MALE or FEMALE.
+- Fill Weight Category for weight divisions or Group for group divisions; leave the other blank.
+- Actual players require name and club, each at most 64 characters. State code is optional but must be a valid Indian state/UT code. District is optional, at most 48 characters.
+- A BYE side has name BYE and blank club/state/district. Both sides cannot be BYEs. BYEs advance without a scored record.
 
-Use an actual name and club on each occupied side. For BYEs use `BYE` with blank club, state and district; both sides cannot be BYEs. State code and district are optional for actual players. Names/clubs have a 64-character limit, district 48, and state code must be a valid Indian state/UT code. Bout numbers are text, at most 40 characters, unique within their category without regard to case. Different categories may reuse a bout number.
-
-Use `MALE` or `FEMALE`, and a valid rulepack division ID or label. Weight divisions require `Weight Category` and blank `Group`; group divisions require `Group` and blank `Weight Category`.
-
-Opening row counts include BYEs and must be powers of two:
-
-| Opening rows | Stage on every opening row |
+| Opening rows including BYEs | Stage on all opening rows |
 | --- | --- |
 | 1 | FINAL |
 | 2 | SEMIFINAL |
 | 4 | QUARTERFINAL |
 | 8, 16, 32, 64, 128, 256 | PRELIMINARY |
 
-Adjacent winners meet: opening rows 1 and 2 feed the next round's first bout, rows 3 and 4 feed its second bout, and so on. The first source feeds Hong/Red; the second feeds Chung/Blue. Repeat until the final. Larger brackets may have several preliminary rounds. Do not move Matches rows to solve a rest conflict; that changes opponents.
+Larger brackets may have multiple preliminary rounds. Complete each round before the next within that category.
 
-Round numbering starts at 1 for the opening round. Generated round 2 references are `AUTO-R2-001`, `AUTO-R2-002`, etc.; round 3 uses `AUTO-R3-001`, etc. On a case-insensitive collision with an existing reference, SFTS appends `-1`, `-2`, etc. Avoid using `AUTO-` for opening references so the exporter can reproduce generated names directly. The template shows all exact references on Schedule.
+## Schedule columns
 
-## Schedule: official arena order
-
-Exact columns, in order:
-
-| Column | Content |
+| Column | Meaning |
 | --- | --- |
-| Match Order | Positive integer. Use every integer from 1 to total scored bout count exactly once. This is the arena running order. |
-| Bout Number | Reference of an opening scored bout or a generated later-round bout. |
-| Stage | Exact PRELIMINARY, QUARTERFINAL, SEMIFINAL or FINAL, matching the bracket. |
+| Match Order | Positive integer, unique within the category. Start at 1; the template uses 1-14 for each category. |
+| Bout Number | Opening scored bout or generated later-round reference. |
+| Stage | PRELIMINARY, QUARTERFINAL, SEMIFINAL or FINAL, matching the bracket. |
 | Division | Same category definition as Matches. |
 | Gender | Same category definition as Matches. |
-| Weight Category | Same category definition as Matches; blank for group divisions. |
-| Group | Same category definition as Matches; blank for weight divisions. |
-| Hong Source | Opening scored bout: exact Hong player name. Later round: `Winner of ` followed by its Hong source bout's exact reference. |
+| Weight Category | Same value as Matches; blank for group divisions. |
+| Group | Same value as Matches; blank for weight divisions. |
+| Hong Source | Opening bout: exact Hong player name. Later bout: Winner of followed by its Hong source bout reference. |
 | Chung Source | Equivalent source for Chung. |
-| Minimum Match Gap | Numeric `1` on every row. |
+| Minimum Match Gap | Numeric 1 on every row. |
 
-Include every scored bout once, including future bouts whose winners are unknown. Exclude BYE bouts. Future sources can reference BYE opening rows in Matches and still use `Winner of <reference>`; SFTS resolves those winners automatically. Category fields disambiguate reused references such as `AUTO-R2-001`.
+Include every scored bout once and omit BYEs. A later source may reference a BYE opening row using Winner of followed by its reference; SFTS resolves that winner automatically.
 
-Keep rows physically in ascending Match Order for readers. SFTS follows numeric Match Order, not bout-reference sorting. Schedule sources describe the bracket, not a separate graph: the importer verifies that they agree with Matches.
+Generated round 2 references are AUTO-R2-001, AUTO-R2-002, etc.; round 3 uses AUTO-R3-001, etc. On collision, SFTS adds -1, -2, etc. Avoid AUTO- for opening references. Category fields disambiguate repeated future references.
 
-## One-match rest rule
+| Category Match Order | Stage |
+| --- | --- |
+| 1-7 | Preliminary |
+| 8-11 | Quarterfinal |
+| 12-13 | Semifinal |
+| 14 | Final; requires a manually supplied rest match after semifinal 2 |
 
-At least one other scored match must finish between any player's two appearances. BYEs, idle time, announcements, reset matches and practice matches do not supply a gap in this official schedule. The order must be valid for either winner of every source bout. SFTS checks all possible competitors rather than predicted winners.
+Schedule controls only the selected category. It never selects another category or creates an arena-wide sequence. Older files with globally unique order numbers remain readable; their rows are followed within the selected category.
 
-For each category, finish all scored bouts in a round before any of its next round. Cross-category matches can occur between them. A standalone category with multiple rounds cannot provide a gap between its second semifinal and final: another category must supply the intervening match.
+## Rest and manual switching
 
-The template's first pair uses this sequence. A and B represent its first two categories; use the actual fields and bout references from the workbook.
+A player needs at least one other completed official match between appearances. For workbooks containing Schedule, SFTS checks both proposed players against the most recent recorded match for the same event, arena and competition. BYEs, waiting, practice and resetting do not supply a gap.
 
-| Match Order | Category A | Category B |
-| --- | --- | --- |
-| 1 / 2 | Preliminary | Preliminary |
-| 3 / 4 | Quarterfinal 1 | Quarterfinal 1 |
-| 5 / 6 | Quarterfinal 2 | Quarterfinal 2 |
-| 7 / 8 | Quarterfinal 3 | Quarterfinal 3 |
-| 9 / 10 | Quarterfinal 4 | Quarterfinal 4 |
-| 11 / 12 | Semifinal 1 | Semifinal 1 |
-| 13 / 14 | Semifinal 2 | Semifinal 2 |
-| 15 / 16 | Final | Final |
+The 15-player template provides rest naturally through the semifinals. Before the final, or earlier in a smaller bracket:
 
-The fixture application can choose another valid running order. Validate that every source precedes its dependent bout, category rounds never go backwards, and the possible competitor sets of consecutive scored bouts do not overlap. A possible competitor set is the union of the opening athletes feeding a bout, regardless of actual results. These conditions guarantee the gap for any outcome.
+1. The next-match card stays in the current category and shows **REST REQUIRED**. Loading that match is blocked.
+2. Choose **Select Another Category**, select its division/gender/category, then start or continue it.
+3. Complete one or two matches.
+4. Select the previous category again. Its waiting match is retained and becomes loadable once the gap is satisfied.
 
-## Import and scoring behavior
+Nothing switches automatically. Results stay in the correct category. After the final, SFTS shows that category's results; the operator chooses the next category.
 
-The importer rejects incomplete schedules, duplicate/missing match orders, missing/duplicate/unknown bouts, BYE schedule entries, incorrect stages/sources, later rounds scheduled too early and possible consecutive appearances. Errors reject the whole import before replacing the active workbook.
+## Validation and recovery
 
-After review and confirmation, the next-match card shows the official order number, category and actual competitors. Load Next Match selects that category and loads that exact bout. Category selectors remain available for bracket/results review but cannot bypass the official running order. A tie blocks advancement until its winner is confirmed. Result corrections retain existing dependent-match locks.
+SFTS rejects missing/repeated/unknown bouts, duplicate order numbers within a category, incorrect stages/sources, invalid categories and rounds or dependencies out of order. All sheets validate before replacing the active workbook.
 
-Restart retains the schedule and category progress. Reimport must preserve completed results as a prefix of the supplied running order. It cannot move an unplayed bout ahead of already scored matches. If removing a category would break the remaining rest gap, SFTS requires a revised valid schedule before deletion.
+Completed results must remain a prefix of **each category's** order. Categories can have independent partial progress. Preserve recorded bout Match Order when revising the same scheduled event.
 
-This is a single-arena schedule. Export a separate workbook for another arena. There is no automatic cross-arena rest coordination or results synchronization back to the fixture application.
+Restart retains the selected category, every category's progress and archived records used for rest checks. Loaded matches resume paused. Result-correction and finalization rules remain unchanged.
 
-## Compatibility and limits
+Opening-only XLSX/XLS/CSV files retain their legacy flow without Schedule. Use this template for schedule and rest enforcement. CSV cannot contain Schedule. Limits: 128 categories, 4,096 opening rows, 8,192 Schedule rows, 4 MB per workbook, 512 athletes per category.
 
-- XLSX and XLS can carry Matches and Schedule. CSV cannot carry a second worksheet.
-- Files without Schedule retain the legacy category-by-category flow and do not enforce this match-gap policy. Use the new template for scheduled tournaments.
-- At most 128 categories, 4096 opening rows, 8192 Schedule rows and 4 MB per workbook. Each category supports 2–512 athletes and at most 256 opening rows.
-- Template export remains Save Template to USB on the Event card. Restart the updated SFTS server before exporting/importing this format.
+Export a separate workbook for another arena. Cross-arena coordination and automatic result synchronization to the fixture application are outside this contract.
 
-## Exporter acceptance checks
+## Exporter checks
 
-1. Import the supplied template and compare the next-match card against Schedule through both categories' finals.
-2. Exercise Hong and Chung wins; opponents, sides and running order remain consistent.
-3. Reject a schedule putting the preliminary winner straight into the next match, even if a predicted result avoids the conflict.
-4. Reject a final directly after its category's second semifinal.
-5. Change only Schedule order while preserving Matches positions; the bracket stays unchanged.
-6. Restart after a completed bout and with a loaded bout; the official order resumes correctly.
-7. Confirm that older opening-only workbooks still import through the legacy flow.
+- Verify 15 players, one BYE and 14 scored bouts per sample category.
+- Complete seven preliminaries before quarterfinals, staying in the selected category after every winner.
+- Verify both Hong and Chung wins preserve opponents and advancement.
+- Confirm the final is blocked after semifinal 2; manually score another category and return to finish it.
+- Restart while a final needs rest; it must retain its progress and rest requirement.
+- Complete/finalize results without automatically activating another category.

@@ -344,10 +344,10 @@ test('reviewed opening fixture advances locally, corrects winners safely and ret
   host.close();
 });
 
-test('USB template follows its official schedule across categories with a one-match rest gap', async () => {
-  const host = await connect();
+test('one-BYE template stays in the selected category and resumes its final after a manual rest gap', async () => {
+  let host = await connect();
   host.send(JSON.stringify({ type: 'role', role: 'host', accessToken: 'fixture-host-token' }));
-  const role = await waitFor(host, msg => msg.type === 'roleAccepted');
+  let role = await waitFor(host, msg => msg.type === 'roleAccepted');
   await waitFor(host, msg => msg.type === 'state');
   const headers = {
     'X-SFTS-Host-Token': role.hostToken,
@@ -372,13 +372,13 @@ test('USB template follows its official schedule across categories with a one-ma
   const players = new Map(allRows.slice(0, 16).flatMap(row => ['Hong', 'Chung']
     .filter(side => row[`${side} Name`] !== 'BYE')
     .map(side => [row[`${side} Name`], row[`${side} Club`]])));
-  assert.equal(players.size, 18);
+  assert.equal(players.size, 30);
   for (const [name, club] of players) {
     assert.doesNotMatch(name, /Demo Player|\d/i);
     assert.doesNotMatch(club, /Demo Club|\d/i);
   }
   const byes = rows.filter(row => row['Chung Name'] === 'BYE' || row['Hong Name'] === 'BYE');
-  assert.equal(byes.length, 7);
+  assert.equal(byes.length, 1);
   for (const row of byes) {
     const side = row['Hong Name'] === 'BYE' ? 'Hong' : 'Chung';
     for (const field of ['Club', 'State Code', 'District']) assert.equal(row[`${side} ${field}`] || '', '');
@@ -386,11 +386,11 @@ test('USB template follows its official schedule across categories with a one-ma
   const previewResponse = await fetch(`http://127.0.0.1:${port}/api/tournament/import?preview=true`, { method: 'POST', headers, body: buffer });
   const preview = await previewResponse.json();
   assert.equal(previewResponse.status, 200, JSON.stringify(preview));
-  assert.equal(preview.tournament.players.length, 9);
+  assert.equal(preview.tournament.players.length, 15);
   const categories = preview.workbook.categories;
   assert.equal(categories.length, expectedProfiles.length);
   assert.deepEqual(new Set(categories.map(category => JSON.stringify([category.event.division, category.event.gender, category.event.weightCategory || category.event.categoryGroup]))), new Set(expectedProfiles.map(profile => JSON.stringify(profile))));
-  assert.equal(categories.reduce((total, category) => total + category.competitorCount, 0), expectedProfiles.length * 9);
+  assert.equal(categories.reduce((total, category) => total + category.competitorCount, 0), expectedProfiles.length * 15);
   assert.equal(new Set(categories.map(category => category.event.division)).size, rules.tournament.divisions.length);
   const primaryDivision = categories.filter(category => category.event.division === categories[0].event.division);
   assert.deepEqual([...new Set(primaryDivision.map(category => category.event.gender))].sort(), ['FEMALE', 'MALE']);
@@ -398,13 +398,13 @@ test('USB template follows its official schedule across categories with a one-ma
   assert.ok(maleCategories.length > 1, 'the category dropdown has multiple options within one division and gender');
   const names = new Set();
   for (const category of categories) {
-    assert.equal(category.competitorCount, 9);
-    assert.equal(category.byeCount, 7);
+    assert.equal(category.competitorCount, 15);
+    assert.equal(category.byeCount, 1);
     assert.equal(category.fixture.openingBoutCount, 8);
     assert.equal(category.fixture.schedule.length, 15);
     assert.ok(category.fixture.schedule.slice(0, 8).every(bout => bout.stage === 'PRELIMINARY'));
-    assert.ok(category.fixture.schedule.some(bout => bout.status === 'BYE' && bout.RED === null));
-    assert.ok(category.fixture.schedule.some(bout => bout.status === 'BYE' && bout.BLUE === null));
+    const bye = category.fixture.schedule.find(bout => bout.status === 'BYE');
+    assert.ok((bye.RED === null) !== (bye.BLUE === null));
     for (const player of category.fixture.players) {
       assert.doesNotMatch(player.playerName, /Demo Player|\d/i);
       assert.doesNotMatch(player.club, /Demo Club|\d/i);
@@ -420,7 +420,7 @@ test('USB template follows its official schedule across categories with a one-ma
       bout.status = 'COMPLETED';
       refreshFixtureProgression(simulated);
     }
-    assert.deepEqual(stages, ['PRELIMINARY', 'QUARTERFINAL', 'QUARTERFINAL', 'QUARTERFINAL', 'QUARTERFINAL', 'SEMIFINAL', 'SEMIFINAL', 'FINAL']);
+    assert.deepEqual(stages, [...Array(7).fill('PRELIMINARY'), ...Array(4).fill('QUARTERFINAL'), ...Array(2).fill('SEMIFINAL'), 'FINAL']);
     assert.ok(validFixtureGraph(simulated));
   }
   const exclusions = XLSX.utils.sheet_to_json(workbook.Sheets.Exclusions);
@@ -430,32 +430,34 @@ test('USB template follows its official schedule across categories with a one-ma
     const valid = division.categoryType === 'WEIGHT' ? division.weightCategories[row.Gender] : division.groups;
     assert.ok(!valid.some(category => category.name === (row['Excluded Weight Category'] || row['Excluded Group'])));
   }
-  assert.equal(preview.tournament.schedule.filter(bout => bout.status === 'BYE').length, 7);
-  assert.equal(preview.tournament.schedule.filter(bout => bout.status !== 'BYE').length, 8);
+  assert.equal(preview.tournament.schedule.filter(bout => bout.status === 'BYE').length, 1);
+  assert.equal(preview.tournament.schedule.filter(bout => bout.status !== 'BYE').length, 14);
   const startResponse = await fetch(`http://127.0.0.1:${port}/api/tournament/import`, {
     method: 'POST', headers: { ...headers, 'X-SFTS-Import-Digest': preview.tournament.sourceDigest }, body: buffer
   });
   const started = await startResponse.json();
   assert.equal(startResponse.status, 200, JSON.stringify(started));
   host.messages.length = 0;
-  assert.deepEqual(started.workbook.schedulePolicy, { minimumMatchGap: 1 });
+  assert.deepEqual(started.workbook.schedulePolicy, { minimumMatchGap: 1, scope: 'CATEGORY' });
   let fixture = started.tournament;
   let running = started.workbook;
   let category;
   const stages = [];
   let previousPlayers = [];
-  while (running.nextMatch.bout.matchOrder <= 16) {
+  const finishNext = async () => {
     const next = running.nextMatch.bout;
     assert.equal(next.status, 'SCHEDULED');
+    assert.deepEqual(running.nextMatch.restRequired, []);
     if (running.nextMatch.categoryKey === categories[0].key) stages.push(next.stage);
     if (next.matchOrder === 2) {
-      const forbidden = nextFixtureBout(fixture);
+      const forbidden = fixture.schedule.find(bout => bout.round === 2);
       host.send(JSON.stringify({ type: 'host', action: 'loadBout', boutNo: forbidden.boutNo }));
       await waitFor(host, msg => msg.type === 'error' && msg.code === 'BOUT_OUT_OF_ORDER');
-      host.send(JSON.stringify({ type: 'host', action: 'loadScheduledBout', workbookId: running.sourceDigest, matchOrder: 1 }));
+      host.send(JSON.stringify({ type: 'host', action: 'loadScheduledBout', workbookId: running.sourceDigest, categoryKey: running.selectedKey, matchOrder: 1 }));
       await waitFor(host, msg => msg.type === 'error' && msg.code === 'BOUT_OUT_OF_ORDER');
     }
-    host.send(JSON.stringify({ type: 'host', action: 'loadScheduledBout', workbookId: running.sourceDigest, matchOrder: next.matchOrder }));
+    const selectedKey = running.selectedKey;
+    host.send(JSON.stringify({ type: 'host', action: 'loadScheduledBout', workbookId: running.sourceDigest, categoryKey: selectedKey, matchOrder: next.matchOrder }));
     const loaded = await waitFor(host, msg => msg.type === 'state' && msg.tournament.activeBoutNo === next.boutNo && msg.fixtureWorkbook?.nextMatch?.bout.matchOrder === next.matchOrder);
     const currentPlayers = [loaded.match.red.playerName, loaded.match.blue.playerName];
     assert.ok(!currentPlayers.some(name => previousPlayers.includes(name)), 'neither player competed in the previous match');
@@ -466,16 +468,58 @@ test('USB template follows its official schedule across categories with a one-ma
     }
     host.send(JSON.stringify({ type: 'host', action: 'manualMatchDecision', player: 'RED', decision: 'RSC' }));
     await waitFor(host, msg => msg.type === 'matchEnd');
-    const completed = await waitFor(host, msg => msg.type === 'state' && msg.tournament.schedule[next.boutNo - 1].status === 'COMPLETED' && msg.fixtureWorkbook?.nextMatch?.bout.matchOrder === next.matchOrder + 1);
+    const completed = await waitFor(host, msg => msg.type === 'state' && msg.fixtureWorkbook?.selectedKey === selectedKey && msg.tournament.schedule[next.boutNo - 1].status === 'COMPLETED');
     fixture = completed.tournament;
     running = completed.fixtureWorkbook;
+    assert.equal(running.selectedKey, selectedKey, 'scoring must not automatically change category');
     category = completed.manualCompetition.categories.find(item => item.id === fixture.categoryId);
-  }
-  assert.deepEqual(stages, ['PRELIMINARY', 'QUARTERFINAL', 'QUARTERFINAL', 'QUARTERFINAL', 'QUARTERFINAL', 'SEMIFINAL', 'SEMIFINAL', 'FINAL']);
+  };
+  for (let index = 0; index < 13; index += 1) await finishNext();
+  assert.equal(running.selectedKey, categories[0].key);
+  assert.equal(running.nextMatch.bout.stage, 'FINAL');
+  assert.equal(running.nextMatch.restRequired.length, 1);
+  host.send(JSON.stringify({ type: 'host', action: 'loadBout', boutNo: running.nextMatch.bout.boutNo }));
+  await waitFor(host, msg => msg.type === 'error' && msg.code === 'PLAYER_REST_REQUIRED');
+
+  await waitForSnapshot(snapshot => snapshot.match.phase === 'MATCH_END' && snapshot.tournament.schedule.filter(bout => bout.status === 'COMPLETED').length === 13);
+  host.close();
+  await new Promise(resolve => { server.once('exit', resolve); server.kill(); });
+  await startFixtureServer();
+  host = await connect();
+  host.send(JSON.stringify({ type: 'role', role: 'host', accessToken: 'fixture-host-token' }));
+  role = await waitFor(host, msg => msg.type === 'roleAccepted');
+  headers['X-SFTS-Host-Token'] = role.hostToken;
+  const restored = await waitFor(host, msg => msg.type === 'state');
+  running = restored.fixtureWorkbook;
+  fixture = restored.tournament;
+  assert.equal(running.nextMatch.bout.stage, 'FINAL');
+  assert.equal(running.nextMatch.restRequired.length, 1, 'rest requirement survives a restart');
+
+  const switchCategory = async key => {
+    const response = await fetch(`http://127.0.0.1:${port}/api/tournament/category`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-SFTS-Host-Token': role.hostToken },
+      body: JSON.stringify({ workbookId: running.sourceDigest, categoryKey: key })
+    });
+    const selected = await response.json();
+    assert.equal(response.status, 200, JSON.stringify(selected));
+    fixture = selected.tournament;
+    running = selected.workbook;
+    host.messages.length = 0;
+  };
+  await switchCategory(categories[1].key);
+  await finishNext();
+  await finishNext();
+  await switchCategory(categories[0].key);
+  assert.equal(running.nextMatch.bout.stage, 'FINAL');
+  assert.deepEqual(running.nextMatch.restRequired, []);
+  await finishNext();
+  assert.equal(running.nextMatch, null);
+  assert.equal(running.selectedKey, categories[0].key);
+  assert.deepEqual(stages, [...Array(7).fill('PRELIMINARY'), ...Array(4).fill('QUARTERFINAL'), ...Array(2).fill('SEMIFINAL'), 'FINAL']);
   assert.equal(Object.values(category.placements).filter(Boolean).length, 4);
   const archiveResponse = await fetch(`http://127.0.0.1:${port}/api/manual/categories?categoryId=${category.id}`, { headers });
   const archive = await archiveResponse.json();
-  assert.equal(archive.records.length, 8, 'BYEs advance without creating scored records');
+  assert.equal(archive.records.length, 14, 'the single BYE advances without a scored record');
   await waitForSnapshot(snapshot => snapshot.match.phase === 'MATCH_END' && snapshot.tournament.activeBoutNo === null && snapshot.tournament.schedule.every(bout => ['COMPLETED', 'BYE'].includes(bout.status)));
   host.close();
 });
@@ -490,7 +534,8 @@ test('one workbook preserves interleaved category order, independent progress, f
   let role = await waitFor(host, msg => msg.type === 'roleAccepted');
   const recoveredSchedule = await waitFor(host, msg => msg.type === 'state');
   assert.equal(recoveredSchedule.fixtureWorkbook.schedulePolicy.minimumMatchGap, 1);
-  assert.equal(recoveredSchedule.fixtureWorkbook.nextMatch.bout.matchOrder, 17);
+  assert.equal(recoveredSchedule.fixtureWorkbook.nextMatch, null);
+  assert.equal(recoveredSchedule.fixtureWorkbook.categories[1].completedBoutCount, 2);
   const metadata = { ...event, eventName: 'Combined Tournament', autoAdvance: true };
   const rows = [
     fixtureRow('Z-SF', 'SEMIFINAL', 'Arjun Sen', 'Rohan Das'),

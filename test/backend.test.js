@@ -248,9 +248,9 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   });
   assert.equal(templateImport.status, 200);
   const templatePreview = await templateImport.json();
-  assert.equal(templatePreview.tournament.players.length, 9);
+  assert.equal(templatePreview.tournament.players.length, 15);
   assert.equal(templatePreview.workbook.categories.length, expectedTemplateCategories);
-  assert.equal(templatePreview.tournament.schedule.filter(bout => bout.status === 'BYE').length, 7);
+  assert.equal(templatePreview.tournament.schedule.filter(bout => bout.status === 'BYE').length, 1);
   const imported = await fetch(`http://127.0.0.1:${port}/api/tournament/import`, { method: 'POST', headers: importHeaders, body: workbookBuffer });
   assert.equal(imported.status, 200);
   const importedBody = await imported.json();

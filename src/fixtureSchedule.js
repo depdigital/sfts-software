@@ -21,53 +21,40 @@ export function scheduledWorkbookBouts(workbook) {
 }
 
 export function nextScheduledWorkbookBout(workbook) {
-  return workbook?.schedulePolicy ? scheduledWorkbookBouts(workbook).find(item => item.bout.status !== 'COMPLETED') || null : null;
+  const category = workbook?.schedulePolicy && workbook.categories.find(item => item.key === workbook.selectedKey);
+  const bout = category?.fixture.schedule.filter(item => !['COMPLETED', 'BYE'].includes(item.status)).sort((a, b) => a.matchOrder - b.matchOrder)[0];
+  return bout ? { ...category, bout } : null;
 }
 
-// Validate all possible winners, so the approved order never depends on a predicted result.
-export function validateWorkbookSchedule(workbook, { contiguous = false } = {}) {
+export function playersNeedingRest(bout, lastRecord) {
+  if (!bout || !lastRecord) return [];
+  const previous = new Set([lastRecord.red, lastRecord.blue].filter(player => player?.playerName).map(participantKey));
+  return [bout.RED, bout.BLUE].filter(player => player && previous.has(participantKey(player))).map(player => player.playerName);
+}
+
+// Running order belongs to each category. Cross-category rest gaps are supplied
+// by the operator and checked against the last completed match when loading.
+export function validateWorkbookSchedule(workbook) {
   if (!workbook?.schedulePolicy) return;
   if (workbook.schedulePolicy.minimumMatchGap !== 1) throw new Error('Minimum Match Gap must be 1');
-  const possible = new Map();
   for (const { key, fixture } of workbook.categories) {
-    const byNumber = new Map();
-    for (const bout of fixture.schedule) {
-      const players = new Set();
-      for (const [side, prefix] of [['RED', 'red'], ['BLUE', 'blue']]) {
-        const source = bout[`${prefix}SourceBoutNo`];
-        if (source) {
-          for (const player of byNumber.get(source) || []) players.add(player);
-        } else if (bout[side]) players.add(participantKey(bout[side]));
+    const entries = fixture.schedule.filter(bout => bout.status !== 'BYE').sort((a, b) => a.matchOrder - b.matchOrder);
+    const orders = new Set();
+    const orderByBout = new Map(entries.map(bout => [bout.boutNo, bout.matchOrder]));
+    let round = 1;
+    let unfinished = false;
+    for (const bout of entries) {
+      if (!Number.isSafeInteger(bout.matchOrder) || bout.matchOrder < 1 || bout.matchOrder > MAX_SCHEDULE_ROWS || orders.has(bout.matchOrder)) throw new Error(`Schedule Match Order must be unique positive integers within each category (${key})`);
+      orders.add(bout.matchOrder);
+      if (bout.round < round) throw new Error(`Schedule runs ${bout.officialBoutNo} before its category's earlier round is complete`);
+      round = bout.round;
+      for (const number of [bout.redSourceBoutNo, bout.blueSourceBoutNo].filter(Boolean)) {
+        const source = fixture.schedule[number - 1];
+        if (source.status !== 'BYE' && !(orderByBout.get(number) < bout.matchOrder)) throw new Error(`Schedule must place source ${source.officialBoutNo} before ${bout.officialBoutNo}`);
       }
-      byNumber.set(bout.boutNo, players);
-      possible.set(`${key}:${bout.boutNo}`, players);
+      if (unfinished && ['COMPLETED', 'IN_PROGRESS', 'TIE_PENDING'].includes(bout.status)) throw new Error('Recorded matches do not follow this category Schedule. Preserve its scored order when revising the fixture');
+      if (bout.status !== 'COMPLETED') unfinished = true;
     }
-  }
-  const entries = scheduledWorkbookBouts(workbook);
-  const orders = new Set();
-  let previous;
-  let unfinished = false;
-  const roundByCategory = new Map();
-  const orderByBout = new Map(entries.map(item => [`${item.key}:${item.bout.boutNo}`, item.bout.matchOrder]));
-  for (const [index, entry] of entries.entries()) {
-    const { key, fixture, bout } = entry;
-    if (!Number.isSafeInteger(bout.matchOrder) || bout.matchOrder < 1 || bout.matchOrder > MAX_SCHEDULE_ROWS || orders.has(bout.matchOrder) || (contiguous && bout.matchOrder !== index + 1)) {
-      throw new Error('Schedule Match Order must be unique positive integers, starting at 1 without gaps on import');
-    }
-    orders.add(bout.matchOrder);
-    if (bout.round < (roundByCategory.get(key) || 1)) throw new Error(`Schedule runs ${bout.officialBoutNo} before its category's earlier round is complete`);
-    roundByCategory.set(key, bout.round);
-    for (const number of [bout.redSourceBoutNo, bout.blueSourceBoutNo].filter(Boolean)) {
-      const source = fixture.schedule[number - 1];
-      if (source.status !== 'BYE' && !(orderByBout.get(`${key}:${number}`) < bout.matchOrder)) throw new Error(`Schedule must place source ${source.officialBoutNo} before ${bout.officialBoutNo}`);
-    }
-    if (unfinished && ['COMPLETED', 'IN_PROGRESS', 'TIE_PENDING'].includes(bout.status)) throw new Error('Recorded matches do not follow this Schedule. Preserve the scored order when exporting a revised fixture');
-    if (bout.status !== 'COMPLETED') unfinished = true;
-    const players = possible.get(`${key}:${bout.boutNo}`);
-    if (previous && [...players].some(player => possible.get(`${previous.key}:${previous.bout.boutNo}`).has(player))) {
-      throw new Error(`One-match rest gap missing between ${previous.bout.officialBoutNo} (order ${previous.bout.matchOrder}) and ${bout.officialBoutNo} (order ${bout.matchOrder}). Insert another category's match`);
-    }
-    previous = entry;
   }
 }
 
@@ -97,6 +84,6 @@ export function applyFixtureSchedule(workbook, rows, categoryFromInput) {
     if (!/^[1-9]\d*$/.test(get('Match Order')) || get('Minimum Match Gap') !== '1') throw new Error(`Schedule row ${index + 2}: use a positive Match Order and Minimum Match Gap 1`);
     bout.matchOrder = Number(get('Match Order'));
   }
-  workbook.schedulePolicy = { minimumMatchGap: 1 };
-  validateWorkbookSchedule(workbook, { contiguous: true });
+  workbook.schedulePolicy = { minimumMatchGap: 1, scope: 'CATEGORY' };
+  validateWorkbookSchedule(workbook);
 }

@@ -12,7 +12,7 @@ import { MAX_WORKBOOK_ROWS, parseFixtureRows } from './fixtureImport.js';
 import { buildFixtureProgression, refreshFixtureProgression, isAutomaticFixture, nextFixtureBout, fixtureDescendants, participantKey } from './fixtureProgression.js';
 import { createFileJobs } from './fileJobs.js';
 import { createFixtureTemplateSheets } from './fixtureTemplate.js';
-import { applyFixtureSchedule, nextScheduledWorkbookBout, validateWorkbookSchedule } from './fixtureSchedule.js';
+import { applyFixtureSchedule, nextScheduledWorkbookBout, validateWorkbookSchedule, playersNeedingRest } from './fixtureSchedule.js';
 import { createRemoteTestTracker } from './remoteTest.js';
 import { readBoundedFile } from './safeFiles.js';
 import { createNetworkGuard, createRateLimiter, isLoopback, normalizeAddress } from './networkGuard.js';
@@ -498,6 +498,7 @@ function fixtureWorkbookState(workbook = importedWorkbook, preview = false) {
       schedulePolicy: workbook.schedulePolicy,
       nextMatch: next ? {
         categoryKey: next.key, event: next.fixture.event, bout: next.bout, recoveryError: next.fixture.recoveryError || '',
+        restRequired: importedFixtureRestPlayers(next.fixture, next.bout),
         roundMatchIndex: next.fixture.schedule.filter(bout => bout.round === next.bout.round && bout.status !== 'BYE').findIndex(bout => bout.boutNo === next.bout.boutNo) + 1,
         roundMatchCount: next.fixture.schedule.filter(bout => bout.round === next.bout.round && bout.status !== 'BYE').length
       } : null
@@ -1675,18 +1676,8 @@ function removeImportedCategoryFixtures(categoryId, categoryKey = null) {
   } else if (categoryKey === 'single' || (categoryId && tournament.categoryId === categoryId)) tournament = makeTournament();
 }
 
-function scheduledCategoryRemovalError(categoryId, categoryKey = null) {
-  if (!importedWorkbook?.schedulePolicy) return null;
-  const categories = importedWorkbook.categories.filter(item => item.key !== categoryKey && (!categoryId || item.fixture.categoryId !== categoryId));
-  try { validateWorkbookSchedule({ ...importedWorkbook, categories }); }
-  catch { return { ok: false, code: 'SCHEDULE_REVISION_REQUIRED', message: 'Removing this category would break the official match order or one-match rest gap. Import a revised schedule before deleting it' }; }
-  return null;
-}
-
 function deleteManualCategory(categoryId, { deleteRecords = false, confirmation = '', allowFinishedMatch = false } = {}) {
   const id = String(categoryId || '').trim();
-  const scheduleError = scheduledCategoryRemovalError(id);
-  if (scheduleError) return scheduleError;
   const index = manualCompetition.categories.findIndex(category => category.id === id);
   if (index < 0) {
     return { ok: false, code: 'MANUAL_CATEGORY_NOT_FOUND', message: 'Manual category not found' };
@@ -1997,13 +1988,26 @@ function refreshTournamentBracket(tournamentState = tournament) {
   }
 }
 
+function importedFixtureRestPlayers(fixture, bout) {
+  const event = fixture.event;
+  const categoryIds = new Set(manualCompetition.categories.filter(category => ['eventName', 'eventDate', 'competition'].every(key => category[key] === event[key])).map(category => category.id));
+  let latest = null;
+  for (const record of [...manualMatchRecords, ...matchHistory]) {
+    if (!record.endedAt || record.arenaNumber !== event.arenaNumber || !categoryIds.has(record.manualBout?.categoryId)) continue;
+    if (!latest || record.endedAt > latest.endedAt) latest = record;
+  }
+  return playersNeedingRest(bout, latest);
+}
+
 function loadTournamentBout(bout) {
   if (tournament.format === 'IMPORTED_MATCHES') {
     if (tournament.recoveryError) return { ok: false, code: 'FIXTURE_RECOVERY_REVIEW', message: tournament.recoveryError };
     if (tournamentMatchIsBusy() || practiceMatchIsBusy()) return { ok: false, code: 'MATCH_BUSY', message: 'Finish or reset the current match before loading an imported bout' };
     if (importedWorkbook?.schedulePolicy) {
       const next = nextScheduledWorkbookBout(importedWorkbook);
-      if (!next || next.fixture !== tournament || next.bout !== bout) return { ok: false, code: 'BOUT_OUT_OF_ORDER', message: 'Follow the official workbook Schedule. Load the next scheduled match to preserve the one-match rest gap' };
+      if (!next || next.fixture !== tournament || next.bout !== bout) return { ok: false, code: 'BOUT_OUT_OF_ORDER', message: 'Load the next match in the selected category' };
+      const resting = importedFixtureRestPlayers(tournament, bout);
+      if (resting.length) return { ok: false, code: 'PLAYER_REST_REQUIRED', message: `Rest required for ${resting.join(' and ')}. Manually select another category, complete at least one match, then return to this category` };
     }
     if (isAutomaticFixture(tournament) && nextFixtureBout(tournament)?.boutNo !== bout.boutNo) return { ok: false, code: 'BOUT_OUT_OF_ORDER', message: 'Load the next available match in this category' };
     if (bout.status !== 'SCHEDULED') return { ok: false, code: 'BOUT_UNAVAILABLE', message: 'This bout is already completed' };
@@ -2069,17 +2073,12 @@ function loadTournamentBout(bout) {
   return { ok: true };
 }
 
-function loadScheduledTournamentBout(workbookId, matchOrder) {
+function loadScheduledTournamentBout(workbookId, matchOrder, categoryKey) {
   if (!importedWorkbook?.schedulePolicy || importedWorkbook.sourceDigest !== workbookId) return { ok: false, code: 'SCHEDULE_CHANGED', message: 'The tournament schedule changed. Review the next match again' };
   if (tournamentMatchIsBusy() || practiceMatchIsBusy()) return { ok: false, code: 'MATCH_BUSY', message: 'Finish or reset the current match before loading the next scheduled bout' };
   const next = nextScheduledWorkbookBout(importedWorkbook);
-  if (!next || next.bout.matchOrder !== matchOrder || next.bout.status !== 'SCHEDULED') return { ok: false, code: 'BOUT_OUT_OF_ORDER', message: 'Review and load the next available match in the official Schedule' };
-  const previous = { tournament, key: importedWorkbook.selectedKey };
-  tournament = next.fixture;
-  importedWorkbook.selectedKey = next.key;
-  const result = loadTournamentBout(next.bout);
-  if (!result.ok) { tournament = previous.tournament; importedWorkbook.selectedKey = previous.key; }
-  return result;
+  if (!next || next.key !== categoryKey || next.fixture !== tournament || next.bout.matchOrder !== matchOrder || next.bout.status !== 'SCHEDULED') return { ok: false, code: 'BOUT_OUT_OF_ORDER', message: 'Review and load the next available match in the selected category' };
+  return loadTournamentBout(next.bout);
 }
 
 function completeTournamentBout(winner) {
@@ -2477,8 +2476,6 @@ app.post('/api/tournament/category/delete', requireHostRequest, express.json({ l
     ? importedWorkbook.categories.find(item => item.key === req.body?.categoryKey)
     : !importedWorkbook && tournament.event && tournament.sourceDigest === req.body?.workbookId && req.body?.categoryKey === 'single' ? { key: 'single', fixture: tournament } : null;
   if (!selected) return res.status(404).json({ ok: false, message: 'This category is no longer available. Reopen Data Import and select it again.' });
-  const scheduleError = scheduledCategoryRemovalError(selected.fixture.categoryId, selected.key);
-  if (scheduleError) return res.status(400).json(scheduleError);
   if (selected.fixture.categoryId) {
     const result = deleteManualCategory(selected.fixture.categoryId, {
       deleteRecords: req.body?.deleteRecords === true, confirmation: req.body?.confirmation, allowFinishedMatch: true
@@ -4681,7 +4678,7 @@ wss.on('connection', (ws, request) => {
         }
       }
       if (msg.action === 'loadScheduledBout') {
-        const result = loadScheduledTournamentBout(msg.workbookId, msg.matchOrder);
+        const result = loadScheduledTournamentBout(msg.workbookId, msg.matchOrder, msg.categoryKey);
         if (!result.ok) { sendError(ws, result.code, result.message); return; }
       }
       if (msg.action === 'announceBout') {
