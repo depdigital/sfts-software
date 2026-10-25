@@ -2777,7 +2777,9 @@ function renderSchedule(tournament) {
     const event = tournament.event;
     summary.textContent = event ? `${event.eventName} · ${event.eventDate} · ${event.venue} · ARENA ${event.arenaNumber} · ${event.competition} · ${event.divisionLabel || event.division} · ${event.gender} · ${event.categoryGroup || event.weightCategory}` : "NO CATEGORY MATCH FILE IMPORTED";
     const busy = lastState && (lastState.running || lastState.phase === "BREAK" || lastState.phase === "TIE_DECISION" || (lastState.phase === "ROUND" && (lastState.roundStarted || lastState.roundHistory?.length || lastState.red.score || lastState.blue.score || lastState.red.gamjeom || lastState.blue.gamjeom)));
-    const next = tournament.schedule.find(bout => !["COMPLETED", "BYE"].includes(bout.status));
+    const next = lastFixtureWorkbook?.schedulePolicy
+      ? lastFixtureWorkbook.selectedKey === lastFixtureWorkbook.nextMatch?.categoryKey ? tournament.schedule.find(bout => bout.boutNo === lastFixtureWorkbook.nextMatch.bout.boutNo) : null
+      : tournament.schedule.find(bout => !["COMPLETED", "BYE"].includes(bout.status));
     const automatic = tournament.progressionMode === "OPENING_FIXTURE";
     const rows = (tournament.schedule || []).map(bout => {
       const loadable = bout.status === "SCHEDULED" && (!automatic || bout === next);

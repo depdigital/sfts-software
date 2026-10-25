@@ -18,6 +18,9 @@ test('file worker preserves CSV, XLS and XLSX imports and bounds concurrent oper
     }
     const exported = await jobs.run('workbook', { sheets: [{ name: 'Players', rows }] });
     assert.deepEqual(await jobs.run('readPlayers', exported), rows);
+    const scheduled = await jobs.run('workbook', { sheets: [{ name: 'Matches', rows }, { name: 'Schedule', rows: [['Match Order'], [1]] }] });
+    assert.deepEqual(await jobs.run('readFixture', scheduled), { rows, schedule: [['Match Order'], ['1']] });
+    assert.deepEqual(await jobs.run('readFixture', exported), { rows, schedule: null });
     const csv = await jobs.run('workbook', { format: 'csv', sheets: [{ name: 'Schedule', rows: [['Name'], ['=1+1'], ['+command'], ['normal name']] }] });
     assert.ok(csv.includes("'=1+1"));
     assert.ok(csv.includes("'+command"));

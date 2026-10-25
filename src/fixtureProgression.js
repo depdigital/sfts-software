@@ -53,7 +53,8 @@ export function buildFixtureProgression(fixture) {
 }
 
 export function nextFixtureBout(fixture) {
-  const bout = fixture.schedule.find(item => !['COMPLETED', 'BYE'].includes(item.status));
+  const pending = fixture.schedule.filter(item => !['COMPLETED', 'BYE'].includes(item.status));
+  const bout = pending.reduce((next, item) => !next || (item.matchOrder || item.boutNo) < (next.matchOrder || next.boutNo) ? item : next, null);
   return bout?.status === 'SCHEDULED' ? bout : null;
 }
 

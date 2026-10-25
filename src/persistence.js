@@ -2,6 +2,7 @@ import { copyFile, mkdir, open, readFile, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { validFixtureGraph } from './fixtureProgression.js';
 import { MAX_WORKBOOK_ROWS, MAX_WORKBOOK_CATEGORIES } from './fixtureImport.js';
+import { validateWorkbookSchedule } from './fixtureSchedule.js';
 
 const SNAPSHOT_VERSION = 1;
 const DEFAULT_SAVE_DELAY_MS = 250;
@@ -137,6 +138,10 @@ function isFixtureWorkbook(value, tournament) {
     openingRows += item.fixture.openingBoutCount;
   }
   const selected = value.categories.find(item => item.key === value.selectedKey);
+  if (Object.prototype.hasOwnProperty.call(value, 'schedulePolicy')) {
+    if (!isObject(value.schedulePolicy)) return false;
+    try { validateWorkbookSchedule(value); } catch { return false; }
+  } else if (value.categories.some(item => item.fixture.schedule.some(bout => bout.matchOrder !== undefined))) return false;
   return openingRows <= MAX_WORKBOOK_ROWS && Boolean(selected) && JSON.stringify(selected.fixture) === JSON.stringify(tournament);
 }
 

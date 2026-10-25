@@ -238,7 +238,7 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   try { templateBuffer = Buffer.from(await templateJobs.run('workbook', { sheets: createFixtureTemplateSheets(templateRules.tournament.divisions) })); }
   finally { await templateJobs.close(); }
   const templateWorkbook = XLSX.read(templateBuffer, { type: 'buffer' });
-  assert.deepEqual(templateWorkbook.SheetNames, ['Matches', 'Categories', 'Instructions', 'Exclusions']);
+  assert.deepEqual(templateWorkbook.SheetNames, ['Matches', 'Schedule', 'Categories', 'Instructions', 'Exclusions']);
   const expectedTemplateCategories = templateRules.tournament.divisions.reduce((total, division) => total + (division.categoryType === 'WEIGHT' ? division.weightCategories.MALE.length + division.weightCategories.FEMALE.length : division.groups.length * 2), 0);
   assert.equal(XLSX.utils.sheet_to_json(templateWorkbook.Sheets.Matches).length, expectedTemplateCategories * 8);
   const templateImport = await fetch(`http://127.0.0.1:${port}/api/tournament/import?preview=true`, {

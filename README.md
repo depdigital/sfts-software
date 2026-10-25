@@ -159,6 +159,8 @@ For one-remote use, select mode 1 before scoring. With the match running, verify
 
 ## Independent category import
 
+The current Excel template also includes an official arena `Schedule`. It alternates categories to give every player at least one scored match between appearances, including before finals. SFTS validates and follows that order; Load Next Match selects the scheduled category automatically. See [the scheduled fixture exporter contract](docs/scheduled-fixture-format.md) to build compatible fixture software. Workbooks without Schedule retain the category-only flow below.
+
 Data Import uses the same decision-card style as manual entry:
 
 1. **Event:** enter tournament name, date, venue, arena and competition.

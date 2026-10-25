@@ -2,6 +2,7 @@ import { parentPort } from 'node:worker_threads';
 import { createRequire } from 'node:module';
 import { inflateRawSync } from 'node:zlib';
 import { MAX_WORKBOOK_ROWS } from './fixtureImport.js';
+import { MAX_SCHEDULE_ROWS } from './fixtureSchedule.js';
 
 const require = createRequire(import.meta.url);
 const MAX_INPUT_BYTES = 4 * 1024 * 1024;
@@ -67,18 +68,24 @@ async function execute(type, data) {
   }
   // CommonJS preserves SheetJS's legacy XLS code-page support.
   const XLSX = require('xlsx');
-  if (type === 'readPlayers') {
+  if (type === 'readPlayers' || type === 'readFixture') {
     const buffer = Buffer.from(data);
     checkContainer(buffer);
     const workbook = XLSX.read(buffer, {
       type: 'buffer', cellFormula: false, cellNF: false, cellStyles: false,
-      bookVBA: false, dense: true, sheets: 0, sheetRows: MAX_WORKBOOK_ROWS + 2
+      bookVBA: false, dense: true, sheets: type === 'readPlayers' ? 0 : [0, 'Schedule'],
+      sheetRows: (type === 'readPlayers' ? MAX_WORKBOOK_ROWS : MAX_SCHEDULE_ROWS) + 2
     });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     if (!sheet) throw new Error('The workbook does not contain a worksheet');
-    const range = XLSX.utils.decode_range(sheet['!ref'] || 'A1');
-    if (range.e.c >= 128) throw new Error('The player sheet has too many columns (maximum 128)');
-    return XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', raw: false, blankrows: false });
+    const readRows = source => {
+      const range = XLSX.utils.decode_range(source['!ref'] || 'A1');
+      if (range.e.c >= 128) throw new Error('The player sheet has too many columns (maximum 128)');
+      return XLSX.utils.sheet_to_json(source, { header: 1, defval: '', raw: false, blankrows: false });
+    };
+    const rows = readRows(sheet);
+    if (type === 'readPlayers') return rows;
+    return { rows, schedule: workbook.Sheets.Schedule ? readRows(workbook.Sheets.Schedule) : null };
   }
   if (type === 'workbook') {
     const workbook = XLSX.utils.book_new();

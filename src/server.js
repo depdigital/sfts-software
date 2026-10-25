@@ -12,6 +12,7 @@ import { MAX_WORKBOOK_ROWS, parseFixtureRows } from './fixtureImport.js';
 import { buildFixtureProgression, refreshFixtureProgression, isAutomaticFixture, nextFixtureBout, fixtureDescendants, participantKey } from './fixtureProgression.js';
 import { createFileJobs } from './fileJobs.js';
 import { createFixtureTemplateSheets } from './fixtureTemplate.js';
+import { applyFixtureSchedule, nextScheduledWorkbookBout, validateWorkbookSchedule } from './fixtureSchedule.js';
 import { createRemoteTestTracker } from './remoteTest.js';
 import { readBoundedFile } from './safeFiles.js';
 import { createNetworkGuard, createRateLimiter, isLoopback, normalizeAddress } from './networkGuard.js';
@@ -88,7 +89,7 @@ const HOST_ACTIONS = new Set([
   'deleteManualCategory', 'saveManualCategoryPlacements', 'announcePractice', 'loadPractice',
   'setArenaNumber', 'announcePlayers', 'name', 'advancedScoreCorrection', 'editScore', 'editGamjeom',
   'editRoundTieStats', 'correctScoringAction', 'correctGamjeom', 'point', 'technicalPoint', 'headPoint',
-  'gamjeom', 'nextRound', 'resetMatch', 'newMatch', 'nextManualBout', 'loadBout', 'announceBout',
+  'gamjeom', 'nextRound', 'resetMatch', 'newMatch', 'nextManualBout', 'loadBout', 'loadScheduledBout', 'announceBout',
   'resolveTie', 'correctImportedWinner', 'setRemoteMode', 'testStart', 'testStop'
 ]);
 let TECHNICAL_COMBO_WINDOW_MS = rules.scoring.technicalInput.windowMilliseconds;
@@ -398,8 +399,8 @@ function validateCompletedFixtureBout(bout, record) {
 }
 
 async function importFixture(buffer, event) {
-  let rows;
-  try { rows = await fileJobs.run('readPlayers', buffer); }
+  let rows, schedule;
+  try { ({ rows, schedule } = await fileJobs.run('readFixture', buffer)); }
   catch (error) { throw new TournamentImportError(`The file is not a readable Excel or CSV file: ${error.message}`); }
   const automatic = event?.autoAdvance === true;
   const parsed = parseFixtureRows(rows, { event, maxBouts: automatic ? MAX_WORKBOOK_ROWS : 500, openingFixture: automatic, multipleCategories: automatic, categoryFromInput: manualCategoryFromInput, playerDetails: manualPlayerDetails });
@@ -410,10 +411,26 @@ async function importFixture(buffer, event) {
     fixture.sourceDigest = digest;
     return { key: crypto.createHash('sha256').update(manualCategoryIdentity(group.category)).digest('hex'), fixture };
   });
-  return {
+  const imported = {
     tournament: categories[0].fixture,
     workbook: automatic ? { version: 1, sourceDigest: digest, selectedKey: categories[0].key, categories } : null
   };
+  if (schedule) {
+    if (!automatic) throw new TournamentImportError('Scheduled fixtures require the Data Import opening-fixture workflow');
+    try {
+      applyFixtureSchedule(imported.workbook, schedule, input => manualCategoryFromInput({ ...event, ...input }));
+      if (importedWorkbook?.schedulePolicy) for (const previous of importedWorkbook.categories) {
+        const replacement = imported.workbook.categories.find(item => item.key === previous.key);
+        if (!replacement) continue;
+        for (const bout of previous.fixture.schedule.filter(item => ['COMPLETED', 'IN_PROGRESS', 'TIE_PENDING'].includes(item.status))) {
+          const revised = replacement.fixture.schedule.find(item => item.officialBoutNo.toUpperCase() === bout.officialBoutNo.toUpperCase());
+          if (!revised || revised.matchOrder !== bout.matchOrder) throw new Error(`Preserve the recorded Match Order for ${bout.officialBoutNo} when revising Schedule`);
+        }
+      }
+    }
+    catch (error) { throw new TournamentImportError(error.message); }
+  }
+  return imported;
 }
 
 function fixtureFromParsed(parsed, automatic) {
@@ -474,8 +491,17 @@ function fixtureWorkbookState(workbook = importedWorkbook, preview = false) {
   for (const records of [manualMatchRecords, matchHistory]) for (const record of records) {
     if (record.id) completedBouts.get(record.manualBout?.categoryId)?.add(record.id);
   }
+  const next = nextScheduledWorkbookBout(workbook);
   return {
     version: 1, sourceDigest: workbook.sourceDigest, selectedKey: workbook.selectedKey,
+    ...(workbook.schedulePolicy ? {
+      schedulePolicy: workbook.schedulePolicy,
+      nextMatch: next ? {
+        categoryKey: next.key, event: next.fixture.event, bout: next.bout, recoveryError: next.fixture.recoveryError || '',
+        roundMatchIndex: next.fixture.schedule.filter(bout => bout.round === next.bout.round && bout.status !== 'BYE').findIndex(bout => bout.boutNo === next.bout.boutNo) + 1,
+        roundMatchCount: next.fixture.schedule.filter(bout => bout.round === next.bout.round && bout.status !== 'BYE').length
+      } : null
+    } : {}),
     categories: workbook.categories.map(({ key, fixture }) => ({
       key, event: fixture.event, competitorCount: fixture.players.length,
       categoryId: fixture.categoryId,
@@ -782,6 +808,10 @@ for (const fixture of importedWorkbook ? importedWorkbook.categories.map(item =>
     console.error(`Could not reconcile category progression: ${error.message}`);
   }
   if (recovered) { applyAutomaticManualPlacements(category); persistManualArchive(); }
+}
+try { validateWorkbookSchedule(importedWorkbook); }
+catch (error) {
+  for (const { fixture } of importedWorkbook.categories) fixture.recoveryError = `Saved schedule and results disagree: ${error.message}. Review or reimport the fixture`;
 }
 normalizeManualCategoryPlacementState();
 persistenceReady = true;
@@ -1645,8 +1675,18 @@ function removeImportedCategoryFixtures(categoryId, categoryKey = null) {
   } else if (categoryKey === 'single' || (categoryId && tournament.categoryId === categoryId)) tournament = makeTournament();
 }
 
+function scheduledCategoryRemovalError(categoryId, categoryKey = null) {
+  if (!importedWorkbook?.schedulePolicy) return null;
+  const categories = importedWorkbook.categories.filter(item => item.key !== categoryKey && (!categoryId || item.fixture.categoryId !== categoryId));
+  try { validateWorkbookSchedule({ ...importedWorkbook, categories }); }
+  catch { return { ok: false, code: 'SCHEDULE_REVISION_REQUIRED', message: 'Removing this category would break the official match order or one-match rest gap. Import a revised schedule before deleting it' }; }
+  return null;
+}
+
 function deleteManualCategory(categoryId, { deleteRecords = false, confirmation = '', allowFinishedMatch = false } = {}) {
   const id = String(categoryId || '').trim();
+  const scheduleError = scheduledCategoryRemovalError(id);
+  if (scheduleError) return scheduleError;
   const index = manualCompetition.categories.findIndex(category => category.id === id);
   if (index < 0) {
     return { ok: false, code: 'MANUAL_CATEGORY_NOT_FOUND', message: 'Manual category not found' };
@@ -1961,6 +2001,10 @@ function loadTournamentBout(bout) {
   if (tournament.format === 'IMPORTED_MATCHES') {
     if (tournament.recoveryError) return { ok: false, code: 'FIXTURE_RECOVERY_REVIEW', message: tournament.recoveryError };
     if (tournamentMatchIsBusy() || practiceMatchIsBusy()) return { ok: false, code: 'MATCH_BUSY', message: 'Finish or reset the current match before loading an imported bout' };
+    if (importedWorkbook?.schedulePolicy) {
+      const next = nextScheduledWorkbookBout(importedWorkbook);
+      if (!next || next.fixture !== tournament || next.bout !== bout) return { ok: false, code: 'BOUT_OUT_OF_ORDER', message: 'Follow the official workbook Schedule. Load the next scheduled match to preserve the one-match rest gap' };
+    }
     if (isAutomaticFixture(tournament) && nextFixtureBout(tournament)?.boutNo !== bout.boutNo) return { ok: false, code: 'BOUT_OUT_OF_ORDER', message: 'Load the next available match in this category' };
     if (bout.status !== 'SCHEDULED') return { ok: false, code: 'BOUT_UNAVAILABLE', message: 'This bout is already completed' };
     const category = tournament.categoryId ? manualCompetition.categories.find(item => item.id === tournament.categoryId) : null;
@@ -2023,6 +2067,19 @@ function loadTournamentBout(bout) {
   bout.status = 'IN_PROGRESS';
   tournament.activeBoutNo = bout.boutNo;
   return { ok: true };
+}
+
+function loadScheduledTournamentBout(workbookId, matchOrder) {
+  if (!importedWorkbook?.schedulePolicy || importedWorkbook.sourceDigest !== workbookId) return { ok: false, code: 'SCHEDULE_CHANGED', message: 'The tournament schedule changed. Review the next match again' };
+  if (tournamentMatchIsBusy() || practiceMatchIsBusy()) return { ok: false, code: 'MATCH_BUSY', message: 'Finish or reset the current match before loading the next scheduled bout' };
+  const next = nextScheduledWorkbookBout(importedWorkbook);
+  if (!next || next.bout.matchOrder !== matchOrder || next.bout.status !== 'SCHEDULED') return { ok: false, code: 'BOUT_OUT_OF_ORDER', message: 'Review and load the next available match in the official Schedule' };
+  const previous = { tournament, key: importedWorkbook.selectedKey };
+  tournament = next.fixture;
+  importedWorkbook.selectedKey = next.key;
+  const result = loadTournamentBout(next.bout);
+  if (!result.ok) { tournament = previous.tournament; importedWorkbook.selectedKey = previous.key; }
+  return result;
 }
 
 function completeTournamentBout(winner) {
@@ -2420,6 +2477,8 @@ app.post('/api/tournament/category/delete', requireHostRequest, express.json({ l
     ? importedWorkbook.categories.find(item => item.key === req.body?.categoryKey)
     : !importedWorkbook && tournament.event && tournament.sourceDigest === req.body?.workbookId && req.body?.categoryKey === 'single' ? { key: 'single', fixture: tournament } : null;
   if (!selected) return res.status(404).json({ ok: false, message: 'This category is no longer available. Reopen Data Import and select it again.' });
+  const scheduleError = scheduledCategoryRemovalError(selected.fixture.categoryId, selected.key);
+  if (scheduleError) return res.status(400).json(scheduleError);
   if (selected.fixture.categoryId) {
     const result = deleteManualCategory(selected.fixture.categoryId, {
       deleteRecords: req.body?.deleteRecords === true, confirmation: req.body?.confirmation, allowFinishedMatch: true
@@ -4620,6 +4679,10 @@ wss.on('connection', (ws, request) => {
           sendError(ws, result.code, result.message);
           return;
         }
+      }
+      if (msg.action === 'loadScheduledBout') {
+        const result = loadScheduledTournamentBout(msg.workbookId, msg.matchOrder);
+        if (!result.ok) { sendError(ws, result.code, result.message); return; }
       }
       if (msg.action === 'announceBout') {
         const bout = findTournamentBout(msg.boutNo);

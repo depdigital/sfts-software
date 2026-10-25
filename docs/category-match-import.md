@@ -1,5 +1,7 @@
 # Tournament fixture import
 
+The current template includes an official `Schedule` sheet and enforces a one-match rest gap across categories. Follow [the scheduled fixture format](scheduled-fixture-format.md) for the complete current exporter contract. The opening-position format below remains compatible; descriptions of category-only progression and first-sheet-only reading apply to legacy files without Schedule. With Schedule, SFTS also reads that sheet and Load Next Match follows its order across categories.
+
 Data Import is a five-card workflow: **Event → File → Review → Matches → Results**. The fixture software supplies one tournament file with the opening positions for multiple divisions, genders and categories. SFTS groups the rows, preserves each category's bracket order, and continues the selected category locally through the final using the normal scoring and category result records.
 
 ## Event card

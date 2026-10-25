@@ -1,5 +1,7 @@
 # Tournament fixture software development context
 
+**Current scheduling extension:** use [SFTS scheduled fixture format v1](scheduled-fixture-format.md) when building the exporter. `Matches` retains the 14-column opening-position contract below, and `Schedule` now supplies every scored bout's official arena order and one-match rest gap. SFTS follows that supplied order across categories. Statements below that say only the first worksheet is read, that schedules are not consumed, or that SFTS always runs one category through its final describe the older opening-only workflow and are superseded for scheduled workbooks.
+
 Build a separate Taekwondo tournament fixture application that prepares approved brackets for the existing SFTS scoring software. The fixture application decides the opening opponents, Hong/Chung assignments, BYEs and bracket positions. SFTS imports those positions, scores the matches and advances winners locally through the final.
 
 This brief describes the implemented SFTS opening-fixture contract and a proposed scope for the new fixture application. It supersedes earlier planning assumptions about exporting a full tournament graph to SFTS. No fixture application or direct integration is implemented by this document.

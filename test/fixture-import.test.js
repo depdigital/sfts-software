@@ -231,7 +231,7 @@ test('import UI displays supplied sides safely, keeps row order and locks match 
     return elements.get(id);
   };
   const context = vm.createContext({
-    $: get, lastManualCompetition: { categories: [] },
+    $: get, lastManualCompetition: { categories: [] }, lastFixtureWorkbook: null,
     lastState: { running: false, phase: 'ROUND', roundStarted: false, roundHistory: [], red: { score: 0, gamjeom: 0 }, blue: { score: 0, gamjeom: 0 } }
   });
   for (const [from, to] of [
@@ -344,7 +344,7 @@ test('reviewed opening fixture advances locally, corrects winners safely and ret
   host.close();
 });
 
-test('USB template supports multiple categories and runs all four stages with nine competitors and seven automatic BYEs', async () => {
+test('USB template follows its official schedule across categories with a one-match rest gap', async () => {
   const host = await connect();
   host.send(JSON.stringify({ type: 'role', role: 'host', accessToken: 'fixture-host-token' }));
   const role = await waitFor(host, msg => msg.type === 'roleAccepted');
@@ -362,17 +362,17 @@ test('USB template supports multiple categories and runs all four stages with ni
   try { buffer = Buffer.from(await jobs.run('workbook', { sheets: createFixtureTemplateSheets(rules.tournament.divisions) })); }
   finally { await jobs.close(); }
   const workbook = XLSX.read(buffer, { type: 'buffer' });
-  assert.deepEqual(workbook.SheetNames, ['Matches', 'Categories', 'Instructions', 'Exclusions']);
+  assert.deepEqual(workbook.SheetNames, ['Matches', 'Schedule', 'Categories', 'Instructions', 'Exclusions']);
   const allRows = XLSX.utils.sheet_to_json(workbook.Sheets.Matches);
   const expectedProfiles = rules.tournament.divisions.flatMap(division => ['MALE', 'FEMALE'].flatMap(gender =>
     (division.categoryType === 'WEIGHT' ? division.weightCategories[gender] : division.groups).map(category => [division.id, gender, category.name])));
   assert.equal(allRows.length, expectedProfiles.length * 8);
   const rows = allRows.slice(0, 8);
   assert.equal(rows.length, 8);
-  const players = new Map(rows.flatMap(row => ['Hong', 'Chung']
+  const players = new Map(allRows.slice(0, 16).flatMap(row => ['Hong', 'Chung']
     .filter(side => row[`${side} Name`] !== 'BYE')
     .map(side => [row[`${side} Name`], row[`${side} Club`]])));
-  assert.equal(players.size, 9);
+  assert.equal(players.size, 18);
   for (const [name, club] of players) {
     assert.doesNotMatch(name, /Demo Player|\d/i);
     assert.doesNotMatch(club, /Demo Club|\d/i);
@@ -438,23 +438,37 @@ test('USB template supports multiple categories and runs all four stages with ni
   const started = await startResponse.json();
   assert.equal(startResponse.status, 200, JSON.stringify(started));
   host.messages.length = 0;
+  assert.deepEqual(started.workbook.schedulePolicy, { minimumMatchGap: 1 });
   let fixture = started.tournament;
+  let running = started.workbook;
   let category;
   const stages = [];
-  while (fixture.schedule.some(bout => !['COMPLETED', 'BYE'].includes(bout.status))) {
-    const next = fixture.schedule.find(bout => !['COMPLETED', 'BYE'].includes(bout.status));
+  let previousPlayers = [];
+  while (running.nextMatch.bout.matchOrder <= 16) {
+    const next = running.nextMatch.bout;
     assert.equal(next.status, 'SCHEDULED');
-    stages.push(next.stage);
-    host.send(JSON.stringify({ type: 'host', action: 'loadBout', boutNo: next.boutNo }));
-    const loaded = await waitFor(host, msg => msg.type === 'state' && msg.tournament.activeBoutNo === next.boutNo);
+    if (running.nextMatch.categoryKey === categories[0].key) stages.push(next.stage);
+    if (next.matchOrder === 2) {
+      const forbidden = nextFixtureBout(fixture);
+      host.send(JSON.stringify({ type: 'host', action: 'loadBout', boutNo: forbidden.boutNo }));
+      await waitFor(host, msg => msg.type === 'error' && msg.code === 'BOUT_OUT_OF_ORDER');
+      host.send(JSON.stringify({ type: 'host', action: 'loadScheduledBout', workbookId: running.sourceDigest, matchOrder: 1 }));
+      await waitFor(host, msg => msg.type === 'error' && msg.code === 'BOUT_OUT_OF_ORDER');
+    }
+    host.send(JSON.stringify({ type: 'host', action: 'loadScheduledBout', workbookId: running.sourceDigest, matchOrder: next.matchOrder }));
+    const loaded = await waitFor(host, msg => msg.type === 'state' && msg.tournament.activeBoutNo === next.boutNo && msg.fixtureWorkbook?.nextMatch?.bout.matchOrder === next.matchOrder);
+    const currentPlayers = [loaded.match.red.playerName, loaded.match.blue.playerName];
+    assert.ok(!currentPlayers.some(name => previousPlayers.includes(name)), 'neither player competed in the previous match');
+    previousPlayers = currentPlayers;
     for (const side of ['red', 'blue']) {
       assert.ok(players.has(loaded.match[side].playerName));
       assert.equal(loaded.match[side].club, players.get(loaded.match[side].playerName));
     }
     host.send(JSON.stringify({ type: 'host', action: 'manualMatchDecision', player: 'RED', decision: 'RSC' }));
     await waitFor(host, msg => msg.type === 'matchEnd');
-    const completed = await waitFor(host, msg => msg.type === 'state' && msg.tournament.schedule[next.boutNo - 1].status === 'COMPLETED');
+    const completed = await waitFor(host, msg => msg.type === 'state' && msg.tournament.schedule[next.boutNo - 1].status === 'COMPLETED' && msg.fixtureWorkbook?.nextMatch?.bout.matchOrder === next.matchOrder + 1);
     fixture = completed.tournament;
+    running = completed.fixtureWorkbook;
     category = completed.manualCompetition.categories.find(item => item.id === fixture.categoryId);
   }
   assert.deepEqual(stages, ['PRELIMINARY', 'QUARTERFINAL', 'QUARTERFINAL', 'QUARTERFINAL', 'QUARTERFINAL', 'SEMIFINAL', 'SEMIFINAL', 'FINAL']);
@@ -474,7 +488,9 @@ test('one workbook preserves interleaved category order, independent progress, f
   let host = await connect();
   host.send(JSON.stringify({ type: 'role', role: 'host', accessToken: 'fixture-host-token' }));
   let role = await waitFor(host, msg => msg.type === 'roleAccepted');
-  await waitFor(host, msg => msg.type === 'state');
+  const recoveredSchedule = await waitFor(host, msg => msg.type === 'state');
+  assert.equal(recoveredSchedule.fixtureWorkbook.schedulePolicy.minimumMatchGap, 1);
+  assert.equal(recoveredSchedule.fixtureWorkbook.nextMatch.bout.matchOrder, 17);
   const metadata = { ...event, eventName: 'Combined Tournament', autoAdvance: true };
   const rows = [
     fixtureRow('Z-SF', 'SEMIFINAL', 'Arjun Sen', 'Rohan Das'),
@@ -628,7 +644,7 @@ test('imported categories delete their archived records, preserve other brackets
   assert.equal(deleted.body.tournament.schedule[0].RED.playerName, 'Sayan Sen');
   const afterDelete = await waitFor(host, msg => msg.type === 'state' && msg.fixtureWorkbook?.categories.length === 1 && msg.match.manualBout === null);
   assert.equal(afterDelete.manualCompetition.categories.some(item => item.id === deletedId), false);
-  assert.equal(afterDelete.matchHistory.some(item => item.redName === 'Kunal Dey'), false);
+  assert.equal(afterDelete.matchHistory.some(item => item.manualBout?.categoryId === deletedId), false);
   assert.equal(afterDelete.tournament.schedule[0].status, 'SCHEDULED');
   const archive = await fetch(`http://127.0.0.1:${port}/api/manual/categories?categoryId=${deletedId}`, { headers: { 'X-SFTS-Host-Token': role.hostToken } });
   assert.equal(archive.status, 404);
@@ -644,7 +660,7 @@ test('imported categories delete their archived records, preserve other brackets
   assert.equal(restored.fixtureWorkbook.categories.length, 1);
   assert.equal(restored.fixtureWorkbook.selectedKey, second.key);
   assert.equal(restored.manualCompetition.categories.some(item => item.id === deletedId), false);
-  assert.equal(restored.matchHistory.some(item => item.redName === 'Kunal Dey'), false);
+  assert.equal(restored.matchHistory.some(item => item.manualBout?.categoryId === deletedId), false);
   const emptied = await deleteCategory(second.key);
   assert.equal(emptied.status, 200);
   assert.equal(emptied.body.workbook, null);
