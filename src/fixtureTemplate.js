@@ -99,7 +99,7 @@ export function createFixtureTemplateSheets(divisions) {
     ['Required', 'Bout Number, Stage, Division, Gender, Weight Category (or Group), Hong Name, Hong Club, Chung Name, Chung Club.'],
     ['Optional', 'Hong/Chung State Code and District. State codes must be valid Indian state codes.'],
     ['Stage', 'Within EACH category use the same opening stage: 1 row FINAL, 2 SEMIFINAL, 4 QUARTERFINAL, 8 or more PRELIMINARY. Row counts include BYE positions.'],
-    ['Test flow', 'Select Division, Gender and Category, review it, then Load Next Match. Continue that category through results. If REST REQUIRED appears, select another category manually, finish a match, and return to resume the waiting bout.'],
+    ['Test flow', 'Select Division, Gender and Category, review it, then Load Match. Continue that category through results. If REST REQUIRED appears, select another category manually, finish a match, and return to resume the waiting bout.'],
     ['Bye positions', 'Exactly one BYE per category. Its opening position rotates between categories; both Hong-side and Chung-side BYEs are covered across the workbook.'],
     ['Sides', 'Hong is RED; Chung is BLUE. All player and club names are fictional. Each player name is unique throughout this test workbook.'],
     ['BYEs', 'Put BYE (or leave the name blank) on the empty side, and leave its club, state and district blank. Include BYE rows so the opening row count is a power of two. Each competitor appears once.'],

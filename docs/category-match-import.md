@@ -62,7 +62,7 @@ Deleting the selected category selects another remaining category. Deleting the 
 
 ## Match card
 
-The next card shows stage, match number within that round, bout reference and both competitors. Choose **Load Next Match**, then score normally. After the winner screen, **Continue Category** returns to the cards. A recovered loaded match offers **Return to Scoreboard**.
+The next card shows stage, match number within that round, bout reference and both competitors. Choose **Load Match**, then score normally. After the winner screen, **Continue Category** returns to the cards. A recovered loaded match offers **Return to Scoreboard**.
 
 For a workbook with Schedule, **REST REQUIRED** blocks a match if either player competed in the previous completed match at the same event and arena. Use **Select Another Category** manually, finish one or two matches, then return. The waiting bout and results survive restart. Finishing a category leads to its results without selecting another category.
 

@@ -110,7 +110,7 @@ test('preview shows category, sides and BYEs; only confirmation commits and load
   assert.equal(requests[1].options.headers['X-SFTS-Import-Digest'], 'reviewed-file');
   assert.deepEqual(visibleSteps(get), [3]);
   assert.match(get('importRunCard').innerHTML, /SEMIFINAL — MATCH 1 OF 1/);
-  assert.match(get('importRunCard').innerHTML, /LOAD NEXT MATCH/);
+  assert.match(get('importRunCard').innerHTML, /LOAD MATCH/);
   context.loadNextImportedBout();
   context.loadNextImportedBout();
   assert.equal(actions.length, 1);

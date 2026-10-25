@@ -166,7 +166,7 @@ Data Import uses the same decision-card style as manual entry:
 1. **Event:** enter tournament name, date, venue, arena and competition.
 2. **File:** select an Excel/CSV opening fixture from USB (or a desktop file during development).
 3. **Review:** check the imported division, gender, category, HONG/CHUNG sides and BYEs. Confirm before starting.
-4. **Matches:** use **LOAD NEXT MATCH**, score normally, then choose **CONTINUE CATEGORY**. SFTS advances adjacent winners locally without reshuffling.
+4. **Matches:** use **LOAD MATCH**, score normally, then choose **CONTINUE CATEGORY**. SFTS advances adjacent winners locally without reshuffling.
 5. **Results:** review and finalize gold, silver and bronze through the existing manual results/PDF workflow.
 
 The file supplies the **opening round only**, including every competitor and explicit BYE positions. Use the supplied `sfts-match-template.xlsx`; its Categories sheet reflects the active rulepack. Opening row counts must be a power of two: 1 FINAL, 2 SEMIFINAL, 4 QUARTERFINAL, or 8 and above PRELIMINARY. A BYE has one actual competitor and an empty/BYE opponent with no club/state/district.
