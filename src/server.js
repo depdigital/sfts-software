@@ -11,6 +11,7 @@ import { WebSocketServer } from "ws";
 import { MAX_WORKBOOK_ROWS, parseFixtureRows } from './fixtureImport.js';
 import { buildFixtureProgression, refreshFixtureProgression, isAutomaticFixture, nextFixtureBout, fixtureDescendants, participantKey } from './fixtureProgression.js';
 import { createFileJobs } from './fileJobs.js';
+import { attachDeskMetadata, readDeskMetadata, exportDeskResults, validateDeskRecords } from './deskExchange.js';
 import { createFixtureTemplateSheets } from './fixtureTemplate.js';
 import { applyFixtureSchedule, nextScheduledWorkbookBout, validateWorkbookSchedule, playersNeedingRest } from './fixtureSchedule.js';
 import { createRemoteTestTracker } from './remoteTest.js';
@@ -399,10 +400,11 @@ function validateCompletedFixtureBout(bout, record) {
 }
 
 async function importFixture(buffer, event) {
-  let rows, schedule;
-  try { ({ rows, schedule } = await fileJobs.run('readFixture', buffer)); }
+  let rows, schedule, deskMetadata;
+  try { ({ rows, schedule, deskMetadata } = await fileJobs.run('readFixture', buffer)); }
   catch (error) { throw new TournamentImportError(`The file is not a readable Excel or CSV file: ${error.message}`); }
   const automatic = event?.autoAdvance === true;
+  if (deskMetadata && !schedule) throw new TournamentImportError('Tournament Desk fixtures require the approved Schedule sheet. Re-export Master Excel.');
   const parsed = parseFixtureRows(rows, { event, maxBouts: automatic ? MAX_WORKBOOK_ROWS : 500, openingFixture: automatic, multipleCategories: automatic, categoryFromInput: manualCategoryFromInput, playerDetails: manualPlayerDetails });
   if (parsed.errors.length) throw new TournamentImportError('The match file could not be imported', parsed.errors);
   const digest = crypto.createHash('sha256').update(buffer).update(JSON.stringify({ categories: parsed.categories.map(item => item.category), automatic })).digest('hex');
@@ -430,6 +432,7 @@ async function importFixture(buffer, event) {
     }
     catch (error) { throw new TournamentImportError(error.message); }
   }
+  attachDeskMetadata(imported.workbook, readDeskMetadata(deskMetadata), manualMatchRecords);
   return imported;
 }
 
@@ -802,6 +805,7 @@ for (const fixture of importedWorkbook ? importedWorkbook.categories.map(item =>
   }
   try {
     const records = new Map(manualMatchRecords.filter(record => record.manualBout?.categoryId === fixture.categoryId).map(record => [String(record.manualBout.officialBoutNo).toUpperCase(), record]));
+    if (fixture.deskExchange) validateDeskRecords(fixture, [...records.values()]);
     refreshFixtureProgression(fixture, { records, validateRecord: validateCompletedFixtureBout });
     if (fixture.schedule.find(bout => bout.boutNo === fixture.activeBoutNo)?.status !== 'IN_PROGRESS') fixture.activeBoutNo = null;
   } catch (error) {
@@ -2023,6 +2027,10 @@ function loadTournamentBout(bout) {
     if (!saved.ok) { match = previous; return saved; }
     tournament.categoryId = saved.categoryId;
     match.manualBout.importedBoutNo = bout.boutNo;
+    if (tournament.deskExchange) {
+      match.manualBout.deskEventId = tournament.deskExchange.event.id;
+      match.manualBout.deskFixtureFingerprint = tournament.deskExchange.definition.fingerprint;
+    }
     bout.status = 'IN_PROGRESS';
     tournament.activeBoutNo = bout.boutNo;
     refreshFixtureProgression(tournament);
@@ -2493,6 +2501,17 @@ app.get('/api/tournament/schedule.xlsx', requireHostRequest, async (req, res, ne
   res.attachment('sfts-tournament-schedule.xlsx');
   res.send(output);
   } catch (error) { next(error); }
+});
+
+app.get('/api/tournament/desk-results.json', requireHostRequest, (req, res) => {
+  try {
+    const result = exportDeskResults(importedWorkbook, arenaNumber);
+    res.set('Cache-Control', 'no-store');
+    res.attachment('sfts-tournamentdesk-results.json');
+    res.json(result);
+  } catch (error) {
+    res.status(400).json({ ok: false, message: error.message });
+  }
 });
 
 app.get('/api/tournament/schedule.csv', requireHostRequest, async (req, res, next) => {

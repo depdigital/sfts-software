@@ -73,7 +73,7 @@ async function execute(type, data) {
     checkContainer(buffer);
     const workbook = XLSX.read(buffer, {
       type: 'buffer', cellFormula: false, cellNF: false, cellStyles: false,
-      bookVBA: false, dense: true, sheets: type === 'readPlayers' ? 0 : [0, 'Schedule'],
+      bookVBA: false, dense: true, sheets: type === 'readPlayers' ? 0 : [0, 'Schedule', 'Tournament Desk'],
       sheetRows: (type === 'readPlayers' ? MAX_WORKBOOK_ROWS : MAX_SCHEDULE_ROWS) + 2
     });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -85,7 +85,8 @@ async function execute(type, data) {
     };
     const rows = readRows(sheet);
     if (type === 'readPlayers') return rows;
-    return { rows, schedule: workbook.Sheets.Schedule ? readRows(workbook.Sheets.Schedule) : null };
+    return { rows, schedule: workbook.Sheets.Schedule ? readRows(workbook.Sheets.Schedule) : null,
+      ...(workbook.Sheets['Tournament Desk'] ? { deskMetadata: readRows(workbook.Sheets['Tournament Desk']) } : {}) };
   }
   if (type === 'workbook') {
     const workbook = XLSX.utils.book_new();

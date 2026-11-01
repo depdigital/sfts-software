@@ -157,6 +157,12 @@ Each corner card shows `CONNECTED` or `DISCONNECTED`, the latest RSSI in dBm, an
 
 For one-remote use, select mode 1 before scoring. With the match running, verify repeated identical +1/+2/+3 taps less than 750 ms apart, mixed-side taps, a short tap, technical +2/+3, technical +1 rejection, and a disconnect/reconnect. Every accepted press should change the score exactly once; `QUEUED` should return to 0 and `DROPPED` should stay at 0. The four-remote voting and near-simultaneous-incident cases require a separate physical test with all four devices before an event.
 
+## Return results to Tournament Desk
+
+Import a fresh **Master Excel** exported by Tournament Desk, score normally, then choose **EXPORT RESULTS FOR TOURNAMENT DESK** in the imported Schedule dialog or Data Import Results step. One JSON file contains completed bouts across every category in the imported workbook. Import it in Tournament Desk, review the winners and confirm medals there. Export again as more bouts finish; identical results are skipped and conflicts require review.
+
+The original event, fixture, match and player identities survive scoring and restarts. Namesakes from different clubs remain distinct. Older unlinked fixtures continue to use their Schedule Excel/CSV exports; preserve those results rather than attaching them to a fresh bracket. See [the version 1 exchange contract](docs/tournamentdesk-exchange.md) for metadata, fingerprints, compatibility and tests.
+
 ## Independent category import
 
 The Excel template contains 15 players and one preliminary BYE per category. `Schedule` defines the order within the selected division, gender and category; SFTS never alternates categories automatically. If a player needs a rest gap, manually complete one or two matches in another category and return to the waiting bout. See [the category fixture exporter contract](docs/scheduled-fixture-format.md). Opening-only files without Schedule retain their legacy flow.

@@ -2425,7 +2425,10 @@ async function downloadFile(path, fallbackName) {
     const response = await fetch(path, {
       headers: { "X-SFTS-Host-Token": hostToken },
     });
-    if (!response.ok) throw new Error(`DOWNLOAD FAILED (${response.status})`);
+    if (!response.ok) {
+      const error = await response.json().catch(() => null);
+      throw new Error(error?.message || `DOWNLOAD FAILED (${response.status})`);
+    }
     const blob = await response.blob();
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
@@ -2847,6 +2850,10 @@ function renderSchedule(tournament) {
       })
       .join("")}</tbody>
   </table>`;
+}
+
+function downloadTournamentDeskResults() {
+  downloadFile('/api/tournament/desk-results.json', 'sfts-tournamentdesk-results.json');
 }
 
 function downloadTournamentSchedule(format) {
@@ -3440,6 +3447,7 @@ window.unmountUsb = unmountUsb;
 window.openSchedule = openSchedule;
 window.closeSchedule = closeSchedule;
 window.downloadTournamentSchedule = downloadTournamentSchedule;
+window.downloadTournamentDeskResults = downloadTournamentDeskResults;
 window.printSchedule = printSchedule;
 window.announceScheduledBout = announceScheduledBout;
 window.resolveScheduledTie = resolveScheduledTie;

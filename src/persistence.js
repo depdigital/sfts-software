@@ -3,6 +3,7 @@ import path from 'node:path';
 import { validFixtureGraph } from './fixtureProgression.js';
 import { MAX_WORKBOOK_ROWS, MAX_WORKBOOK_CATEGORIES } from './fixtureImport.js';
 import { validateWorkbookSchedule } from './fixtureSchedule.js';
+import { validateDeskFixture } from './deskExchange.js';
 
 const SNAPSHOT_VERSION = 1;
 const DEFAULT_SAVE_DELAY_MS = 250;
@@ -96,6 +97,9 @@ function isTournament(value) {
       return ['division', 'gender', 'weightCategory', 'categoryGroup'].every(key => bout[key] === event[key]);
     })) return false;
     if (automatic && !validFixtureGraph(value)) return false;
+    if (value.deskExchange !== undefined) {
+      try { validateDeskFixture(value); } catch { return false; }
+    }
     return (value.categoryId === null || text(value, 'categoryId', 64)) && (value.activeBoutNo === null || value.schedule.some(bout => bout.boutNo === value.activeBoutNo && bout.status === 'IN_PROGRESS'));
   }
   if (!isObject(value) || !Array.isArray(value.players) || !value.players.every(isTournamentPlayer)) return false;
