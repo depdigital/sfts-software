@@ -294,7 +294,7 @@ function renderImportWizard() {
   renderImportCorrection();
   const labels = { gold: 'GOLD', silver: 'SILVER', bronze1: 'BRONZE', bronze2: 'BRONZE' };
   const medals = Object.entries(category?.placements || {}).filter(([, player]) => player);
-  $('importResultsCard').innerHTML = `<p>${escapeHtml(context)}</p><p>${unfinished ? 'Category is still in progress. Placements will update as semifinal and final results are recorded.' : 'All matches are complete. Review and finalize these results.'}</p>${medals.map(([place, player]) => `<p><b>${labels[place]}</b> · ${escapeHtml(player.playerName)} · ${escapeHtml(player.club)}</p>`).join('')}<button onclick="downloadTournamentDeskResults()">EXPORT RESULTS FOR TOURNAMENT DESK</button><p>Downloads completed matches across all divisions in the imported tournament. Import this file in Tournament Desk, review winners, then confirm medals.</p>`;
+  $('importResultsCard').innerHTML = `<p>${escapeHtml(context)}</p><p>${unfinished ? 'Category is still in progress. Placements will update as semifinal and final results are recorded.' : 'All matches are complete. Review and finalize these results.'}</p>${medals.map(([place, player]) => `<p><b>${labels[place]}</b> · ${escapeHtml(player.playerName)} · ${escapeHtml(player.club)}</p>`).join('')}<button id="importDeskResultsExportButton" onclick="saveTournamentDeskResultsToUsb()"${!usbImportOnly || tournamentDeskExportBusy ? ' disabled' : ''}>SAVE TOURNAMENT DESK RESULTS TO USB</button><p>Saves completed matches across all divisions in the imported tournament directly to the connected USB drive. Import the JSON file from USB in Tournament Desk, review winners, then confirm medals.</p>`;
 }
 
 function renderImportCorrection() {

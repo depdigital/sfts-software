@@ -47,7 +47,7 @@ async function wizard() {
   };
   const requests = [], actions = [], openings = [];
   const context = vm.createContext({
-    $: get, document: { getElementById: get }, hostToken: 'host-session', ws: { readyState: 1 }, usbImportOnly: false,
+    $: get, document: { getElementById: get }, hostToken: 'host-session', ws: { readyState: 1 }, usbImportOnly: false, tournamentDeskExportBusy: false,
     lastTournament: {}, lastFixtureWorkbook: null, lastManualCompetition: { categories: [] }, lastState: null,
     send: action => actions.push(action), toast() {}, refreshUsbFiles() {},
     requestUserPermission: async () => true,
@@ -369,4 +369,21 @@ test('bulk deletion is unavailable while previewing a new file', async () => {
   context.openImportedTournamentDelete();
   assert.equal(get('importDeleteCategoryModal').classList.contains('hidden'), true);
   assert.equal(requests.length, 1);
+});
+
+test('finalized category results offer USB export and disable saving while another export is pending', async () => {
+  const { context, get, fixture } = await wizard();
+  fixture.categoryId = 'finalized-category';
+  for (const bout of fixture.schedule) if (bout.status !== 'BYE') bout.status = 'COMPLETED';
+  context.lastTournament = fixture;
+  context.lastManualCompetition.categories = [{ id: fixture.categoryId, status: 'FINALIZED', placements: {} }];
+  context.usbImportOnly = true;
+  context.resumeImportedCategory();
+  assert.deepEqual(visibleSteps(get), [4]);
+  assert.match(get('importResultsCard').innerHTML, /onclick="saveTournamentDeskResultsToUsb\(\)"/);
+  assert.match(get('importResultsCard').innerHTML, /directly to the connected USB drive/);
+  assert.doesNotMatch(get('importResultsCard').innerHTML, /onclick="saveTournamentDeskResultsToUsb\(\)" disabled/);
+  context.tournamentDeskExportBusy = true;
+  context.renderImportWizard();
+  assert.match(get('importResultsCard').innerHTML, /onclick="saveTournamentDeskResultsToUsb\(\)" disabled/);
 });

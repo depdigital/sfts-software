@@ -1,6 +1,6 @@
 # Tournament Desk / scoreboard exchange, version 1
 
-Organizer workflow: export a fresh **Master Excel** from Tournament Desk, import it in the scoreboard's **Player Settings / Data Import**, score matches, then choose **Export results for Tournament Desk**. The export button is available in the Schedule dialog and the Data Import results step. Back in Tournament Desk, use **Import scoreboard results**, review winners, import, and confirm medals separately.
+Organizer workflow: export a fresh **Master Excel** from Tournament Desk, import it in the scoreboard's **Player Settings / Data Import**, score matches, then choose **Save Tournament Desk results to USB**. The export button is available in the Schedule dialog and the Data Import results step. The JSON is saved directly to the connected USB drive, with no browser download. Back in Tournament Desk, use **Import scoreboard results** to read the USB file, review winners, import, and confirm medals separately.
 
 The return file contains completed bouts across all categories still in the imported workbook, including results beyond the scoreboard's 50-entry recent-history display. It is a cumulative snapshot: export and import again as matches finish. Previously saved identical winners are skipped. Conflicts reject the entire file; corrections require organizer review and never silently replace winners. Each arena may export its own subset of divisions from the same event.
 
@@ -29,7 +29,9 @@ Names and clubs use the trimmed values sent in Matches. Hash output is 64 lowerc
 
 ## Result transport
 
-Host-authorized `GET /api/tournament/desk-results.json` downloads:
+Host-authorized `POST /api/tournament/desk-results-usb` saves `sfts-tournamentdesk-results.json` to the detected USB drive on deployments with `SFTS_USB_IMPORT_ONLY=true`. Repeated exports use numbered filenames (`_1`, `_2`, etc.) to preserve earlier files. The existing USB queue serializes saves and unmount operations. Missing drives, mount errors and write failures are reported without a local-download fallback. Success returns only `ok`, `fileName`, `size` and `message`; the JSON payload stays on USB. The former `GET /api/tournament/desk-results.json` returns 403 and no result payload.
+
+The USB file contains:
 
 ```json
 {

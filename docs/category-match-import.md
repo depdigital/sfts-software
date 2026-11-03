@@ -78,6 +78,8 @@ Bouts run in round/position order. A later round cannot be loaded out of order. 
 
 Gold/silver come from the actual final winner/loser; bronze comes from the recorded semifinal losers. Review, operator placement overrides, finalization and PDF/USB export use the existing manual category results. Finalization is blocked until all category matches have completed and every winner is decided.
 
+**Save Tournament Desk results to USB** writes the cumulative completed-match JSON directly to the connected USB drive. Existing export files are preserved with numbered filenames. A missing or unwritable drive shows an error; results are never downloaded to the browser. USB result export requires USB mode on the scoring device.
+
 Every imported category's opening fixture, generated rounds, current bout and results are saved locally. Restart restores the selected category and pauses any loaded match, while retaining the other categories' progress, BYEs and winner assignments. Shared manual archive records reconcile each category's saved progression; inconsistent recovery requires review before loading. Reimporting the same tournament file reconstructs progress from completed reference numbers and rejects changed recorded competitors/stages.
 
 Importing another tournament file replaces the available category list while retaining archived results. A finalized category can remain in a combined file if its recorded matches agree; it cannot load additional bouts. Incomplete categories cannot be finalized, including while another category is selected. Existing single-category files, explicit match lists and legacy generated-bracket snapshots remain recoverable, and manual-entry controls retain their original workflow.

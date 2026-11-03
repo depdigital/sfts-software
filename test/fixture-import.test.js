@@ -231,7 +231,7 @@ test('import UI displays supplied sides safely, keeps row order and locks match 
     return elements.get(id);
   };
   const context = vm.createContext({
-    $: get, lastManualCompetition: { categories: [] }, lastFixtureWorkbook: null,
+    $: get, lastManualCompetition: { categories: [] }, lastFixtureWorkbook: null, usbImportOnly: false, tournamentDeskExportBusy: false,
     lastState: { running: false, phase: 'ROUND', roundStarted: false, roundHistory: [], red: { score: 0, gamjeom: 0 }, blue: { score: 0, gamjeom: 0 } }
   });
   for (const [from, to] of [

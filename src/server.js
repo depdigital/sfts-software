@@ -1266,7 +1266,7 @@ async function availableUsbTarget(context, requestedFileName) {
   for (let sequence = 0; sequence < 1000; sequence += 1) {
     const fileName = sequence ? `${stem}_${sequence}${extension}` : requestedFileName;
     const target = path.resolve(context.mountPath, fileName);
-    if (path.dirname(target) !== context.mountPath) throw new Error('INVALID USB PDF TARGET');
+    if (path.dirname(target) !== context.mountPath) throw new Error('INVALID USB EXPORT TARGET');
     try {
       await lstat(target);
     } catch (error) {
@@ -1274,21 +1274,11 @@ async function availableUsbTarget(context, requestedFileName) {
       throw error;
     }
   }
-  throw new Error('TOO MANY CATEGORY RESULT FILES WITH THE SAME NAME');
+  throw new Error('TOO MANY RESULT FILES WITH THE SAME NAME');
 }
 
-async function writeManualCategoryPdfToUsb(context, category, records, options) {
-  const generatedAt = new Date();
-  const result = await fileJobs.run('pdf', {
-    category,
-    records,
-    options,
-    generatedAt: generatedAt.toISOString()
-  });
-  const destination = await availableUsbTarget(
-    context,
-    result.fileName
-  );
+async function writeFileToUsb(context, fileName, buffer) {
+  const destination = await availableUsbTarget(context, fileName);
   const temporaryPath = path.join(
     context.mountPath,
     `.${destination.fileName}.tmp-${process.pid}-${crypto.randomBytes(6).toString('hex')}`
@@ -1296,7 +1286,7 @@ async function writeManualCategoryPdfToUsb(context, category, records, options) 
   let handle;
   try {
     handle = await open(temporaryPath, 'wx', 0o640);
-    await handle.writeFile(Buffer.from(result.buffer));
+    await handle.writeFile(buffer);
     await handle.sync();
     await handle.close();
     handle = null;
@@ -1307,6 +1297,16 @@ async function writeManualCategoryPdfToUsb(context, category, records, options) 
   }
   const details = await stat(destination.target);
   return { fileName: destination.fileName, size: details.size };
+}
+
+async function writeManualCategoryPdfToUsb(context, category, records, options) {
+  const result = await fileJobs.run('pdf', {
+    category,
+    records,
+    options,
+    generatedAt: new Date().toISOString()
+  });
+  return writeFileToUsb(context, result.fileName, Buffer.from(result.buffer));
 }
 
 async function unmountUsb(context) {
@@ -2548,13 +2548,23 @@ app.get('/api/tournament/schedule.xlsx', requireHostRequest, async (req, res, ne
 });
 
 app.get('/api/tournament/desk-results.json', requireHostRequest, (req, res) => {
+  res.status(403).json({ ok: false, message: 'SAVE RESULTS TO USB from Data Import. Browser result downloads are disabled.' });
+});
+
+app.post('/api/tournament/desk-results-usb', requireHostRequest, async (req, res) => {
+  if (!USB_IMPORT_ONLY) return res.status(403).json({ ok: false, message: 'USB RESULT EXPORT IS DISABLED ON THIS DEPLOYMENT' });
+  const workbook = importedWorkbook;
   try {
-    const result = exportDeskResults(importedWorkbook, arenaNumber);
-    res.set('Cache-Control', 'no-store');
-    res.attachment('sfts-tournamentdesk-results.json');
-    res.json(result);
+    const result = await withUsbOperation(async () => {
+      const context = await usbContext({ mountIfNeeded: true });
+      if (!context.mounted) throw new Error(context.message || 'USB DRIVE IS NOT MOUNTED');
+      if (!hostRequestAuthorized(req) || importedWorkbook !== workbook) throw new Error('Host session or imported tournament changed; retry the export');
+      const output = exportDeskResults(workbook, arenaNumber);
+      return writeFileToUsb(context, 'sfts-tournamentdesk-results.json', Buffer.from(`${JSON.stringify(output, null, 2)}\n`, 'utf8'));
+    });
+    res.json({ ok: true, ...result, message: `TOURNAMENT DESK RESULTS SAVED TO USB: ${result.fileName}` });
   } catch (error) {
-    res.status(400).json({ ok: false, message: error.message });
+    res.status(400).json({ ok: false, message: error.message || 'COULD NOT SAVE TOURNAMENT DESK RESULTS TO USB' });
   }
 });
 

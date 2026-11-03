@@ -28,6 +28,7 @@ let powerActionScheduled = false;
 let powerDeadlineAt = 0;
 let powerCountdownTimer = null;
 let usbImportOnly = false;
+let tournamentDeskExportBusy = false;
 let activeRuleset = null;
 let scoringRules = null;
 let remoteStatusSnapshot = null;
@@ -2772,6 +2773,8 @@ function renderTournamentResults(tournament) {
 }
 
 function renderSchedule(tournament) {
+  const exportButton = $('scheduleDeskResultsExportButton');
+  if (exportButton) exportButton.disabled = !usbImportOnly || tournamentDeskExportBusy;
   const summary = $("scheduleSummary");
   const table = $("scheduleTable");
   if (!summary || !table) return;
@@ -2852,8 +2855,32 @@ function renderSchedule(tournament) {
   </table>`;
 }
 
-function downloadTournamentDeskResults() {
-  downloadFile('/api/tournament/desk-results.json', 'sfts-tournamentdesk-results.json');
+async function saveTournamentDeskResultsToUsb() {
+  if (tournamentDeskExportBusy) return;
+  if (!hostToken) { toast('HOST SESSION REQUIRED'); return; }
+  if (!usbImportOnly) { toast('USB RESULT EXPORT IS NOT ENABLED'); return; }
+  tournamentDeskExportBusy = true;
+  for (const id of ['importDeskResultsExportButton', 'scheduleDeskResultsExportButton']) {
+    const button = $(id);
+    if (button) button.disabled = true;
+  }
+  toast('SAVING TOURNAMENT DESK RESULTS TO USB…');
+  try {
+    const response = await fetch('/api/tournament/desk-results-usb', {
+      method: 'POST', headers: { 'X-SFTS-Host-Token': hostToken }
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.message || 'COULD NOT SAVE TOURNAMENT DESK RESULTS TO USB');
+    toast(result.message || `TOURNAMENT DESK RESULTS SAVED TO USB: ${result.fileName}`);
+  } catch (error) {
+    toast(error.message || 'COULD NOT SAVE TOURNAMENT DESK RESULTS TO USB');
+  } finally {
+    tournamentDeskExportBusy = false;
+    for (const id of ['importDeskResultsExportButton', 'scheduleDeskResultsExportButton']) {
+      const button = $(id);
+      if (button) button.disabled = !usbImportOnly;
+    }
+  }
 }
 
 function downloadTournamentSchedule(format) {
@@ -3447,7 +3474,7 @@ window.unmountUsb = unmountUsb;
 window.openSchedule = openSchedule;
 window.closeSchedule = closeSchedule;
 window.downloadTournamentSchedule = downloadTournamentSchedule;
-window.downloadTournamentDeskResults = downloadTournamentDeskResults;
+window.saveTournamentDeskResultsToUsb = saveTournamentDeskResultsToUsb;
 window.printSchedule = printSchedule;
 window.announceScheduledBout = announceScheduledBout;
 window.resolveScheduledTie = resolveScheduledTie;

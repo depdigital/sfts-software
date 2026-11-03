@@ -182,6 +182,18 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   });
   assert.equal(disabledPdfExport.status, 403);
   assert.equal((await disabledPdfExport.json()).message, 'USB PDF EXPORT IS DISABLED ON THIS DEPLOYMENT');
+  const disabledDeskExport = await fetch(`http://127.0.0.1:${port}/api/tournament/desk-results-usb`, {
+    method: 'POST', headers: { 'X-SFTS-Host-Token': hostRole.hostToken }
+  });
+  assert.equal(disabledDeskExport.status, 403);
+  const blockedDeskDownload = await fetch(`http://127.0.0.1:${port}/api/tournament/desk-results.json`, {
+    headers: { 'X-SFTS-Host-Token': hostRole.hostToken }
+  });
+  assert.equal(blockedDeskDownload.status, 403);
+  assert.equal(blockedDeskDownload.headers.get('content-disposition'), null);
+  assert.equal((await blockedDeskDownload.json()).format, undefined);
+  const unauthorizedDeskExport = await fetch(`http://127.0.0.1:${port}/api/tournament/desk-results-usb`, { method: 'POST' });
+  assert.equal(unauthorizedDeskExport.status, 401);
   host.send(JSON.stringify({ type: 'host', action: 'setArenaNumber', value: '12' }));
   const arenaState = await waitForMessage(host, message => message.type === 'state' && message.arenaNumber === '12');
   assert.equal(arenaState.arenaNumber, '12');
