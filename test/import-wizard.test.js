@@ -303,3 +303,70 @@ test('imported category deletion confirms saved bouts, protects loaded matches a
   assert.equal(context.lastFixtureWorkbook, null);
   assert.deepEqual(visibleSteps(get), [0]);
 });
+
+test('bulk import deletion reviews the whole file, requires confirmation and preserves errors for review', async () => {
+  const { context, get, fixture, requests } = await wizard();
+  context.lastTournament = fixture;
+  context.lastFixtureWorkbook = {
+    sourceDigest: fixture.sourceDigest, selectedKey: 'first',
+    categories: [
+      { key: 'first', event: fixture.event, completedBoutCount: 2, status: 'FINALIZED' },
+      { key: 'second', event: { ...fixture.event, gender: 'FEMALE' }, completedBoutCount: 3, status: 'COMPLETED' },
+      { key: 'third', event: { ...fixture.event, division: 'JUNIOR' }, completedBoutCount: 0, status: 'NOT STARTED' }
+    ]
+  };
+  context.resumeImportedCategory();
+  assert.equal(get('importDeleteAllCategoriesButton').classList.contains('hidden'), false);
+  fixture.activeBoutNo = 1;
+  context.renderImportCategorySelectors();
+  assert.equal(get('importDeleteAllCategoriesButton').disabled, true);
+  context.openImportedTournamentDelete();
+  assert.equal(get('importDeleteCategoryModal').classList.contains('hidden'), true);
+  fixture.activeBoutNo = null;
+  context.openImportedTournamentDelete();
+  assert.match(get('importDeleteCategoryTitle').textContent, /ALL IMPORTED CATEGORIES/);
+  assert.match(get('importDeleteCategorySummary').textContent, /Wizard Championship.*3 categories.*5 saved bouts/);
+  assert.match(get('importDeleteCategoryMessage').textContent, /current imported file/);
+  assert.match(get('importDeleteConfirmationLabel').textContent, /DELETE TOURNAMENT/);
+  get('importDeleteConfirmation').value = 'DELETE 5 BOUTS';
+  await context.confirmImportedCategoryDelete();
+  assert.equal(requests.length, 0);
+  context.closeImportedCategoryDelete();
+  assert.equal(get('importDeleteCategoryModal').classList.contains('hidden'), true);
+  context.openImportedCategoryDelete();
+  assert.equal(get('importDeleteCategoryTitle').textContent, 'DELETE IMPORTED CATEGORY?');
+  context.closeImportedCategoryDelete();
+  context.openImportedTournamentDelete();
+  get('importDeleteConfirmation').value = 'delete tournament';
+  context.updateImportedCategoryDeleteConfirmation();
+  assert.equal(get('importConfirmDeleteCategoryButton').disabled, false);
+  context.fetch = async (url, options) => {
+    requests.push({ url, options });
+    return { ok: false, json: async () => ({ ok: false, message: 'Saved bout counts changed' }) };
+  };
+  await context.confirmImportedCategoryDelete();
+  assert.equal(requests[0].url, '/api/tournament/delete');
+  assert.deepEqual(JSON.parse(requests[0].options.body), {
+    workbookId: fixture.sourceDigest, categoryKeys: ['first', 'second', 'third'], completedBoutCount: 5,
+    confirmation: 'DELETE TOURNAMENT', deleteRecords: true
+  });
+  assert.equal(context.lastFixtureWorkbook.categories.length, 3);
+  assert.equal(get('importDeleteCategoryModal').classList.contains('hidden'), false);
+  assert.equal(get('importDeleteCategoryError').textContent, 'Saved bout counts changed');
+  context.fetch = async () => ({ ok: true, json: async () => ({ ok: true, tournament: { schedule: [] }, workbook: null }) });
+  await context.confirmImportedCategoryDelete();
+  assert.equal(context.lastFixtureWorkbook, null);
+  assert.equal(get('importDeleteCategoryModal').classList.contains('hidden'), true);
+  assert.deepEqual(visibleSteps(get), [0]);
+  assert.equal(get('importDeleteAllCategoriesButton').classList.contains('hidden'), true);
+});
+
+test('bulk deletion is unavailable while previewing a new file', async () => {
+  const { context, get, requests } = await wizard();
+  context.importEventNext();
+  await context.reviewImportFile({ file: { type: 'text/csv' } });
+  assert.equal(get('importDeleteAllCategoriesButton').classList.contains('hidden'), true);
+  context.openImportedTournamentDelete();
+  assert.equal(get('importDeleteCategoryModal').classList.contains('hidden'), true);
+  assert.equal(requests.length, 1);
+});

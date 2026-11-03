@@ -730,3 +730,123 @@ test('imported categories delete their archived records, preserve other brackets
   assert.deepEqual(legacyDeleted.body.tournament.schedule, []);
   host.close();
 });
+
+test('bulk deletion validates the whole import, removes saved results and persists without deleting other events', async () => {
+  let host = await connect();
+  host.send(JSON.stringify({ type: 'role', role: 'host', accessToken: 'fixture-host-token' }));
+  let role = await waitFor(host, msg => msg.type === 'roleAccepted');
+  await waitFor(host, msg => msg.type === 'state');
+  const action = (action, details = {}) => {
+    host.messages.length = 0;
+    host.send(JSON.stringify({ type: 'host', action, ...details }));
+  };
+  const importRows = async (rows, metadata) => {
+    const preview = await upload(role.hostToken, rows, { metadata, preview: true });
+    assert.equal(preview.status, 200, JSON.stringify(preview.body));
+    const committed = await upload(role.hostToken, rows, { metadata, digest: preview.body.tournament.sourceDigest });
+    assert.equal(committed.status, 200, JSON.stringify(committed.body));
+    return committed.body;
+  };
+  await importRows([fixtureRow('KEEP-BULK', 'FINAL', 'Keep A', 'Keep B')], { ...event, eventName: 'Unrelated Bulk Event', autoAdvance: true });
+  action('loadBout', { boutNo: 1 });
+  const unrelatedLoaded = await waitFor(host, msg => msg.type === 'state' && msg.tournament.activeBoutNo === 1);
+  const unrelatedId = unrelatedLoaded.tournament.categoryId;
+  action('manualMatchDecision', { player: 'RED', decision: 'RSC' });
+  const unrelatedCompleted = await waitFor(host, msg => msg.type === 'state' && msg.tournament.schedule[0].status === 'COMPLETED');
+  const unrelatedCategory = unrelatedCompleted.manualCompetition.categories.find(item => item.id === unrelatedId);
+  const unrelatedHistory = unrelatedCompleted.matchHistory.filter(item => item.manualBout?.categoryId === unrelatedId);
+
+  const metadata = { ...event, eventName: 'Bulk Delete Event', autoAdvance: true };
+  const rows = [
+    fixtureRow('BULK-1', 'FINAL', 'Bulk A', 'Bulk B'),
+    fixtureRow('BULK-2', 'FINAL', 'Bulk C', 'Bulk D', 'FINWEIGHT'),
+    fixtureRow('BULK-3', 'FINAL', 'Bulk E', 'Bulk F', 'BANTAMWEIGHT')
+  ];
+  const imported = await importRows(rows, metadata);
+  let request = {
+    workbookId: imported.workbook.sourceDigest, categoryKeys: imported.workbook.categories.map(item => item.key),
+    completedBoutCount: 0, deleteRecords: true, confirmation: 'DELETE TOURNAMENT'
+  };
+  const deleteTournament = async (overrides = {}, token = role.hostToken) => {
+    const response = await fetch(`http://127.0.0.1:${port}/api/tournament/delete`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-SFTS-Host-Token': token },
+      body: JSON.stringify({ ...request, ...overrides })
+    });
+    return { status: response.status, body: await response.json() };
+  };
+  assert.equal((await deleteTournament({}, 'invalid-host-token')).status, 401);
+  assert.equal((await deleteTournament({ workbookId: 'old-file' })).status, 404);
+  assert.equal((await deleteTournament({ categoryKeys: request.categoryKeys.slice(0, 2) })).status, 409);
+  assert.equal((await deleteTournament({ categoryKeys: Array(3).fill(request.categoryKeys[0]) })).status, 409);
+  assert.equal((await deleteTournament({ confirmation: '' })).status, 400);
+  assert.equal((await deleteTournament({ deleteRecords: false })).status, 400);
+  action('loadBout', { boutNo: 1 });
+  const firstLoaded = await waitFor(host, msg => msg.type === 'state' && msg.tournament.activeBoutNo === 1 && msg.match.red.playerName === 'Bulk A');
+  assert.equal((await deleteTournament()).status, 409);
+  action('manualMatchDecision', { player: 'RED', decision: 'RSC' });
+  const firstCompleted = await waitFor(host, msg => msg.type === 'state' && msg.tournament.schedule[0].status === 'COMPLETED');
+  const firstCategory = firstCompleted.manualCompetition.categories.find(item => item.id === firstLoaded.tournament.categoryId);
+  action('saveManualCategoryPlacements', {
+    categoryId: firstCategory.id, finalize: true,
+    placements: Object.fromEntries(Object.entries(firstCategory.placements).map(([key, player]) => [key, player?.key || '']))
+  });
+  await waitFor(host, msg => msg.type === 'state' && msg.fixtureWorkbook.categories[0].status === 'FINALIZED');
+  const switchResponse = await fetch(`http://127.0.0.1:${port}/api/tournament/category`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-SFTS-Host-Token': role.hostToken },
+    body: JSON.stringify({ workbookId: request.workbookId, categoryKey: request.categoryKeys[1] })
+  });
+  assert.equal(switchResponse.status, 200);
+  action('loadBout', { boutNo: 1 });
+  const secondLoaded = await waitFor(host, msg => msg.type === 'state' && msg.tournament.activeBoutNo === 1 && msg.match.red.playerName === 'Bulk C');
+  action('manualMatchDecision', { player: 'BLUE', decision: 'RSC' });
+  const beforeDelete = await waitFor(host, msg => msg.type === 'state' && msg.tournament.schedule[0].status === 'COMPLETED');
+  assert.deepEqual(beforeDelete.fixtureWorkbook.categories.map(item => item.status), ['FINALIZED', 'COMPLETED', 'NOT STARTED']);
+  assert.equal((await deleteTournament()).status, 409, 'a stale saved-bout count must not delete any categories');
+  request.completedBoutCount = 2;
+  assert.equal((await deleteTournament({ confirmation: 'DELETE 2 BOUTS' })).status, 400);
+  const intact = await fetch(`http://127.0.0.1:${port}/api/tournament/category/${request.categoryKeys[0]}?workbookId=${request.workbookId}`, { headers: { 'X-SFTS-Host-Token': role.hostToken } });
+  const intactBody = await intact.json();
+  assert.equal(intactBody.workbook.categories.length, 3);
+  assert.equal(intactBody.workbook.categories.reduce((count, item) => count + item.completedBoutCount, 0), 2);
+  host.messages.length = 0;
+  const deleted = await deleteTournament();
+  assert.equal(deleted.status, 200, JSON.stringify(deleted.body));
+  assert.equal(deleted.body.deletedCategories, 3);
+  assert.equal(deleted.body.deletedManualRecords, 2);
+  assert.equal(deleted.body.deletedHistoryRecords, 2);
+  assert.equal(deleted.body.workbook, null);
+  assert.deepEqual(deleted.body.tournament.schedule, []);
+  const deletedIds = new Set([firstLoaded.tournament.categoryId, secondLoaded.tournament.categoryId]);
+  const afterDelete = await waitFor(host, msg => msg.type === 'state' && msg.fixtureWorkbook === null && msg.match.manualBout === null);
+  assert.equal(afterDelete.manualCompetition.categories.some(item => deletedIds.has(item.id)), false);
+  assert.equal(afterDelete.matchHistory.some(item => deletedIds.has(item.manualBout?.categoryId)), false);
+  assert.deepEqual(afterDelete.manualCompetition.categories.find(item => item.id === unrelatedId), unrelatedCategory);
+  assert.deepEqual(afterDelete.matchHistory.filter(item => item.manualBout?.categoryId === unrelatedId), unrelatedHistory);
+  assert.equal((await deleteTournament()).status, 404, 'a repeated request cannot delete another event');
+  await waitForSnapshot(snapshot => snapshot.importedWorkbook === null && snapshot.match.manualBout === null);
+  host.close();
+  await new Promise(resolve => { server.once('exit', resolve); server.kill(); });
+  await startFixtureServer();
+  host = await connect();
+  host.send(JSON.stringify({ type: 'role', role: 'host', accessToken: 'fixture-host-token' }));
+  role = await waitFor(host, msg => msg.type === 'roleAccepted');
+  const restored = await waitFor(host, msg => msg.type === 'state');
+  assert.equal(restored.fixtureWorkbook, null);
+  assert.deepEqual(restored.tournament.schedule, []);
+  assert.equal(restored.manualCompetition.categories.some(item => deletedIds.has(item.id)), false);
+  assert.equal(restored.matchHistory.some(item => deletedIds.has(item.manualBout?.categoryId)), false);
+  const archiveResponse = await fetch(`http://127.0.0.1:${port}/api/manual/categories?categoryId=${unrelatedId}`, { headers: { 'X-SFTS-Host-Token': role.hostToken } });
+  assert.equal((await archiveResponse.json()).records.length, 1);
+  const reimported = await importRows(rows, metadata);
+  assert.deepEqual(reimported.workbook.categories.map(item => item.completedBoutCount), [0, 0, 0]);
+  assert.equal((await deleteTournament({ completedBoutCount: 0 })).status, 200, 'unstarted categories still require and accept tournament confirmation');
+  const legacy = await upload(role.hostToken, rows.slice(0, 1), { metadata: { ...event, eventName: 'Legacy Bulk Delete' } });
+  assert.equal(legacy.status, 200);
+  request = { ...request, workbookId: legacy.body.tournament.sourceDigest, categoryKeys: ['single'], completedBoutCount: 0 };
+  assert.equal((await deleteTournament()).status, 200);
+  const empty = await fetch(`http://127.0.0.1:${port}/api/tournament/delete`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-SFTS-Host-Token': role.hostToken }, body: '{}'
+  });
+  assert.equal(empty.status, 404);
+  host.close();
+});

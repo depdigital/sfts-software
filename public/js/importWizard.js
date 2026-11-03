@@ -29,6 +29,8 @@ function renderImportCategorySelectors() {
   $('importCategoryPicker').classList.toggle('hidden', !entries.length || importWizardStep < 2);
   $('importDeleteCategoryButton').classList.toggle('hidden', !entries.length || Boolean(pendingImportReview && !pendingImportReview.existing));
   $('importDeleteCategoryButton').disabled = importSelectionLocked();
+  $('importDeleteAllCategoriesButton').classList.toggle('hidden', !entries.length || Boolean(pendingImportReview && !pendingImportReview.existing));
+  $('importDeleteAllCategoriesButton').disabled = importSelectionLocked();
   if (!entries.length) return;
   const selected = entries.find(item => item.key === selectedImportCategoryKey) || entries[0];
   selectedImportCategoryKey = selected.key;
@@ -140,6 +142,8 @@ function openImportedCategoryDelete() {
   const count = selected.completedBoutCount ?? category?.matchRecordIds?.length ?? 0;
   const confirmation = count ? `DELETE ${count} BOUT${count === 1 ? '' : 'S'}` : (selected.status === 'FINALIZED' || category?.status === 'FINALIZED') ? 'DELETE FINALIZED CATEGORY' : '';
   importedCategoryDeleteTarget = { workbookId: lastFixtureWorkbook?.sourceDigest || fixture.sourceDigest, categoryKey: selected.key, confirmation };
+  $('importDeleteCategoryTitle').textContent = 'DELETE IMPORTED CATEGORY?';
+  $('importConfirmDeleteCategoryButton').textContent = 'PERMANENTLY DELETE CATEGORY';
   $('importDeleteCategoryMessage').textContent = count
     ? `This will permanently delete this category, its bracket, all ${count} saved bout record${count === 1 ? '' : 's'} and their match-history entries. This cannot be undone.`
     : 'This will permanently remove this category and its bracket from Data Import. This cannot be undone.';
@@ -153,6 +157,31 @@ function openImportedCategoryDelete() {
   $('importDeleteCategoryModal').classList.remove('hidden');
   updateImportedCategoryDeleteConfirmation();
   if (confirmation) $('importDeleteConfirmation').focus?.();
+}
+
+function openImportedTournamentDelete() {
+  if (importSelectionLocked()) { importWizardError('Finish or reset the current match before deleting all categories.'); return; }
+  if ((pendingImportReview && !pendingImportReview.existing) || !hostToken || !lastTournament?.event) return;
+  const entries = lastFixtureWorkbook?.categories || importCategoryEntries();
+  if (!entries.length) return;
+  const completedBoutCount = entries.reduce((count, entry) => count + (entry.completedBoutCount ??
+    lastManualCompetition.categories.find(category => category.id === entry.categoryId)?.matchRecordIds?.length ?? 0), 0);
+  importedCategoryDeleteTarget = {
+    workbookId: lastFixtureWorkbook?.sourceDigest || lastTournament.sourceDigest,
+    categoryKeys: entries.map(entry => entry.key), completedBoutCount, confirmation: 'DELETE TOURNAMENT'
+  };
+  $('importDeleteCategoryTitle').textContent = 'DELETE ALL IMPORTED CATEGORIES?';
+  $('importConfirmDeleteCategoryButton').textContent = 'PERMANENTLY DELETE ALL CATEGORIES';
+  $('importDeleteCategorySummary').textContent = `${lastTournament.event.eventName} · ${lastTournament.event.eventDate} · ${lastTournament.event.competition} · ${entries.length} ${entries.length === 1 ? 'category' : 'categories'} · ${completedBoutCount} saved ${completedBoutCount === 1 ? 'bout' : 'bouts'}`;
+  $('importDeleteCategoryMessage').textContent = 'This will permanently delete every category in the current imported file, including all brackets, placements, saved bout records and related match-history entries. Only categories listed in this imported file are included. The source Excel/USB file is unchanged. This cannot be undone.';
+  $('importDeleteConfirmationField').classList.remove('hidden');
+  $('importDeleteConfirmationLabel').textContent = 'TYPE DELETE TOURNAMENT TO CONFIRM';
+  $('importDeleteConfirmation').value = '';
+  $('importDeleteCategoryError').textContent = '';
+  $('importDeleteCategoryError').classList.add('hidden');
+  $('importDeleteCategoryModal').classList.remove('hidden');
+  updateImportedCategoryDeleteConfirmation();
+  $('importDeleteConfirmation').focus?.();
 }
 
 function closeImportedCategoryDelete() {
@@ -178,12 +207,12 @@ async function confirmImportedCategoryDelete() {
   updateImportedCategoryDeleteConfirmation();
   renderImportWizard();
   try {
-    const response = await fetch('/api/tournament/category/delete', {
+    const response = await fetch(target.categoryKeys ? '/api/tournament/delete' : '/api/tournament/category/delete', {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-SFTS-Host-Token': hostToken },
       body: JSON.stringify({ ...target, deleteRecords: Boolean(target.confirmation) })
     });
     const result = await response.json();
-    if (!response.ok || !result.ok) throw new Error(result.message || 'COULD NOT DELETE CATEGORY');
+    if (!response.ok || !result.ok) throw new Error(result.message || 'COULD NOT DELETE IMPORTED CATEGORIES');
     lastTournament = result.tournament;
     lastFixtureWorkbook = result.workbook || null;
     pendingImportReview = null;

@@ -2494,6 +2494,50 @@ app.post('/api/tournament/category/delete', requireHostRequest, express.json({ l
   res.json({ ok: true, tournament: deep(tournament), workbook: fixtureWorkbookState(), message: 'CATEGORY AND ITS SAVED MATCHES DELETED' });
 });
 
+app.post('/api/tournament/delete', requireHostRequest, express.json({ limit: '16kb', inflate: false }), (req, res) => {
+  if (tournamentMatchIsBusy() || practiceMatchIsBusy()) return res.status(409).json({ ok: false, message: 'Finish or reset the current match before deleting all categories.' });
+  const categories = importedWorkbook && importedWorkbook.sourceDigest === req.body?.workbookId
+    ? importedWorkbook.categories
+    : !importedWorkbook && tournament.event && tournament.sourceDigest === req.body?.workbookId ? [{ key: 'single', fixture: tournament }] : null;
+  if (!categories?.length) return res.status(404).json({ ok: false, message: 'This tournament file is no longer available. Reopen Data Import.' });
+
+  // Validate the complete reviewed selection before changing any fixtures or records.
+  const reviewedKeys = req.body?.categoryKeys;
+  if (!Array.isArray(reviewedKeys) || reviewedKeys.length !== categories.length || new Set(reviewedKeys).size !== categories.length || categories.some(item => !reviewedKeys.includes(item.key))) {
+    return res.status(409).json({ ok: false, message: 'The imported categories changed. Reopen the deletion dialog and review them again.' });
+  }
+  const categoryIds = new Set(categories.map(item => item.fixture.categoryId).filter(Boolean));
+  const archivedCategories = manualCompetition.categories.filter(category => categoryIds.has(category.id));
+  if (archivedCategories.length !== categoryIds.size) return res.status(409).json({ ok: false, message: 'Saved category data changed. Review the tournament before deleting it.' });
+  if (categoryIds.has(match.manualBout?.categoryId) && match.phase !== 'MATCH_END') {
+    return res.status(409).json({ ok: false, message: 'Finish or reset the loaded match before deleting all categories.' });
+  }
+  const completedBoutCount = archivedCategories.reduce((count, category) => count + manualCategoryCompletedRecordIds(category).size, 0);
+  if (req.body?.completedBoutCount !== completedBoutCount) return res.status(409).json({ ok: false, message: 'Saved bout counts changed. Reopen the deletion dialog and review them again.' });
+  if (req.body?.deleteRecords !== true || String(req.body?.confirmation || '').trim().toUpperCase() !== 'DELETE TOURNAMENT') {
+    return res.status(400).json({ ok: false, message: 'Type DELETE TOURNAMENT to permanently delete all categories in the current imported file and their saved matches.' });
+  }
+
+  const manualRecordCountBefore = manualMatchRecords.length;
+  const historyCountBefore = matchHistory.length;
+  manualMatchRecords = manualMatchRecords.filter(record => !categoryIds.has(record.manualBout?.categoryId));
+  matchHistory = matchHistory.filter(record => !categoryIds.has(record.manualBout?.categoryId));
+  manualCompetition.categories = manualCompetition.categories.filter(category => !categoryIds.has(category.id));
+  if (categoryIds.has(manualCompetition.activeCategoryId)) manualCompetition.activeCategoryId = null;
+  importedWorkbook = null;
+  tournament = makeTournament();
+  persistManualArchive();
+  if (categoryIds.has(match.manualBout?.categoryId)) newMatch({ clearPlayers: true });
+  else state(true);
+  res.json({
+    ok: true, tournament: deep(tournament), workbook: null,
+    deletedCategories: categories.length,
+    deletedManualRecords: manualRecordCountBefore - manualMatchRecords.length,
+    deletedHistoryRecords: historyCountBefore - matchHistory.length,
+    message: 'ALL CATEGORIES AND THEIR SAVED MATCHES DELETED'
+  });
+});
+
 app.get('/api/tournament/schedule.xlsx', requireHostRequest, async (req, res, next) => {
   try {
   const output = Buffer.from(await scheduleWorkbook());
