@@ -275,8 +275,13 @@
     <section id="settingsModal" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
       <div class="modalCard settingsCard">
         <h2 id="settingsTitle">SETTINGS</h2>
-        <section class="settingsGroup" aria-labelledby="settingsMatchTitle">
-          <h3 id="settingsMatchTitle">MATCH CONTROLS</h3>
+        <div id="settingsHome" class="settingsActions settingsHome">
+          <button id="settingsMatchButton" onclick="openSettingsSection('match')" aria-controls="settingsMatch">MATCH CONTROLS</button>
+          <button id="settingsSetupButton" onclick="openSettingsSection('setup')" aria-controls="settingsSetup">SETUP</button>
+          <button id="settingsRecordsButton" onclick="openSettingsSection('records')" aria-controls="settingsRecords">RECORDS</button>
+          <button id="settingsPowerButton" onclick="openSettingsSection('power')" aria-controls="settingsPower">POWER</button>
+        </div>
+        <section id="settingsMatch" class="settingsGroup hidden" aria-labelledby="settingsTitle">
           <div class="settingsActions">
             <button onclick="openTimerEditor()">EDIT TIMER</button>
             <button onclick="openMatchDecision()">MATCH DECISION</button>
@@ -284,29 +289,29 @@
             <button onclick="resetCurrentMatch()">RESET CURRENT MATCH</button>
           </div>
         </section>
-        <section class="settingsGroup" aria-labelledby="settingsSetupTitle">
-          <h3 id="settingsSetupTitle">SETUP</h3>
+        <section id="settingsSetup" class="settingsGroup hidden" aria-labelledby="settingsTitle">
           <div class="settingsActions">
             <button onclick="openArenaNumber()">ARENA NUMBER</button>
             <button onclick="openRules()">RULES</button>
             <button onclick="openTestMode()">REMOTE SETTINGS</button>
           </div>
         </section>
-        <section class="settingsGroup" aria-labelledby="settingsRecordsTitle">
-          <h3 id="settingsRecordsTitle">RECORDS</h3>
+        <section id="settingsRecords" class="settingsGroup hidden" aria-labelledby="settingsTitle">
           <div class="settingsActions">
             <button onclick="openHistory()">MATCH HISTORY</button>
             <button onclick="openCornerRefereeHistory()">CORNER REFEREE HISTORY</button>
           </div>
         </section>
-        <section class="settingsGroup settingsPowerGroup" aria-labelledby="settingsPowerTitle">
-          <h3 id="settingsPowerTitle">POWER</h3>
+        <section id="settingsPower" class="settingsGroup hidden" aria-labelledby="settingsTitle">
           <div class="settingsActions">
             <button class="powerActionButton rebootButton" onclick="openPowerAction('reboot')">REBOOT</button>
             <button class="powerActionButton shutdownButton" onclick="openPowerAction('shutdown')">SHUTDOWN</button>
           </div>
         </section>
-        <button class="settingsClose" onclick="closeSettings()">CLOSE</button>
+        <div class="settingsFooter">
+          <button id="settingsBack" class="hidden" onclick="openSettingsSection()">BACK</button>
+          <button onclick="closeSettings()">CLOSE</button>
+        </div>
       </div>
     </section>
 

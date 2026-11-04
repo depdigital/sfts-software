@@ -55,6 +55,7 @@ let userPermissionResolver = null;
 let userPermissionInputMode = false;
 let cornerEditPlayer = "";
 let launchBrandingTimers = [];
+let settingsSection = "";
 let winnerSlideTimer = null;
 let winnerSlideMatchKey = "";
 const WINNER_SLIDE_DELAY_MS = 8000;
@@ -1069,7 +1070,29 @@ async function saveAdvancedScoreCorrection() {
 }
 
 function openSettings() {
+  openSettingsSection();
   $("settingsModal").classList.remove("hidden");
+  $("settingsMatchButton").focus();
+}
+function openSettingsSection(section = "") {
+  const sections = {
+    match: { id: "settingsMatch", title: "MATCH CONTROLS", button: "settingsMatchButton" },
+    setup: { id: "settingsSetup", title: "SETUP", button: "settingsSetupButton" },
+    records: { id: "settingsRecords", title: "RECORDS", button: "settingsRecordsButton" },
+    power: { id: "settingsPower", title: "POWER", button: "settingsPowerButton" },
+  };
+  if (section && !Object.hasOwn(sections, section)) return;
+  const previous = sections[settingsSection];
+  const selected = sections[section];
+  settingsSection = section;
+  $("settingsHome").classList.toggle("hidden", Boolean(selected));
+  for (const group of Object.values(sections)) {
+    $(group.id).classList.toggle("hidden", group !== selected);
+  }
+  $("settingsTitle").textContent = selected?.title || "SETTINGS";
+  $("settingsBack").classList.toggle("hidden", !selected);
+  if (selected) $(selected.id).querySelector("button")?.focus();
+  else $(previous?.button || "settingsMatchButton").focus();
 }
 function closeSettings() {
   $("settingsModal").classList.add("hidden");
@@ -3452,6 +3475,7 @@ window.closeAdvancedCorrections = closeAdvancedCorrections;
 window.renderAdvancedCorrectionCurrent = renderAdvancedCorrectionCurrent;
 window.saveAdvancedScoreCorrection = saveAdvancedScoreCorrection;
 window.openSettings = openSettings;
+window.openSettingsSection = openSettingsSection;
 window.closeSettings = closeSettings;
 window.resolveUserPermission = resolveUserPermission;
 window.openMatchDecision = openMatchDecision;

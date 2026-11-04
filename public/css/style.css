@@ -1058,20 +1058,10 @@ button {
   opacity: 0.42;
 }
 .modalCard.settingsCard {
-  width: min(720px, 92vw);
+  width: min(600px, 92vw);
 }
 .settingsCard > h2 {
   margin-bottom: 20px;
-}
-.settingsGroup + .settingsGroup {
-  margin-top: 16px;
-}
-.settingsGroup h3 {
-  margin: 0 0 8px;
-  color: #aab4c8;
-  font-size: 12px;
-  letter-spacing: 0.1em;
-  text-align: left;
 }
 .settingsActions {
   display: grid;
@@ -1085,12 +1075,19 @@ button {
   font-size: 14px;
   line-height: 1.3;
 }
-.settingsPowerGroup {
-  padding-top: 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.16);
+.settingsCard .settingsHome button {
+  min-height: 76px;
+  font-size: 16px;
 }
-.settingsCard > .settingsClose {
-  margin: 18px 0 0;
+.settingsFooter {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+.settingsCard .settingsFooter button {
+  flex: 1;
+  min-height: 46px;
+  margin: 0;
 }
 @media (max-width: 520px) {
   .modalCard.settingsCard {
