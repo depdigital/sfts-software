@@ -106,6 +106,14 @@
     <keybind key="C-p" />
     <keybind key="C-s" />
     <keybind key="C-r" />
+    <keybind key="C-S-r" />
+    <keybind key="C-F5" />
+    <keybind key="F5" />
+    <keybind key="XF86Back" />
+    <keybind key="XF86Forward" />
+    <keybind key="XF86HomePage" />
+    <keybind key="XF86WWW" />
+    <keybind key="XF86Search" />
     <keybind key="C-b" />
     <keybind key="C-space" />
     <keybind key="C-S-b" />

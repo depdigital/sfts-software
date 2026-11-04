@@ -146,6 +146,16 @@ server.maxConnections = 64;
 app.disable('x-powered-by');
 app.set('query parser', 'simple');
 app.use(networkGuard.httpMiddleware);
+// Only public extension artifacts are served. The per-device signing key stays
+// outside this directory and only the Pi's loopback browser can fetch updates.
+app.use('/kiosk-guard', (req, res, next) => {
+  if (!KIOSK_MODE || !isLoopback(req.socket.remoteAddress || '') || !['/update.xml', '/guard.crx'].includes(req.path)) {
+    return res.status(404).end();
+  }
+  res.set('Cache-Control', 'no-store');
+  if (req.path === '/guard.crx') res.type('application/x-chrome-extension');
+  next();
+}, express.static(process.env.SFTS_KIOSK_GUARD_DIR || '/etc/sfts/sfts-scoreboard-kiosk/guard', { index: false, fallthrough: false, etag: false, lastModified: false }));
 const publicDir = path.join(PROJECT_ROOT, 'public');
 const samplesDir = path.join(PROJECT_ROOT, 'samples');
 const tts = createTts();

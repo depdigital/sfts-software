@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "SFTS Kiosk Guard",
+  "version": "1.0.0",
+  "description": "Keeps the dedicated scoreboard browser on its local dashboard and recovers browser error pages.",
+  "permissions": ["tabs", "webNavigation", "alarms"],
+  "background": { "service_worker": "background.js", "type": "module" }
+}

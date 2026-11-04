@@ -72,6 +72,11 @@ async function assign(ws, role, corner, accessToken = 'test-host-token') {
 
 before(async () => {
   await mkdir(testDataDir, { recursive: true });
+  const kioskGuardDir = path.join(testDataDir, 'kiosk-guard');
+  await mkdir(kioskGuardDir);
+  await writeFile(path.join(kioskGuardDir, 'guard.crx'), 'test-public-crx-package');
+  await writeFile(path.join(kioskGuardDir, 'update.xml'), '<gupdate protocol="2.0"/>');
+  await writeFile(path.join(kioskGuardDir, 'signing.pem'), 'must-not-be-served');
   const legacyDrawRules = await readRulesFile(path.join(projectRoot, 'config', 'rules.default.json'));
   legacyDrawRules.decisions.roundTie = { type: 'DRAW' };
   const testRulesPath = path.join(testDataDir, 'backend-test-rules.json');
@@ -88,6 +93,7 @@ before(async () => {
       SFTS_KYESHI_LIMIT_MS: '1000',
       SFTS_HOST_TOKEN: 'test-host-token',
       SFTS_KIOSK_MODE: 'true',
+      SFTS_KIOSK_GUARD_DIR: kioskGuardDir,
       SFTS_AUTH_TIMEOUT_MS: '700',
       SFTS_USB_IMPORT_ONLY: 'false'
     },
@@ -1405,6 +1411,22 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
 
   const info = await fetch(`http://127.0.0.1:${port}/api/info`);
   assert.equal(info.status, 404);
+});
+
+test('kiosk extension updates serve only public packages and metadata to the local browser', async () => {
+  const base = `http://127.0.0.1:${port}/kiosk-guard`;
+  const metadata = await fetch(`${base}/update.xml`);
+  assert.equal(metadata.status, 200);
+  assert.equal(await metadata.text(), '<gupdate protocol="2.0"/>');
+  assert.equal(metadata.headers.get('cache-control'), 'no-store');
+  const crx = await fetch(`${base}/guard.crx`);
+  assert.equal(crx.status, 200);
+  assert.equal(crx.headers.get('content-type'), 'application/x-chrome-extension');
+  assert.equal(await crx.text(), 'test-public-crx-package');
+  for (const file of ['signing.pem', 'build.json', '', '../kiosk-guard-signing.pem']) {
+    assert.equal((await fetch(`${base}/${file}`)).status, 404, file);
+  }
+  assert.equal((await fetch(`${base}/guard.crx`, { headers: { Origin: 'https://example.invalid' } })).status, 403);
 });
 
 test('restart stack refreshes missing production dependencies before restarting services', async () => {

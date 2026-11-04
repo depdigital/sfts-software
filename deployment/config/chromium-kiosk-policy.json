@@ -24,6 +24,12 @@
   "ExtensionInstallBlocklist": [
     "*"
   ],
+  "ExtensionInstallAllowlist": [
+    "@GUARD_ID@"
+  ],
+  "ExtensionInstallForcelist": [
+    "@GUARD_ID@;http://127.0.0.1:@PORT@/kiosk-guard/update.xml"
+  ],
   "BackgroundModeEnabled": false,
   "DefaultBrowserSettingEnabled": false,
   "TranslateEnabled": false,

@@ -12,6 +12,7 @@ PROFILE_DIR="${HOME}/.config/sfts-scoreboard-kiosk"
 LOCK_DIR="${XDG_RUNTIME_DIR:-${HOME}/.cache}/sfts-scoreboard-kiosk"
 BACKGROUND_PID=""
 AUDIO_VOLUME="0.95"
+GUARD_DIR="/etc/sfts/sfts-scoreboard-kiosk/guard"
 
 log() {
   printf '[sfts-kiosk] %s\n' "$*" >&2
@@ -128,6 +129,11 @@ if ! command -v curl >/dev/null 2>&1; then
   exit 1
 fi
 
+if [[ ! -r "${GUARD_DIR}/guard.crx" || ! -r "${GUARD_DIR}/update.xml" ]]; then
+  log "Kiosk guard is missing; run deployment/scripts/restart-stack.sh to install it"
+  exit 1
+fi
+
 wait_for_server() {
   until curl --fail --silent --max-time 3 "${KIOSK_URL}" >/dev/null; do
     sleep 2
@@ -142,9 +148,8 @@ readonly -a BROWSER_ARGS=(
   --no-default-browser-check
   --disable-session-crashed-bubble
   --disable-background-mode
-  --disable-background-networking
+  --disable-component-update
   --disable-default-apps
-  --disable-extensions
   --disable-pinch
   --disable-sync
   --disable-translate

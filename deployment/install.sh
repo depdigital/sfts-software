@@ -106,6 +106,7 @@ KIOSK_RC_TEMPLATE="${PROJECT_DIR}/deployment/config/labwc-kiosk-rc.xml"
 [[ -f "${PIPER_SERVICE_TEMPLATE}" ]] || die "Piper systemd service template is missing"
 [[ -f "${ENV_TEMPLATE}" ]] || die "environment template is missing"
 [[ -f "${KIOSK_SCRIPT}" ]] || die "kiosk launcher is missing"
+[[ -f "${PROJECT_DIR}/deployment/scripts/install-kiosk-guard.sh" ]] || die "kiosk guard installer is missing"
 [[ -f "${CHROMIUM_POLICY_TEMPLATE}" ]] || die "Chromium kiosk policy template is missing"
 [[ -f "${KIOSK_RC_TEMPLATE}" ]] || die "kiosk Labwc configuration is missing"
 [[ -f "${POLKIT_TEMPLATE}" ]] || die "polkit power-permission template is missing"
@@ -348,6 +349,7 @@ configure_desktop_kiosk() {
   local configured_port
   local kiosk_port
   local chromium_policy_dir
+  local guard_id
 
   service_user_home="$(getent passwd "${SERVICE_USER}" | cut -d: -f6)"
   [[ -n "${service_user_home}" && -d "${service_user_home}" ]] || die "could not determine ${SERVICE_USER}'s home directory"
@@ -427,8 +429,11 @@ configure_desktop_kiosk() {
   install -d -m 0755 -o root -g root "${kiosk_config_root}" "${kiosk_labwc_dir}"
   install -m 0644 -o root -g root "${KIOSK_RC_TEMPLATE}" "${kiosk_labwc_dir}/rc.xml"
 
+  guard_id="$(bash "${PROJECT_DIR}/deployment/scripts/install-kiosk-guard.sh" "${kiosk_port}")"
+  [[ "${guard_id}" =~ ^[a-p]{32}$ ]] || die "invalid kiosk guard extension ID"
+
   CHROMIUM_POLICY_TMP="$(mktemp)"
-  sed "s|@PORT@|${kiosk_port}|g" "${CHROMIUM_POLICY_TEMPLATE}" > "${CHROMIUM_POLICY_TMP}"
+  sed -e "s|@PORT@|${kiosk_port}|g" -e "s|@GUARD_ID@|${guard_id}|g" "${CHROMIUM_POLICY_TEMPLATE}" > "${CHROMIUM_POLICY_TMP}"
   for chromium_policy_dir in /etc/chromium/policies/managed /etc/chromium-browser/policies/managed; do
     install -d -m 0755 -o root -g root "${chromium_policy_dir}"
     install -m 0644 -o root -g root "${CHROMIUM_POLICY_TMP}" "${chromium_policy_dir}/sfts-scoreboard-kiosk.json"
