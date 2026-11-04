@@ -55,6 +55,9 @@ let userPermissionResolver = null;
 let userPermissionInputMode = false;
 let cornerEditPlayer = "";
 let launchBrandingTimers = [];
+let winnerSlideTimer = null;
+let winnerSlideMatchKey = "";
+const WINNER_SLIDE_DELAY_MS = 8000;
 const REMOTE_SCORE_TRANSITION_MS = 300;
 const LAUNCH_TITLE_SEQUENCE_MS = 6200;
 const LAUNCH_LOGO_SEQUENCE_MS = 6000;
@@ -231,7 +234,7 @@ function connectSocket() {
       beep(520, 0.35, "square", 0.18);
     }
     if (msg.type === "matchEnd") {
-      if (msg.winner) showWinnerSlide(msg.winner, msg.match);
+      if (msg.winner) scheduleWinnerSlide(msg.winner, msg.match);
       else toast("MATCH TIED — RESOLVE IT IN THE SCHEDULE");
     }
     if (msg.type === "matchEnd" && msg.match?.manualBout?.categoryId)
@@ -373,6 +376,7 @@ document.addEventListener("keydown", (event) => {
     target.isContentEditable
   ) return;
   event.preventDefault();
+  if (lastState?.phase === "BREAK" && event.code !== "KeyS") return;
   if (event.code === "Space") playPause();
   if (event.code === "KeyR") manualGam("RED");
   if (event.code === "KeyB") manualGam("BLUE");
@@ -504,6 +508,7 @@ function renderState(match) {
             ? "GOLDEN ROUND"
             : `ROUND ${match.round}`;
   $("playBtn").textContent = match.running ? "❚❚ PAUSE" : "▶ PLAY";
+  $("playBtn").disabled = match.phase !== "ROUND";
   renderKyeShi(match.kyeShi, match);
   renderKyeShiWinnerButtons(match);
   renderTieDecision(match);
@@ -520,6 +525,7 @@ function renderState(match) {
     })
     .join("   ");
 
+  $("breakTimeText").classList.toggle("hidden", match.phase !== "BREAK");
   if (match.phase === "BREAK") {
     $("breakTimeText").textContent =
       `BREAK ${formatTime(match.timerMs, false)}`;
@@ -532,6 +538,10 @@ function renderState(match) {
   }
 
   if (match.phase !== "MATCH_END") {
+    cancelPendingWinnerSlide();
+    $("winnerSlide").classList.add("hidden");
+  } else if (winnerSlideMatchKey && winnerSlideMatchKey !== winnerPresentationKey(match.matchWinner, match)) {
+    cancelPendingWinnerSlide();
     $("winnerSlide").classList.add("hidden");
   }
 }
@@ -703,6 +713,7 @@ function nameChange(player, value) {
   send({ type: "host", action: "name", player, name: value });
 }
 function playPause() {
+  if (lastState?.phase !== "ROUND") return;
   send({ type: "host", action: "playPause" });
 }
 function resetRoundTimer() {
@@ -3119,7 +3130,35 @@ function showWinnerSlide(winner, match) {
   $("winnerSlide").classList.remove("redWinner", "blueWinner", "hidden");
   $("winnerSlide").classList.add(winner === "RED" ? "redWinner" : "blueWinner");
 }
+function winnerPresentationKey(winner, match) {
+  return JSON.stringify([match.mode, match.matchNo, match.startedAt, match.manualBout?.categoryId,
+    match.manualBout?.officialBoutNo, match.manualBout?.loadedAt, winner, match.matchReason]);
+}
+function cancelPendingWinnerSlide() {
+  if (winnerSlideTimer !== null) clearTimeout(winnerSlideTimer);
+  winnerSlideTimer = null;
+  winnerSlideMatchKey = "";
+}
+function scheduleWinnerSlide(winner, match) {
+  if (!winner || !match) return;
+  const key = winnerPresentationKey(winner, match);
+  if (winnerSlideMatchKey === key) return;
+  cancelPendingWinnerSlide();
+  winnerSlideMatchKey = key;
+  $("winnerSlide").classList.add("hidden");
+  showRoundSummary({ round: match.round, winner: null, reason: match.matchReason, red: match.red, blue: match.blue });
+  $("roundTitle").textContent = "FINAL SCORECARD";
+  $("breakTimeText").classList.add("hidden");
+  winnerSlideTimer = setTimeout(() => {
+    winnerSlideTimer = null;
+    if (winnerSlideMatchKey !== key || lastState?.phase !== "MATCH_END" ||
+        winnerPresentationKey(lastState.matchWinner, lastState) !== key) return;
+    $("roundOverlay").classList.add("hidden");
+    showWinnerSlide(winner, match);
+  }, WINNER_SLIDE_DELAY_MS);
+}
 function startNewMatch() {
+  cancelPendingWinnerSlide();
   if (lastTournament?.progressionMode === "OPENING_FIXTURE" && lastState?.manualBout?.importedBoutNo) {
     $("winnerSlide").classList.add("hidden");
     $("roundOverlay").classList.add("hidden");

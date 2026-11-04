@@ -4528,7 +4528,9 @@ wss.on('connection', (ws, request) => {
         return;
       }
 
-      if (msg.action === 'playPause' && (match.phase === 'ROUND' || match.phase === 'BREAK')) {
+      // Breaks run to completion; keyboard/default-button activation must not
+      // pause them, including commands from clients with an older dashboard.
+      if (msg.action === 'playPause' && match.phase === 'ROUND') {
         setRunning(!match.running);
       }
       if (msg.action === 'setTime') {

@@ -593,8 +593,13 @@ test('WebSocket roles, majority scoring, timer expiry, and phase guards work', a
   assert.equal(rejected.code, 'ROUND_NOT_ACTIVE');
 
   host.send(JSON.stringify({ type: 'host', action: 'playPause' }));
-  const pausedBreak = await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'BREAK' && !message.match.running);
-  assert.equal(pausedBreak.match.red.score, breakState.match.red.score);
+  // The timer-edit response is a barrier after playPause, so a queued state
+  // from break startup cannot make this regression pass accidentally.
+  host.send(JSON.stringify({ type: 'host', action: 'setTime', ms: 1001 }));
+  const uninterruptedBreak = await waitForMessage(host, message => message.type === 'state' && message.match.phase === 'BREAK' && message.match.configuredRoundMs === 1001);
+  assert.equal(uninterruptedBreak.match.running, true);
+  assert.equal(uninterruptedBreak.match.red.score, breakState.match.red.score);
+  assert.ok(uninterruptedBreak.match.timerMs <= breakState.match.timerMs);
 
   host.send(JSON.stringify({ type: 'host', action: 'resetMatch' }));
   const resetState = await waitForMessage(host, message => (

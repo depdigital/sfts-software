@@ -54,6 +54,7 @@ async function wizard() {
     renderTournament() {}, closeMatchDecision() {},
     openDataImport: () => openings.push('import'),
     winnerReasonDescription: reason => reason,
+    winnerSlideTimer: null, winnerSlideMatchKey: '', clearTimeout() {},
     fetch: async (url, options) => {
       requests.push({ url, options });
       return { ok: true, json: async () => ({ ok: true, tournament: JSON.parse(JSON.stringify(fixture)) }) };
