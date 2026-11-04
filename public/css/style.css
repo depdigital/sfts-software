@@ -1057,6 +1057,49 @@ button {
   cursor: not-allowed;
   opacity: 0.42;
 }
+.modalCard.settingsCard {
+  width: min(720px, 92vw);
+}
+.settingsCard > h2 {
+  margin-bottom: 20px;
+}
+.settingsGroup + .settingsGroup {
+  margin-top: 16px;
+}
+.settingsGroup h3 {
+  margin: 0 0 8px;
+  color: #aab4c8;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-align: left;
+}
+.settingsActions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.settingsCard .settingsActions button {
+  min-height: 46px;
+  margin: 0;
+  padding: 12px;
+  font-size: 14px;
+  line-height: 1.3;
+}
+.settingsPowerGroup {
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
+}
+.settingsCard > .settingsClose {
+  margin: 18px 0 0;
+}
+@media (max-width: 520px) {
+  .modalCard.settingsCard {
+    padding: 18px;
+  }
+  .settingsActions {
+    grid-template-columns: 1fr;
+  }
+}
 .cornerEditModal p {
   color: #c8d2e4;
   font-weight: 800;

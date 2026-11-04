@@ -272,21 +272,41 @@
       </section>
     </section>
 
-    <section id="settingsModal" class="overlay hidden">
-      <div class="modalCard">
-        <h2>SETTINGS</h2>
-        <button onclick="resetCurrentMatch()">RESET CURRENT MATCH</button>
-        <button onclick="openTimerEditor()">EDIT TIMER</button>
-        <button onclick="openArenaNumber()">ARENA NUMBER</button>
-        <button onclick="openHistory()">MATCH HISTORY</button>
-        <button onclick="openCornerRefereeHistory()">CORNER REFEREE HISTORY</button>
-        <button onclick="openAdvancedCorrections()">ADVANCED CORRECTIONS</button>
-        <button onclick="openMatchDecision()">MATCH DECISION</button>
-        <button onclick="openTestMode()">REMOTE SETTINGS</button>
-        <button onclick="openRules()">RULES</button>
-        <button class="powerActionButton rebootButton" onclick="openPowerAction('reboot')">REBOOT</button>
-        <button class="powerActionButton shutdownButton" onclick="openPowerAction('shutdown')">SHUTDOWN</button>
-        <button onclick="closeSettings()">CLOSE</button>
+    <section id="settingsModal" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+      <div class="modalCard settingsCard">
+        <h2 id="settingsTitle">SETTINGS</h2>
+        <section class="settingsGroup" aria-labelledby="settingsMatchTitle">
+          <h3 id="settingsMatchTitle">MATCH CONTROLS</h3>
+          <div class="settingsActions">
+            <button onclick="openTimerEditor()">EDIT TIMER</button>
+            <button onclick="openMatchDecision()">MATCH DECISION</button>
+            <button onclick="openAdvancedCorrections()">ADVANCED CORRECTIONS</button>
+            <button onclick="resetCurrentMatch()">RESET CURRENT MATCH</button>
+          </div>
+        </section>
+        <section class="settingsGroup" aria-labelledby="settingsSetupTitle">
+          <h3 id="settingsSetupTitle">SETUP</h3>
+          <div class="settingsActions">
+            <button onclick="openArenaNumber()">ARENA NUMBER</button>
+            <button onclick="openRules()">RULES</button>
+            <button onclick="openTestMode()">REMOTE SETTINGS</button>
+          </div>
+        </section>
+        <section class="settingsGroup" aria-labelledby="settingsRecordsTitle">
+          <h3 id="settingsRecordsTitle">RECORDS</h3>
+          <div class="settingsActions">
+            <button onclick="openHistory()">MATCH HISTORY</button>
+            <button onclick="openCornerRefereeHistory()">CORNER REFEREE HISTORY</button>
+          </div>
+        </section>
+        <section class="settingsGroup settingsPowerGroup" aria-labelledby="settingsPowerTitle">
+          <h3 id="settingsPowerTitle">POWER</h3>
+          <div class="settingsActions">
+            <button class="powerActionButton rebootButton" onclick="openPowerAction('reboot')">REBOOT</button>
+            <button class="powerActionButton shutdownButton" onclick="openPowerAction('shutdown')">SHUTDOWN</button>
+          </div>
+        </section>
+        <button class="settingsClose" onclick="closeSettings()">CLOSE</button>
       </div>
     </section>
 
