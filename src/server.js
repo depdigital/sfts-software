@@ -2013,15 +2013,17 @@ function importedFixtureRestPlayers(fixture, bout) {
   return playersNeedingRest(bout, latest);
 }
 
-function loadTournamentBout(bout) {
+function loadTournamentBout(bout, { overrideRest = false } = {}) {
   if (tournament.format === 'IMPORTED_MATCHES') {
+    let overriddenRestPlayers = [];
     if (tournament.recoveryError) return { ok: false, code: 'FIXTURE_RECOVERY_REVIEW', message: tournament.recoveryError };
     if (tournamentMatchIsBusy() || practiceMatchIsBusy()) return { ok: false, code: 'MATCH_BUSY', message: 'Finish or reset the current match before loading an imported bout' };
     if (importedWorkbook?.schedulePolicy) {
       const next = nextScheduledWorkbookBout(importedWorkbook);
       if (!next || next.fixture !== tournament || next.bout !== bout) return { ok: false, code: 'BOUT_OUT_OF_ORDER', message: 'Load the next match in the selected category' };
       const resting = importedFixtureRestPlayers(tournament, bout);
-      if (resting.length) return { ok: false, code: 'PLAYER_REST_REQUIRED', message: `Rest required for ${resting.join(' and ')}. Manually select another category, complete at least one match, then return to this category` };
+      if (resting.length && overrideRest !== true) return { ok: false, code: 'PLAYER_REST_REQUIRED', message: `Rest required for ${resting.join(' and ')}. Manually select another category, complete at least one match, then return to this category` };
+      if (overrideRest === true) overriddenRestPlayers = resting;
     }
     if (isAutomaticFixture(tournament) && nextFixtureBout(tournament)?.boutNo !== bout.boutNo) return { ok: false, code: 'BOUT_OUT_OF_ORDER', message: 'Load the next available match in this category' };
     if (bout.status !== 'SCHEDULED') return { ok: false, code: 'BOUT_UNAVAILABLE', message: 'This bout is already completed' };
@@ -2037,6 +2039,13 @@ function loadTournamentBout(bout) {
     if (!saved.ok) { match = previous; return saved; }
     tournament.categoryId = saved.categoryId;
     match.manualBout.importedBoutNo = bout.boutNo;
+    if (overriddenRestPlayers.length) {
+      recordOperatorAction('REST OVERRIDE', null, 'REST REQUIRED', 'OVERRIDDEN', {
+        type: 'REST_OVERRIDE', workbookId: importedWorkbook.sourceDigest,
+        categoryKey: importedWorkbook.selectedKey, matchOrder: bout.matchOrder,
+        officialBoutNo: bout.officialBoutNo, players: overriddenRestPlayers
+      });
+    }
     if (tournament.deskExchange) {
       match.manualBout.deskEventId = tournament.deskExchange.event.id;
       match.manualBout.deskFixtureFingerprint = tournament.deskExchange.definition.fingerprint;
@@ -2091,12 +2100,12 @@ function loadTournamentBout(bout) {
   return { ok: true };
 }
 
-function loadScheduledTournamentBout(workbookId, matchOrder, categoryKey) {
+function loadScheduledTournamentBout(workbookId, matchOrder, categoryKey, { overrideRest = false } = {}) {
   if (!importedWorkbook?.schedulePolicy || importedWorkbook.sourceDigest !== workbookId) return { ok: false, code: 'SCHEDULE_CHANGED', message: 'The tournament schedule changed. Review the next match again' };
   if (tournamentMatchIsBusy() || practiceMatchIsBusy()) return { ok: false, code: 'MATCH_BUSY', message: 'Finish or reset the current match before loading the next scheduled bout' };
   const next = nextScheduledWorkbookBout(importedWorkbook);
   if (!next || next.key !== categoryKey || next.fixture !== tournament || next.bout.matchOrder !== matchOrder || next.bout.status !== 'SCHEDULED') return { ok: false, code: 'BOUT_OUT_OF_ORDER', message: 'Review and load the next available match in the selected category' };
-  return loadTournamentBout(next.bout);
+  return loadTournamentBout(next.bout, { overrideRest: overrideRest === true });
 }
 
 function completeTournamentBout(winner) {
@@ -4763,7 +4772,7 @@ wss.on('connection', (ws, request) => {
         }
       }
       if (msg.action === 'loadScheduledBout') {
-        const result = loadScheduledTournamentBout(msg.workbookId, msg.matchOrder, msg.categoryKey);
+        const result = loadScheduledTournamentBout(msg.workbookId, msg.matchOrder, msg.categoryKey, { overrideRest: msg.overrideRest === true });
         if (!result.ok) { sendError(ws, result.code, result.message); return; }
       }
       if (msg.action === 'announceBout') {

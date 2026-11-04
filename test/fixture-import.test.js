@@ -11,6 +11,7 @@ import { createFixtureTemplateSheets } from '../src/fixtureTemplate.js';
 import { createFileJobs } from '../src/fileJobs.js';
 import { readRulesFile } from '../src/rules.js';
 import { nextFixtureBout, refreshFixtureProgression, validFixtureGraph } from '../src/fixtureProgression.js';
+import { SCHEDULE_HEADERS, fixtureSourceLabel } from '../src/fixtureSchedule.js';
 
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dataDir = path.join(projectRoot, 'data', `fixture-import-test-${process.pid}`);
@@ -848,5 +849,103 @@ test('bulk deletion validates the whole import, removes saved results and persis
     method: 'POST', headers: { 'Content-Type': 'application/json', 'X-SFTS-Host-Token': role.hostToken }, body: '{}'
   });
   assert.equal(empty.status, 404);
+  host.close();
+});
+
+test('scheduled rest can be overridden for one bout while order, reset and archived evidence remain intact', async () => {
+  let host = await connect();
+  host.send(JSON.stringify({ type: 'role', role: 'host', accessToken: 'fixture-host-token' }));
+  let role = await waitFor(host, msg => msg.type === 'roleAccepted');
+  await waitFor(host, msg => msg.type === 'state');
+  const metadata = { ...event, eventName: 'Rest Override Championship', autoAdvance: true };
+  const rows = [fixtureRow('OV-SF', 'SEMIFINAL', 'Override A', 'Override B'),
+    { ...fixtureRow('OV-BYE', 'SEMIFINAL', 'Override C', 'BYE'), 'Chung Club': '', 'Chung State Code': '', 'Chung District': '' }];
+  const preview = await upload(role.hostToken, rows, { metadata, preview: true });
+  assert.equal(preview.status, 200, JSON.stringify(preview.body));
+  const fixture = preview.body.tournament;
+  const schedule = fixture.schedule.filter(bout => bout.status !== 'BYE').map((bout, index) => [
+    index + 1, bout.officialBoutNo, bout.stage, fixture.event.division, fixture.event.gender,
+    fixture.event.weightCategory, fixture.event.categoryGroup || '',
+    fixtureSourceLabel(fixture, bout, 'RED'), fixtureSourceLabel(fixture, bout, 'BLUE'), 1
+  ]);
+  const book = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(book, XLSX.utils.json_to_sheet(rows), 'Matches');
+  XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet([SCHEDULE_HEADERS, ...schedule]), 'Schedule');
+  const buffer = XLSX.write(book, { type: 'buffer', bookType: 'xlsx' });
+  const headers = { 'Content-Type': 'application/octet-stream', 'X-SFTS-Host-Token': role.hostToken,
+    'X-SFTS-Import-Event': encodeURIComponent(JSON.stringify(metadata)) };
+  const reviewedResponse = await fetch(`http://127.0.0.1:${port}/api/tournament/import?preview=true`, { method: 'POST', headers, body: buffer });
+  const reviewed = await reviewedResponse.json();
+  assert.equal(reviewedResponse.status, 200, JSON.stringify(reviewed));
+  const importedResponse = await fetch(`http://127.0.0.1:${port}/api/tournament/import`, {
+    method: 'POST', headers: { ...headers, 'X-SFTS-Import-Digest': reviewed.tournament.sourceDigest }, body: buffer
+  });
+  const imported = await importedResponse.json();
+  assert.equal(importedResponse.status, 200, JSON.stringify(imported));
+  host.messages.length = 0;
+  const action = (name, details = {}) => host.send(JSON.stringify({ type: 'host', action: name, ...details }));
+  const request = { workbookId: imported.workbook.sourceDigest, categoryKey: imported.workbook.selectedKey, matchOrder: 1 };
+  action('loadScheduledBout', request);
+  const semifinal = await waitFor(host, msg => msg.type === 'state' && msg.tournament.activeBoutNo === 1);
+  assert.equal(semifinal.match.operatorHistory.some(entry => entry.action === 'REST OVERRIDE'), false);
+  action('manualMatchDecision', { player: 'RED', decision: 'RSC' });
+  const waiting = await waitFor(host, msg => msg.type === 'state' && msg.match.phase === 'MATCH_END' && msg.fixtureWorkbook?.nextMatch?.bout.stage === 'FINAL');
+  assert.deepEqual(waiting.fixtureWorkbook.nextMatch.restRequired, ['Override A']);
+  request.matchOrder = waiting.fixtureWorkbook.nextMatch.bout.matchOrder;
+  const finalBoutNo = waiting.fixtureWorkbook.nextMatch.bout.boutNo;
+
+  for (const overrideRest of [undefined, false, 'true', 1]) {
+    action('loadScheduledBout', { ...request, overrideRest });
+    await waitFor(host, msg => msg.type === 'error' && msg.code === 'PLAYER_REST_REQUIRED');
+  }
+  action('loadBout', { boutNo: finalBoutNo, overrideRest: true });
+  await waitFor(host, msg => msg.type === 'error' && msg.code === 'PLAYER_REST_REQUIRED');
+  for (const [change, code] of [
+    [{ workbookId: 'old-workbook' }, 'SCHEDULE_CHANGED'],
+    [{ categoryKey: 'another-category' }, 'BOUT_OUT_OF_ORDER'],
+    [{ matchOrder: 1 }, 'BOUT_OUT_OF_ORDER']
+  ]) {
+    action('loadScheduledBout', { ...request, ...change, overrideRest: true });
+    await waitFor(host, msg => msg.type === 'error' && msg.code === code);
+  }
+
+  action('loadScheduledBout', { ...request, overrideRest: true });
+  const loaded = await waitFor(host, msg => msg.type === 'state' && msg.tournament.activeBoutNo === finalBoutNo);
+  assert.equal(loaded.fixtureWorkbook.schedulePolicy.minimumMatchGap, 1);
+  const audit = loaded.match.operatorHistory.filter(entry => entry.action === 'REST OVERRIDE');
+  assert.equal(audit.length, 1);
+  assert.deepEqual(audit[0].details.players, ['Override A']);
+  assert.equal(audit[0].details.workbookId, request.workbookId);
+  assert.equal(audit[0].details.matchOrder, request.matchOrder);
+  action('loadScheduledBout', { ...request, overrideRest: true });
+  await waitFor(host, msg => msg.type === 'error' && msg.code === 'MATCH_BUSY');
+
+  action('resetMatch');
+  const reset = await waitFor(host, msg => msg.type === 'state' && msg.tournament.activeBoutNo === null && msg.match.phase === 'ROUND');
+  assert.deepEqual(reset.fixtureWorkbook.nextMatch.restRequired, ['Override A']);
+  action('loadScheduledBout', request);
+  await waitFor(host, msg => msg.type === 'error' && msg.code === 'PLAYER_REST_REQUIRED');
+  action('loadScheduledBout', { ...request, overrideRest: true });
+  await waitFor(host, msg => msg.type === 'state' && msg.tournament.activeBoutNo === finalBoutNo);
+  await waitForSnapshot(snapshot => snapshot.tournament.activeBoutNo === finalBoutNo && snapshot.match.operatorHistory.some(entry => entry.action === 'REST OVERRIDE'));
+  host.close();
+  await new Promise(resolve => { server.once('exit', resolve); server.kill(); });
+  await startFixtureServer();
+  host = await connect();
+  host.send(JSON.stringify({ type: 'role', role: 'host', accessToken: 'fixture-host-token' }));
+  role = await waitFor(host, msg => msg.type === 'roleAccepted');
+  const restored = await waitFor(host, msg => msg.type === 'state');
+  assert.equal(restored.tournament.activeBoutNo, finalBoutNo);
+  assert.equal(restored.match.operatorHistory.filter(entry => entry.action === 'REST OVERRIDE').length, 1);
+  action('manualMatchDecision', { player: 'BLUE', decision: 'RSC' });
+  const completed = await waitFor(host, msg => msg.type === 'state' && msg.fixtureWorkbook?.nextMatch === null && msg.match.phase === 'MATCH_END');
+  assert.equal(completed.fixtureWorkbook.schedulePolicy.minimumMatchGap, 1);
+  const archiveResponse = await fetch(`http://127.0.0.1:${port}/api/manual/categories?categoryId=${completed.tournament.categoryId}`, {
+    headers: { 'X-SFTS-Host-Token': role.hostToken }
+  });
+  const archive = await archiveResponse.json();
+  assert.equal(archive.records.length, 2);
+  const finalRecord = archive.records.find(record => record.manualBout.importedBoutNo === finalBoutNo);
+  assert.equal(finalRecord.operatorHistory.filter(entry => entry.action === 'REST OVERRIDE').length, 1);
   host.close();
 });

@@ -74,6 +74,95 @@ function visibleSteps(get) {
   return Array.from({ length: 5 }, (_, i) => i).filter(i => !get(`importStep${i}`).classList.contains('hidden'));
 }
 
+async function restingWizard() {
+  const page = await wizard();
+  page.fixture.categoryId = 'rest-category';
+  page.context.lastTournament = page.fixture;
+  page.context.lastManualCompetition = { categories: [{ id: 'rest-category' }] };
+  page.context.lastFixtureWorkbook = {
+    sourceDigest: 'rest-workbook', selectedKey: 'rest-key', schedulePolicy: { minimumMatchGap: 1 },
+    categories: [{ key: 'rest-key', event: page.fixture.event }],
+    nextMatch: {
+      categoryKey: 'rest-key', event: page.fixture.event,
+      bout: { ...page.fixture.schedule[0], matchOrder: 2 },
+      roundMatchIndex: 1, roundMatchCount: 1, restRequired: ['<A>']
+    }
+  };
+  page.context.setImportStep(3);
+  return page;
+}
+
+test('Override Rest confirms the affected bout and cancellation leaves normal loading blocked', async () => {
+  const { context, get, actions } = await restingWizard();
+  assert.match(get('importRunCard').innerHTML, /onclick="loadNextImportedBout\(\)" disabled/);
+  assert.match(get('importRunCard').innerHTML, /id="importOverrideRestButton" onclick="overrideImportedRest\(\)">OVERRIDE REST/);
+  const confirmations = [];
+  context.requestUserPermission = async message => { confirmations.push(message); return false; };
+  await context.overrideImportedRest();
+  assert.match(confirmations[0], /Bout SF-1.*<A>.*previous match.*only to this match/);
+  context.loadNextImportedBout();
+  assert.equal(actions.length, 0);
+  assert.match(get('importRunCard').innerHTML, /REST REQUIRED/);
+});
+
+test('confirmed rest override loads only the current match and never carries into a normal load', async () => {
+  const { context, get, actions } = await restingWizard();
+  await context.overrideImportedRest();
+  await context.overrideImportedRest();
+  assert.equal(actions.length, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(actions[0])), {
+    type: 'host', action: 'loadScheduledBout', workbookId: 'rest-workbook', categoryKey: 'rest-key', matchOrder: 2, overrideRest: true
+  });
+  assert.match(get('importRunCard').innerHTML, /id="importOverrideRestButton"[^>]* disabled/);
+  context.importedRequestFailed('Load was reset');
+  context.loadNextImportedBout();
+  assert.equal(actions.length, 1, 'the ordinary load must still obey rest');
+  context.lastFixtureWorkbook.nextMatch.restRequired = [];
+  context.renderImportWizard();
+  assert.doesNotMatch(get('importRunCard').innerHTML, /OVERRIDE REST/);
+  context.loadNextImportedBout();
+  assert.equal(actions.length, 2);
+  assert.equal(Object.hasOwn(actions[1], 'overrideRest'), false);
+});
+
+test('pending override confirmation blocks duplicate clicks and rejects changed categories or competitors', async () => {
+  for (const change of [
+    context => { context.lastFixtureWorkbook.selectedKey = 'another-category'; },
+    context => { context.lastFixtureWorkbook.nextMatch.bout.RED = { playerName: 'Changed Player' }; },
+    context => { context.lastFixtureWorkbook.sourceDigest = 'replacement-file'; }
+  ]) {
+    const { context, get, actions } = await restingWizard();
+    let confirm;
+    let calls = 0;
+    context.requestUserPermission = () => { calls += 1; return new Promise(resolve => { confirm = resolve; }); };
+    const pending = context.overrideImportedRest();
+    await context.overrideImportedRest();
+    context.loadNextImportedBout();
+    assert.equal(calls, 1);
+    assert.equal(actions.length, 0);
+    assert.match(get('importRunCard').innerHTML, /id="importOverrideRestButton"[^>]* disabled/);
+    change(context);
+    confirm(true);
+    await pending;
+    assert.equal(actions.length, 0);
+    assert.match(get('importWizardError').textContent, /next match changed/);
+  }
+});
+
+test('rest override respects finalized categories, recovery errors and a lost server connection', async () => {
+  for (const change of [
+    context => { context.lastManualCompetition.categories[0].status = 'FINALIZED'; },
+    context => { context.lastFixtureWorkbook.nextMatch.recoveryError = 'Review required'; },
+    context => { context.ws.readyState = 3; }
+  ]) {
+    const { context, actions } = await restingWizard();
+    change(context);
+    context.renderImportWizard();
+    await context.overrideImportedRest();
+    assert.equal(actions.length, 0);
+  }
+});
+
 test('decision cards validate the event and show one step at a time', async () => {
   const html = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
   const eventCard = html.slice(html.indexOf('<section id="importStep0"'), html.indexOf('<section id="importStep1"'));

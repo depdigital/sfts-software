@@ -3,6 +3,7 @@ let pendingImportReview = null;
 let importRequestBusy = false;
 let pendingImportedLoad = null;
 let pendingImportedCategoryKey = null;
+let importedRestOverridePending = false;
 let selectedImportCategoryKey = '';
 let importSelectionSequence = 0;
 let importedCategoryDeleteTarget = null;
@@ -10,7 +11,7 @@ let importedCategoryDeleteBusy = false;
 const importSelectorMarkup = new Map();
 
 function importSelectionLocked() {
-  return Boolean(importRequestBusy || importedCategoryDeleteBusy || pendingImportedLoad || lastTournament?.activeBoutNo ||
+  return Boolean(importRequestBusy || importedCategoryDeleteBusy || importedRestOverridePending || pendingImportedLoad || lastTournament?.activeBoutNo ||
     (lastState && lastState.phase !== 'MATCH_END' && (lastState.running || lastState.roundStarted ||
       lastState.phase === 'BREAK' || lastState.phase === 'TIE_DECISION' || lastState.test?.active ||
       lastState.red?.score || lastState.blue?.score || lastState.red?.gamjeom || lastState.blue?.gamjeom ||
@@ -281,8 +282,11 @@ function renderImportWizard() {
     const resting = !active && scheduled?.restRequired?.length;
     const restMessage = resting ? `REST REQUIRED: ${scheduled.restRequired.join(' and ')} competed in the previous match. Select another category manually, finish at least one match, then return here.` : '';
     const canLoad = next.status === 'SCHEDULED' && !category?.finalizedAt && !pendingImportedLoad && !recoveryError && !resting;
+    const canOverrideRest = resting && next.status === 'SCHEDULED' && !category?.finalizedAt && category?.status !== 'FINALIZED' &&
+      !recoveryError && !importSelectionLocked() && hostToken && ws?.readyState === 1;
+    const overrideButton = resting ? `<button id="importOverrideRestButton" onclick="overrideImportedRest()"${canOverrideRest ? '' : ' disabled'}>OVERRIDE REST</button>` : '';
     const scheduleHint = lastFixtureWorkbook?.schedulePolicy ? `<p>CATEGORY MATCH ${escapeHtml(next.matchOrder)} · MINIMUM 1 MATCH GAP</p>` : '';
-    $('importRunCard').innerHTML = `<p class="manualHint">${escapeHtml(nextContext)}</p>${scheduleHint}<p class="importProgress">${escapeHtml(progress)}</p><h3>BOUT ${escapeHtml(next.officialBoutNo)}</h3><div class="importMatchSides">${importPlayerCard(next.RED, 'HONG / RED')}${importPlayerCard(next.BLUE, 'CHUNG / BLUE')}</div><p>${escapeHtml(recoveryError || restMessage || (next.status === 'TIE_PENDING' ? 'Confirm this category\'s winner below before continuing.' : active ? 'This match is loaded on the scoreboard.' : 'Review these competitors, then load the next match.'))}</p><button onclick="${active ? 'returnToImportedScoreboard()' : 'loadNextImportedBout()'}" ${!active && !canLoad ? 'disabled' : ''}>${active ? 'RETURN TO SCOREBOARD' : pendingImportedLoad ? 'LOADING…' : 'LOAD MATCH'}</button>`;
+    $('importRunCard').innerHTML = `<p class="manualHint">${escapeHtml(nextContext)}</p>${scheduleHint}<p class="importProgress">${escapeHtml(progress)}</p><h3>BOUT ${escapeHtml(next.officialBoutNo)}</h3><div class="importMatchSides">${importPlayerCard(next.RED, 'HONG / RED')}${importPlayerCard(next.BLUE, 'CHUNG / BLUE')}</div><p>${escapeHtml(recoveryError || restMessage || (next.status === 'TIE_PENDING' ? 'Confirm this category\'s winner below before continuing.' : active ? 'This match is loaded on the scoreboard.' : 'Review these competitors, then load the next match.'))}</p><button onclick="${active ? 'returnToImportedScoreboard()' : 'loadNextImportedBout()'}" ${!active && !canLoad ? 'disabled' : ''}>${active ? 'RETURN TO SCOREBOARD' : pendingImportedLoad ? 'LOADING…' : 'LOAD MATCH'}</button>${overrideButton}`;
   } else {
     $('importRunCard').innerHTML = `<p>${escapeHtml(context)}</p><h3>CATEGORY MATCHES COMPLETE</h3><p>Review the category results and finalize the placements.</p><button onclick="setImportStep(4)">CONTINUE TO RESULTS</button>`;
   }
@@ -381,15 +385,47 @@ async function startImportedCategory() {
   finally { importRequestBusy = false; renderImportWizard(); }
 }
 
-function loadNextImportedBout(expectedBoutNo) {
+async function overrideImportedRest() {
+  if (importSelectionLocked()) return;
+  if (!hostToken || !ws || ws.readyState !== 1) { importWizardError('Wait for the server connection before overriding rest.'); return; }
+  const workbook = lastFixtureWorkbook;
+  const next = workbook?.schedulePolicy && workbook.nextMatch;
+  const category = lastManualCompetition.categories.find(item => item.id === lastTournament?.categoryId);
+  if (!next || next.categoryKey !== workbook.selectedKey || next.bout.status !== 'SCHEDULED' ||
+      !next.restRequired?.length || next.recoveryError || category?.finalizedAt || category?.status === 'FINALIZED') return;
+  const target = JSON.stringify([workbook.sourceDigest, workbook.selectedKey, next.bout, next.restRequired]);
+  importedRestOverridePending = true;
+  renderImportWizard();
+  try {
+    const confirmed = await requestUserPermission(`Override rest for Bout ${next.bout.officialBoutNo}? ${next.restRequired.join(' and ')} competed in the previous match. Load this match now without the required one-match gap? This override applies only to this match.`);
+    if (!confirmed) return;
+    const current = lastFixtureWorkbook?.nextMatch;
+    if (!current || target !== JSON.stringify([lastFixtureWorkbook.sourceDigest, lastFixtureWorkbook.selectedKey, current.bout, current.restRequired])) {
+      importWizardError('The next match changed. Review it again before overriding rest.');
+      return;
+    }
+    importedRestOverridePending = false;
+    loadNextImportedBout(next.bout.boutNo, { overrideRest: true });
+  } finally {
+    importedRestOverridePending = false;
+    renderImportWizard();
+  }
+}
+
+function loadNextImportedBout(expectedBoutNo, { overrideRest = false } = {}) {
+  if (importedRestOverridePending) return;
   if (lastFixtureWorkbook?.schedulePolicy) {
     const next = lastFixtureWorkbook.nextMatch;
-    if (!next || next.categoryKey !== lastFixtureWorkbook.selectedKey || next.bout.status !== 'SCHEDULED' || next.restRequired?.length || pendingImportedLoad) return;
+    const category = lastManualCompetition.categories.find(item => item.id === lastTournament?.categoryId);
+    if (!next || next.categoryKey !== lastFixtureWorkbook.selectedKey || next.bout.status !== 'SCHEDULED' ||
+        (next.restRequired?.length && overrideRest !== true) || pendingImportedLoad || next.recoveryError ||
+        category?.finalizedAt || category?.status === 'FINALIZED') return;
     if (expectedBoutNo && (lastFixtureWorkbook.selectedKey !== next.categoryKey || expectedBoutNo !== next.bout.boutNo)) { renderImportWizard(); return; }
     if (!hostToken || !ws || ws.readyState !== 1) { importWizardError('Wait for the server connection before loading the next match.'); return; }
     pendingImportedLoad = next.bout.boutNo;
     pendingImportedCategoryKey = next.categoryKey;
-    send({ type: 'host', action: 'loadScheduledBout', workbookId: lastFixtureWorkbook.sourceDigest, categoryKey: lastFixtureWorkbook.selectedKey, matchOrder: next.bout.matchOrder });
+    send({ type: 'host', action: 'loadScheduledBout', workbookId: lastFixtureWorkbook.sourceDigest, categoryKey: lastFixtureWorkbook.selectedKey, matchOrder: next.bout.matchOrder,
+      ...(overrideRest === true ? { overrideRest: true } : {}) });
     renderImportWizard();
     return;
   }

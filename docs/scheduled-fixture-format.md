@@ -78,6 +78,8 @@ The 15-player template provides rest naturally through the semifinals. Before th
 3. Complete one or two matches.
 4. Select the previous category again. Its waiting match is retained and becomes loadable once the gap is satisfied.
 
+When an immediate match is necessary, the operator can choose **OVERRIDE REST** on the waiting match card and confirm the affected competitors and bout. This loads only that match without the one-match gap and records **REST OVERRIDE** in its operator history. All other loading checks still apply. The normal rest rule remains enabled for later matches; resetting and reloading the same waiting bout requires a new override if rest is still outstanding.
+
 Nothing switches automatically. Results stay in the correct category. After the final, SFTS shows that category's results; the operator chooses the next category.
 
 ## Validation and recovery
