@@ -339,6 +339,7 @@
           <textarea id="advancedCorrectionReason" maxlength="240" rows="3" placeholder="Explain why an action-based correction cannot be used"></textarea>
         </label>
         <button onclick="saveAdvancedScoreCorrection()">REVIEW SCORE ADJUSTMENT</button>
+        <button onclick="backToSettings('match', closeAdvancedCorrections)">BACK</button>
         <button onclick="closeAdvancedCorrections()">CANCEL</button>
       </div>
     </section>
@@ -360,6 +361,7 @@
           />
         </label>
         <button onclick="saveArenaNumber()">SAVE ARENA NUMBER</button>
+        <button onclick="backToSettings('setup', closeArenaNumber)">BACK</button>
         <button onclick="closeArenaNumber()">CANCEL</button>
       </div>
     </section>
@@ -394,6 +396,7 @@
             <button id="defaultRulesButton" onclick="loadDefaultRules()">DEFAULT</button>
           </div>
         </section>
+        <button onclick="backToSettings('setup', closeRules)">BACK</button>
         <button onclick="closeRules()">CLOSE</button>
       </div>
     </section>
@@ -409,6 +412,7 @@
           The action will begin after a 15-second countdown.
         </p>
         <button id="powerConfirmButton" onclick="confirmPowerAction()">START</button>
+        <button id="powerBackButton" onclick="backFromPowerAction()">BACK</button>
         <button id="powerCancelButton" onclick="cancelPowerAction()">CANCEL</button>
       </div>
     </section>
@@ -794,6 +798,7 @@
         <h2>EDIT TIMER</h2>
         <input id="timeInput" class="timeInput" value="01:00" />
         <button onclick="saveTimer()">SAVE TIMER</button>
+        <button onclick="backToSettings('match', closeTimerEditor)">BACK</button>
         <button onclick="closeTimerEditor()">CLOSE</button>
       </div>
     </section>
@@ -802,6 +807,7 @@
       <div class="modalCard wideModal">
         <h2>MATCH HISTORY</h2>
         <div id="historyList" class="historyList"></div>
+        <button onclick="backToSettings('records', closeHistory)">BACK</button>
         <button onclick="closeHistory()">CLOSE</button>
       </div>
     </section>
@@ -818,6 +824,7 @@
           <span>TIME</span>
         </div>
         <div id="cornerRefereeHistoryList" class="cornerRefereeHistoryList"></div>
+        <button onclick="backToSettings('records', closeCornerRefereeHistory)">BACK</button>
         <button onclick="closeCornerRefereeHistory()">CLOSE</button>
       </div>
     </section>
@@ -911,6 +918,7 @@
           <button id="manualDecisionBlueButton" class="blueDecisionButton" onclick="submitManualDecision('BLUE')">CHUNG WIN</button>
           <button onclick="closeMatchDecision()">CANCEL</button>
         </div>
+        <button id="manualDecisionBackButton" onclick="backFromMatchDecision()">BACK</button>
         <button id="manualDecisionCloseButton" onclick="closeMatchDecision()">CLOSE</button>
       </div>
     </section>
@@ -938,7 +946,7 @@
             <option value="4">4 REMOTES</option>
           </select>
         </label>
-        <button class="exitTestButton" onclick="closeTestMode()">BACK</button>
+        <button class="exitTestButton" onclick="backToSettings('setup', closeTestMode)">BACK</button>
       </header>
       <p class="testHelp">
         Test head, chest and punch separately, then technical + head and technical + chest on both sides.

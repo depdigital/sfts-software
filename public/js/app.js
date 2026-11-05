@@ -56,6 +56,7 @@ let userPermissionInputMode = false;
 let cornerEditPlayer = "";
 let launchBrandingTimers = [];
 let settingsSection = "";
+let powerBackPending = false;
 let winnerSlideTimer = null;
 let winnerSlideMatchKey = "";
 const WINNER_SLIDE_DELAY_MS = 8000;
@@ -216,9 +217,11 @@ function connectSocket() {
         ].includes(msg.code)
       ) {
         powerActionScheduled = false;
+        powerBackPending = false;
         $("powerConfirmButton")?.classList.remove("hidden");
         $("powerConfirmButton").disabled = false;
         $("powerCancelButton").disabled = false;
+        $("powerBackButton").disabled = false;
         $("powerCountdownStatus").textContent =
           msg.message || "SYSTEM POWER ACTION FAILED";
       }
@@ -1097,6 +1100,11 @@ function openSettingsSection(section = "") {
 function closeSettings() {
   $("settingsModal").classList.add("hidden");
 }
+function backToSettings(section, closeDetail) {
+  closeDetail?.();
+  openSettingsSection(section);
+  $("settingsModal").classList.remove("hidden");
+}
 function openMatchDecision() {
   if (!lastState || lastState.phase === "MATCH_END") {
     toast("MATCH DECISION IS NOT AVAILABLE");
@@ -1121,6 +1129,18 @@ function openMatchDecision() {
 function closeMatchDecision() {
   manualDecisionCode = "";
   $("matchDecisionModal").classList.add("hidden");
+}
+function backFromMatchDecision() {
+  if (!manualDecisionCode) {
+    backToSettings("match", closeMatchDecision);
+    return;
+  }
+  manualDecisionCode = "";
+  $("manualDecisionMessage").textContent = "SELECT THE REFEREE DECISION";
+  $("manualDecisionOptions").classList.remove("hidden");
+  $("manualDecisionWinnerActions").classList.add("hidden");
+  $("manualDecisionCloseButton").classList.remove("hidden");
+  $("manualDecisionOptions").querySelector("button:not(.hidden)")?.focus();
 }
 function selectManualDecision(code) {
   if (!lastState || !(scoringRules?.manualMatchDecisions || []).includes(code)) return;
@@ -1172,6 +1192,7 @@ function openPowerAction(action) {
   closeSettings();
   powerAction = normalized;
   powerActionScheduled = false;
+  powerBackPending = false;
   $("powerActionTitle").textContent = powerActionLabel(normalized);
   $("powerActionMessage").textContent =
     `${powerActionLabel(normalized)} SFTS? The scoreboard will become unavailable.`;
@@ -1225,6 +1246,11 @@ function cancelPowerAction() {
   }
   closePowerModal();
 }
+function backFromPowerAction() {
+  powerBackPending = true;
+  $("powerBackButton").disabled = true;
+  cancelPowerAction();
+}
 function closePowerModal() {
   clearInterval(powerCountdownTimer);
   powerCountdownTimer = null;
@@ -1236,6 +1262,11 @@ function closePowerModal() {
   $("powerConfirmButton").classList.remove("hidden");
   $("powerConfirmButton").disabled = false;
   $("powerCancelButton").disabled = false;
+  $("powerBackButton").disabled = false;
+  if (powerBackPending) {
+    powerBackPending = false;
+    backToSettings("power");
+  }
 }
 function openPlayerSettings() {
   closeSettings();
@@ -3477,9 +3508,11 @@ window.saveAdvancedScoreCorrection = saveAdvancedScoreCorrection;
 window.openSettings = openSettings;
 window.openSettingsSection = openSettingsSection;
 window.closeSettings = closeSettings;
+window.backToSettings = backToSettings;
 window.resolveUserPermission = resolveUserPermission;
 window.openMatchDecision = openMatchDecision;
 window.closeMatchDecision = closeMatchDecision;
+window.backFromMatchDecision = backFromMatchDecision;
 window.selectManualDecision = selectManualDecision;
 window.submitManualDecision = submitManualDecision;
 window.openArenaNumber = openArenaNumber;
@@ -3490,6 +3523,7 @@ window.closeRules = closeRules;
 window.openPowerAction = openPowerAction;
 window.confirmPowerAction = confirmPowerAction;
 window.cancelPowerAction = cancelPowerAction;
+window.backFromPowerAction = backFromPowerAction;
 window.closePowerModal = closePowerModal;
 window.openPlayerSettings = openPlayerSettings;
 window.closePlayerSettings = closePlayerSettings;

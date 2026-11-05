@@ -1065,7 +1065,7 @@ button {
 }
 .settingsActions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 10px;
 }
 .settingsCard .settingsActions button {
@@ -1081,6 +1081,7 @@ button {
 }
 .settingsFooter {
   display: flex;
+  flex-direction: column;
   gap: 10px;
   margin-top: 18px;
 }
@@ -1318,13 +1319,16 @@ button {
 }
 .rulesActions {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: 1fr;
   gap: 8px;
 }
 .rulesActions button {
   margin: 0;
   padding-inline: 8px;
   font-size: 12px;
+}
+#matchDecisionModal .decisionCodeActions {
+  grid-template-columns: 1fr;
 }
 .playerSettingsModal {
   width: min(920px, 94vw);
