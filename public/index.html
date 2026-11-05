@@ -279,6 +279,7 @@
           <button id="settingsMatchButton" onclick="openSettingsSection('match')" aria-controls="settingsMatch">MATCH CONTROLS</button>
           <button id="settingsSetupButton" onclick="openSettingsSection('setup')" aria-controls="settingsSetup">SETUP</button>
           <button id="settingsRecordsButton" onclick="openSettingsSection('records')" aria-controls="settingsRecords">RECORDS</button>
+          <button onclick="unmountUsb()">UNMOUNT USB SAFELY</button>
           <button id="settingsPowerButton" onclick="openSettingsSection('power')" aria-controls="settingsPower">POWER</button>
         </div>
         <section id="settingsMatch" class="settingsGroup hidden" aria-labelledby="settingsTitle">
@@ -294,7 +295,6 @@
             <button onclick="openArenaNumber()">ARENA NUMBER</button>
             <button onclick="openRules()">RULES</button>
             <button onclick="openTestMode()">REMOTE SETTINGS</button>
-            <button onclick="unmountUsb()">UNMOUNT USB SAFELY</button>
           </div>
         </section>
         <section id="settingsRecords" class="settingsGroup hidden" aria-labelledby="settingsTitle">
@@ -305,8 +305,8 @@
         </section>
         <section id="settingsPower" class="settingsGroup hidden" aria-labelledby="settingsTitle">
           <div class="settingsActions">
-            <button class="powerActionButton rebootButton" onclick="openPowerAction('reboot')">REBOOT</button>
-            <button class="powerActionButton shutdownButton" onclick="openPowerAction('shutdown')">SHUTDOWN</button>
+            <button onclick="openPowerAction('reboot')">REBOOT</button>
+            <button onclick="openPowerAction('shutdown')">SHUTDOWN</button>
           </div>
         </section>
         <div class="settingsFooter">
