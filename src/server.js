@@ -3240,7 +3240,9 @@ function addPoint(player, points, source = "manual", countAsHit = true, allowPau
   const canScore = allowPaused ? operatorScoringIsAllowed() : scoringIsAllowed();
   if (!validPlayer(player) || (!validPoints(points) && !technicalAward) || !canScore) return false;
   side(player).score += points;
-  if (countAsHit) addHitStat(player, points);
+  // Finish the scoring action before a winning award snapshots the round or match.
+  if (technicalAward) addTechnicalStat(player, basePoints);
+  else if (countAsHit) addHitStat(player, points);
   // Queue sound after the authoritative score state has been broadcast. This keeps
   // a slow first-time browser audio initialization off the visible score path.
   queueMicrotask(() => emit({ type: 'scoreSound', player, points, basePoints, source }));
@@ -3975,7 +3977,6 @@ function evaluateVotes() {
           false,
           winningVote.basePoints || points
         );
-        if (technical) addTechnicalStat(player, winningVote.basePoints);
         match.votes = {};
         showRemoteScoreHighlight(player, winningCorners, points);
         const result = {
