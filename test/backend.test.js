@@ -1389,8 +1389,8 @@ test('HTTP static endpoint is available and QR endpoint is removed', async () =>
   assert.match(jsText, /PTF: "WIN BY FINAL SCORE"/);
   assert.match(jsText, /PTG: "WIN BY POINT GAP"/);
   assert.match(jsText, /GDP: "WIN BY GOLDEN POINTS"/);
-  assert.match(html, /id="roundSummaryScoreboardButton" class="hidden"/);
-  assert.match(jsText, /roundSummaryScoreboardButton\?\.classList\.toggle\("hidden", match\.phase === "BREAK"\)/);
+  assert.doesNotMatch(html, /roundSummaryScoreboardButton|VIEW SCOREBOARD/);
+  assert.doesNotMatch(jsText, /roundSummaryScoreboardButton|closeRoundOverlay/);
   assert.match(jsText, /match\.phase === "ROUND" && !match\.roundStarted[\s\S]*roundOverlay[\s\S]*classList\.add\("hidden"\)/);
   assert.match(jsText, /SUP: "WIN BY SUPERIORITY"/);
   assert.match(jsText, /winnerReasonDescription\(match\.matchReason\)/);

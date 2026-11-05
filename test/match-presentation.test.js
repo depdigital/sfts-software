@@ -93,7 +93,7 @@ test('break keyboard controls and focused play-button activation cannot send tim
   assert.equal(page.actions[0].action, 'playPause');
 });
 
-test('final scorecard stays visible for eight seconds before the winner screen appears', async () => {
+test('final scorecard stays visible for five seconds before the winner screen appears', async () => {
   const page = await dashboard();
   const final = match();
   page.state(final);
@@ -104,7 +104,7 @@ test('final scorecard stays visible for eight seconds before the winner screen a
   assert.equal(page.get('summaryBlueScore').textContent, 4);
   assert.equal(page.get('roundOverlay').classList.contains('hidden'), false);
   assert.equal(page.get('winnerSlide').classList.contains('hidden'), true);
-  page.advance(7999);
+  page.advance(4999);
   assert.equal(page.get('winnerSlide').classList.contains('hidden'), true);
   page.advance(1);
   assert.equal(page.get('roundOverlay').classList.contains('hidden'), true);
@@ -114,16 +114,18 @@ test('final scorecard stays visible for eight seconds before the winner screen a
   assert.deepEqual(page.actions, [], 'presentation must not send match-control commands');
 });
 
-test('repeated final states and duplicate match-end messages do not restart the eight-second wait', async () => {
+test('repeated final states and duplicate match-end messages do not restart the five-second wait', async () => {
   const page = await dashboard();
   const final = match();
   page.state(final);
   page.context.scheduleWinnerSlide('RED', final);
-  page.advance(4000);
+  page.advance(2000);
   page.state(structuredClone(final));
   page.context.scheduleWinnerSlide('RED', structuredClone(final));
   assert.equal(page.timers.size, 1);
-  page.advance(4000);
+  page.advance(2999);
+  assert.equal(page.get('winnerSlide').classList.contains('hidden'), true);
+  page.advance(1);
   assert.equal(page.get('winnerSlide').classList.contains('hidden'), false);
   page.context.scheduleWinnerSlide('RED', final);
   assert.equal(page.timers.size, 0);
@@ -138,7 +140,7 @@ test('resetting or loading another match cancels a pending winner screen', async
     page.advance(1000);
     page.state(replacement);
     assert.equal(page.timers.size, 0);
-    page.advance(8000);
+    page.advance(5000);
     assert.equal(page.get('winnerSlide').classList.contains('hidden'), true);
   }
 });
@@ -148,7 +150,7 @@ test('new-match actions cancel the delay and practice results use the same prese
   const final = match('MATCH_END', { mode: 'PRACTICE', matchWinner: 'BLUE', matchReason: 'RSC' });
   page.state(final);
   page.context.scheduleWinnerSlide('BLUE', final);
-  page.advance(8000);
+  page.advance(5000);
   assert.equal(page.get('winnerNameText').textContent, 'Blue Competitor');
   assert.equal(page.get('winnerSlide').classList.contains('blueWinner'), true);
   page.context.startNewMatch();
@@ -156,6 +158,6 @@ test('new-match actions cancel the delay and practice results use the same prese
   page.context.scheduleWinnerSlide('BLUE', final);
   page.context.startNewMatch();
   assert.equal(page.timers.size, 0);
-  page.advance(8000);
+  page.advance(5000);
   assert.equal(page.get('winnerSlide').classList.contains('hidden'), true);
 });

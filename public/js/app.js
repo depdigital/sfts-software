@@ -59,7 +59,7 @@ let settingsSection = "";
 let powerBackPending = false;
 let winnerSlideTimer = null;
 let winnerSlideMatchKey = "";
-const WINNER_SLIDE_DELAY_MS = 8000;
+const WINNER_SLIDE_DELAY_MS = 5000;
 const REMOTE_SCORE_TRANSITION_MS = 300;
 const LAUNCH_TITLE_SEQUENCE_MS = 6200;
 const LAUNCH_LOGO_SEQUENCE_MS = 6000;
@@ -535,8 +535,6 @@ function renderState(match) {
       `BREAK ${formatTime(match.timerMs, false)}`;
   }
 
-  const roundSummaryScoreboardButton = $("roundSummaryScoreboardButton");
-  roundSummaryScoreboardButton?.classList.toggle("hidden", match.phase === "BREAK");
   if (match.phase === "ROUND" && !match.roundStarted) {
     $("roundOverlay")?.classList.add("hidden");
   }
@@ -3133,7 +3131,6 @@ function closeCornerRefereeHistory() {
 
 function showRoundSummary(record) {
   currentRoundRecord = record;
-  $("roundSummaryScoreboardButton")?.classList.add("hidden");
   const redName = record.red.playerName || record.red.name;
   const blueName = record.blue.playerName || record.blue.name;
   $("roundTitle").textContent = record.winner
@@ -3169,9 +3166,6 @@ function showRoundSummary(record) {
   $("summaryBlueTechnicalChest").textContent = record.blue.stats.technicalChest || 0;
   $("summaryBlueTechnicalHead").textContent = record.blue.stats.technicalHead || 0;
   $("roundOverlay").classList.remove("hidden");
-}
-function closeRoundOverlay() {
-  $("roundOverlay").classList.add("hidden");
 }
 
 function showWinnerSlide(winner, match) {
@@ -3584,7 +3578,6 @@ window.openHistory = openHistory;
 window.closeHistory = closeHistory;
 window.openCornerRefereeHistory = openCornerRefereeHistory;
 window.closeCornerRefereeHistory = closeCornerRefereeHistory;
-window.closeRoundOverlay = closeRoundOverlay;
 window.startNewMatch = startNewMatch;
 window.openTestMode = openTestMode;
 window.closeTestMode = closeTestMode;
