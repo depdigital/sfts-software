@@ -252,3 +252,5 @@ The simulator is useful before ESP32 hardware is available. Run separate simulat
 ## Important limits
 
 This repository contains the server, dashboard, and simulator; ESP32 firmware is separate. The system is designed for a trusted LAN and is not an internet-facing service. Confirm the scoring and tie-break rules with the event officials before competition use.
+
+Weight categories define an optional `displayName` in the rulepack alongside stable `name` and `limit` fields. The bundled rulepack specifies numeric display names for all 84 categories. Screens, templates, result exports and PDFs use `displayName`. Older packs acquire their previous numeric labels when validated. Import supports display names, stable names and legacy numeric labels; ambiguous aliases are rejected. Stored match identities and fingerprints use stable names. Changing a label does not change eligibility. Tournament Desk bundles labels generated from this rulepack; run its `node tools/sync-scoring-labels.mjs --check` to verify agreement, or omit `--check` to refresh compatible labels. The sync rejects changed category identities or limits for explicit review.

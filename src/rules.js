@@ -1,3 +1,4 @@
+import '../public/js/weightLabels.js';
 import { copyFile, lstat, mkdir, open, readFile, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -47,24 +48,24 @@ const DEFAULT_TOURNAMENT_DIVISIONS = Object.freeze([
     id: 'SENIOR', label: 'SENIOR', ageLabel: '18 YEARS OLD AND ABOVE', categoryType: 'WEIGHT',
     weightCategories: {
       MALE: [
-        { name: 'FINWEIGHT', limit: 'NOT EXCEEDING 54.0 KG' },
-        { name: 'FLYWEIGHT', limit: 'OVER 54.1 TO 58.0 KG' },
-        { name: 'BANTAMWEIGHT', limit: 'OVER 58.1 TO 63.0 KG' },
-        { name: 'FEATHERWEIGHT', limit: 'OVER 63.1 TO 68.0 KG' },
-        { name: 'LIGHTWEIGHT', limit: 'OVER 68.1 TO 74.0 KG' },
-        { name: 'WELTERWEIGHT', limit: 'OVER 74.1 TO 80.0 KG' },
-        { name: 'MIDDLEWEIGHT', limit: 'OVER 80.1 TO 87.0 KG' },
-        { name: 'HEAVYWEIGHT', limit: 'OVER 87.1 KG' }
+        { name: 'FINWEIGHT', displayName: 'Under 54 kg', limit: 'NOT EXCEEDING 54.0 KG' },
+        { name: 'FLYWEIGHT', displayName: 'Under 58 kg', limit: 'OVER 54.1 TO 58.0 KG' },
+        { name: 'BANTAMWEIGHT', displayName: 'Under 63 kg', limit: 'OVER 58.1 TO 63.0 KG' },
+        { name: 'FEATHERWEIGHT', displayName: 'Under 68 kg', limit: 'OVER 63.1 TO 68.0 KG' },
+        { name: 'LIGHTWEIGHT', displayName: 'Under 74 kg', limit: 'OVER 68.1 TO 74.0 KG' },
+        { name: 'WELTERWEIGHT', displayName: 'Under 80 kg', limit: 'OVER 74.1 TO 80.0 KG' },
+        { name: 'MIDDLEWEIGHT', displayName: 'Under 87 kg', limit: 'OVER 80.1 TO 87.0 KG' },
+        { name: 'HEAVYWEIGHT', displayName: 'Over 87 kg', limit: 'OVER 87.1 KG' }
       ],
       FEMALE: [
-        { name: 'FINWEIGHT', limit: 'NOT EXCEEDING 46.0 KG' },
-        { name: 'FLYWEIGHT', limit: 'OVER 46.1 TO 49.0 KG' },
-        { name: 'BANTAMWEIGHT', limit: 'OVER 49.1 TO 53.0 KG' },
-        { name: 'FEATHERWEIGHT', limit: 'OVER 53.1 TO 57.0 KG' },
-        { name: 'LIGHTWEIGHT', limit: 'OVER 57.1 TO 62.0 KG' },
-        { name: 'WELTERWEIGHT', limit: 'OVER 62.1 TO 67.0 KG' },
-        { name: 'MIDDLEWEIGHT', limit: 'OVER 67.1 TO 74.0 KG' },
-        { name: 'HEAVYWEIGHT', limit: 'OVER 74.1 KG' }
+        { name: 'FINWEIGHT', displayName: 'Under 46 kg', limit: 'NOT EXCEEDING 46.0 KG' },
+        { name: 'FLYWEIGHT', displayName: 'Under 49 kg', limit: 'OVER 46.1 TO 49.0 KG' },
+        { name: 'BANTAMWEIGHT', displayName: 'Under 53 kg', limit: 'OVER 49.1 TO 53.0 KG' },
+        { name: 'FEATHERWEIGHT', displayName: 'Under 57 kg', limit: 'OVER 53.1 TO 57.0 KG' },
+        { name: 'LIGHTWEIGHT', displayName: 'Under 62 kg', limit: 'OVER 57.1 TO 62.0 KG' },
+        { name: 'WELTERWEIGHT', displayName: 'Under 67 kg', limit: 'OVER 62.1 TO 67.0 KG' },
+        { name: 'MIDDLEWEIGHT', displayName: 'Under 74 kg', limit: 'OVER 67.1 TO 74.0 KG' },
+        { name: 'HEAVYWEIGHT', displayName: 'Over 74 kg', limit: 'OVER 74.1 KG' }
       ]
     }
   },
@@ -72,28 +73,28 @@ const DEFAULT_TOURNAMENT_DIVISIONS = Object.freeze([
     id: 'JUNIOR', label: 'JUNIOR', ageLabel: '15-17 YEARS OLD', categoryType: 'WEIGHT',
     weightCategories: {
       MALE: [
-        { name: 'FINWEIGHT', limit: 'NOT EXCEEDING 45.0 KG' },
-        { name: 'FLYWEIGHT', limit: 'OVER 45.1 TO 48.0 KG' },
-        { name: 'BANTAMWEIGHT', limit: 'OVER 48.1 TO 51.0 KG' },
-        { name: 'FEATHERWEIGHT', limit: 'OVER 51.1 TO 55.0 KG' },
-        { name: 'LIGHTWEIGHT', limit: 'OVER 55.1 TO 59.0 KG' },
-        { name: 'WELTERWEIGHT', limit: 'OVER 59.1 TO 63.0 KG' },
-        { name: 'LT MIDDLEWEIGHT', limit: 'OVER 63.1 TO 68.0 KG' },
-        { name: 'MIDDLEWEIGHT', limit: 'OVER 68.1 TO 73.0 KG' },
-        { name: 'LT HEAVYWEIGHT', limit: 'OVER 73.1 TO 78.0 KG' },
-        { name: 'HEAVYWEIGHT', limit: 'OVER 78.1 KG' }
+        { name: 'FINWEIGHT', displayName: 'Under 45 kg', limit: 'NOT EXCEEDING 45.0 KG' },
+        { name: 'FLYWEIGHT', displayName: 'Under 48 kg', limit: 'OVER 45.1 TO 48.0 KG' },
+        { name: 'BANTAMWEIGHT', displayName: 'Under 51 kg', limit: 'OVER 48.1 TO 51.0 KG' },
+        { name: 'FEATHERWEIGHT', displayName: 'Under 55 kg', limit: 'OVER 51.1 TO 55.0 KG' },
+        { name: 'LIGHTWEIGHT', displayName: 'Under 59 kg', limit: 'OVER 55.1 TO 59.0 KG' },
+        { name: 'WELTERWEIGHT', displayName: 'Under 63 kg', limit: 'OVER 59.1 TO 63.0 KG' },
+        { name: 'LT MIDDLEWEIGHT', displayName: 'Under 68 kg', limit: 'OVER 63.1 TO 68.0 KG' },
+        { name: 'MIDDLEWEIGHT', displayName: 'Under 73 kg', limit: 'OVER 68.1 TO 73.0 KG' },
+        { name: 'LT HEAVYWEIGHT', displayName: 'Under 78 kg', limit: 'OVER 73.1 TO 78.0 KG' },
+        { name: 'HEAVYWEIGHT', displayName: 'Over 78 kg', limit: 'OVER 78.1 KG' }
       ],
       FEMALE: [
-        { name: 'FINWEIGHT', limit: 'NOT EXCEEDING 42.0 KG' },
-        { name: 'FLYWEIGHT', limit: 'OVER 42.1 TO 44.0 KG' },
-        { name: 'BANTAMWEIGHT', limit: 'OVER 44.1 TO 46.0 KG' },
-        { name: 'FEATHERWEIGHT', limit: 'OVER 46.1 TO 49.0 KG' },
-        { name: 'LIGHTWEIGHT', limit: 'OVER 49.1 TO 52.0 KG' },
-        { name: 'WELTERWEIGHT', limit: 'OVER 52.1 TO 55.0 KG' },
-        { name: 'LT MIDDLEWEIGHT', limit: 'OVER 55.1 TO 59.0 KG' },
-        { name: 'MIDDLEWEIGHT', limit: 'OVER 59.1 TO 63.0 KG' },
-        { name: 'LT HEAVYWEIGHT', limit: 'OVER 63.1 TO 68.0 KG' },
-        { name: 'HEAVYWEIGHT', limit: 'OVER 68.1 KG' }
+        { name: 'FINWEIGHT', displayName: 'Under 42 kg', limit: 'NOT EXCEEDING 42.0 KG' },
+        { name: 'FLYWEIGHT', displayName: 'Under 44 kg', limit: 'OVER 42.1 TO 44.0 KG' },
+        { name: 'BANTAMWEIGHT', displayName: 'Under 46 kg', limit: 'OVER 44.1 TO 46.0 KG' },
+        { name: 'FEATHERWEIGHT', displayName: 'Under 49 kg', limit: 'OVER 46.1 TO 49.0 KG' },
+        { name: 'LIGHTWEIGHT', displayName: 'Under 52 kg', limit: 'OVER 49.1 TO 52.0 KG' },
+        { name: 'WELTERWEIGHT', displayName: 'Under 55 kg', limit: 'OVER 52.1 TO 55.0 KG' },
+        { name: 'LT MIDDLEWEIGHT', displayName: 'Under 59 kg', limit: 'OVER 55.1 TO 59.0 KG' },
+        { name: 'MIDDLEWEIGHT', displayName: 'Under 63 kg', limit: 'OVER 59.1 TO 63.0 KG' },
+        { name: 'LT HEAVYWEIGHT', displayName: 'Under 68 kg', limit: 'OVER 63.1 TO 68.0 KG' },
+        { name: 'HEAVYWEIGHT', displayName: 'Over 68 kg', limit: 'OVER 68.1 KG' }
       ]
     }
   },
@@ -101,28 +102,28 @@ const DEFAULT_TOURNAMENT_DIVISIONS = Object.freeze([
     id: 'CADET', label: 'CADET', ageLabel: '12-14 YEARS OLD', categoryType: 'WEIGHT',
     weightCategories: {
       MALE: [
-        { name: 'FINWEIGHT', limit: 'NOT EXCEEDING 33.0 KG' },
-        { name: 'FLYWEIGHT', limit: 'OVER 33.1 TO 37.0 KG' },
-        { name: 'BANTAMWEIGHT', limit: 'OVER 37.1 TO 41.0 KG' },
-        { name: 'FEATHERWEIGHT', limit: 'OVER 41.1 TO 45.0 KG' },
-        { name: 'LIGHTWEIGHT', limit: 'OVER 45.1 TO 49.0 KG' },
-        { name: 'WELTERWEIGHT', limit: 'OVER 49.1 TO 53.0 KG' },
-        { name: 'LT MIDDLEWEIGHT', limit: 'OVER 53.1 TO 57.0 KG' },
-        { name: 'MIDDLEWEIGHT', limit: 'OVER 57.1 TO 61.0 KG' },
-        { name: 'LT HEAVYWEIGHT', limit: 'OVER 61.1 TO 65.0 KG' },
-        { name: 'HEAVYWEIGHT', limit: 'OVER 65.1 KG' }
+        { name: 'FINWEIGHT', displayName: 'Under 33 kg', limit: 'NOT EXCEEDING 33.0 KG' },
+        { name: 'FLYWEIGHT', displayName: 'Under 37 kg', limit: 'OVER 33.1 TO 37.0 KG' },
+        { name: 'BANTAMWEIGHT', displayName: 'Under 41 kg', limit: 'OVER 37.1 TO 41.0 KG' },
+        { name: 'FEATHERWEIGHT', displayName: 'Under 45 kg', limit: 'OVER 41.1 TO 45.0 KG' },
+        { name: 'LIGHTWEIGHT', displayName: 'Under 49 kg', limit: 'OVER 45.1 TO 49.0 KG' },
+        { name: 'WELTERWEIGHT', displayName: 'Under 53 kg', limit: 'OVER 49.1 TO 53.0 KG' },
+        { name: 'LT MIDDLEWEIGHT', displayName: 'Under 57 kg', limit: 'OVER 53.1 TO 57.0 KG' },
+        { name: 'MIDDLEWEIGHT', displayName: 'Under 61 kg', limit: 'OVER 57.1 TO 61.0 KG' },
+        { name: 'LT HEAVYWEIGHT', displayName: 'Under 65 kg', limit: 'OVER 61.1 TO 65.0 KG' },
+        { name: 'HEAVYWEIGHT', displayName: 'Over 65 kg', limit: 'OVER 65.1 KG' }
       ],
       FEMALE: [
-        { name: 'FINWEIGHT', limit: 'NOT EXCEEDING 29.0 KG' },
-        { name: 'FLYWEIGHT', limit: 'OVER 29.1 TO 33.0 KG' },
-        { name: 'BANTAMWEIGHT', limit: 'OVER 33.1 TO 37.0 KG' },
-        { name: 'FEATHERWEIGHT', limit: 'OVER 37.1 TO 41.0 KG' },
-        { name: 'LIGHTWEIGHT', limit: 'OVER 41.1 TO 44.0 KG' },
-        { name: 'WELTERWEIGHT', limit: 'OVER 44.1 TO 47.0 KG' },
-        { name: 'LT MIDDLEWEIGHT', limit: 'OVER 47.1 TO 51.0 KG' },
-        { name: 'MIDDLEWEIGHT', limit: 'OVER 51.1 TO 55.0 KG' },
-        { name: 'LT HEAVYWEIGHT', limit: 'OVER 55.1 TO 59.0 KG' },
-        { name: 'HEAVYWEIGHT', limit: 'OVER 59.1 KG' }
+        { name: 'FINWEIGHT', displayName: 'Under 29 kg', limit: 'NOT EXCEEDING 29.0 KG' },
+        { name: 'FLYWEIGHT', displayName: 'Under 33 kg', limit: 'OVER 29.1 TO 33.0 KG' },
+        { name: 'BANTAMWEIGHT', displayName: 'Under 37 kg', limit: 'OVER 33.1 TO 37.0 KG' },
+        { name: 'FEATHERWEIGHT', displayName: 'Under 41 kg', limit: 'OVER 37.1 TO 41.0 KG' },
+        { name: 'LIGHTWEIGHT', displayName: 'Under 44 kg', limit: 'OVER 41.1 TO 44.0 KG' },
+        { name: 'WELTERWEIGHT', displayName: 'Under 47 kg', limit: 'OVER 44.1 TO 47.0 KG' },
+        { name: 'LT MIDDLEWEIGHT', displayName: 'Under 51 kg', limit: 'OVER 47.1 TO 51.0 KG' },
+        { name: 'MIDDLEWEIGHT', displayName: 'Under 55 kg', limit: 'OVER 51.1 TO 55.0 KG' },
+        { name: 'LT HEAVYWEIGHT', displayName: 'Under 59 kg', limit: 'OVER 55.1 TO 59.0 KG' },
+        { name: 'HEAVYWEIGHT', displayName: 'Over 59 kg', limit: 'OVER 59.1 KG' }
       ]
     }
   },
@@ -130,36 +131,36 @@ const DEFAULT_TOURNAMENT_DIVISIONS = Object.freeze([
     id: 'SUB_JUNIOR', label: 'SUB JUNIOR', ageLabel: '11 YEARS OLD AND BELOW', categoryType: 'WEIGHT',
     weightCategories: {
       MALE: [
-        { name: 'UNDER 16 KG', limit: 'NOT EXCEEDING 16.0 KG' },
-        { name: 'UNDER 18 KG', limit: 'OVER 16.0 TO 18.0 KG' },
-        { name: 'UNDER 21 KG', limit: 'OVER 18.0 TO 21.0 KG' },
-        { name: 'UNDER 23 KG', limit: 'OVER 21.0 TO 23.0 KG' },
-        { name: 'UNDER 25 KG', limit: 'OVER 23.0 TO 25.0 KG' },
-        { name: 'UNDER 27 KG', limit: 'OVER 25.0 TO 27.0 KG' },
-        { name: 'UNDER 29 KG', limit: 'OVER 27.0 TO 29.0 KG' },
-        { name: 'UNDER 32 KG', limit: 'OVER 29.0 TO 32.0 KG' },
-        { name: 'UNDER 35 KG', limit: 'OVER 32.0 TO 35.0 KG' },
-        { name: 'UNDER 38 KG', limit: 'OVER 35.0 TO 38.0 KG' },
-        { name: 'UNDER 41 KG', limit: 'OVER 38.0 TO 41.0 KG' },
-        { name: 'UNDER 44 KG', limit: 'OVER 41.0 TO 44.0 KG' },
-        { name: 'UNDER 50 KG', limit: 'OVER 44.0 TO 50.0 KG' },
-        { name: 'UNDER 60 KG', limit: 'OVER 50.0 TO 60.0 KG' }
+        { name: 'UNDER 16 KG', displayName: 'Under 16 kg', limit: 'NOT EXCEEDING 16.0 KG' },
+        { name: 'UNDER 18 KG', displayName: 'Under 18 kg', limit: 'OVER 16.0 TO 18.0 KG' },
+        { name: 'UNDER 21 KG', displayName: 'Under 21 kg', limit: 'OVER 18.0 TO 21.0 KG' },
+        { name: 'UNDER 23 KG', displayName: 'Under 23 kg', limit: 'OVER 21.0 TO 23.0 KG' },
+        { name: 'UNDER 25 KG', displayName: 'Under 25 kg', limit: 'OVER 23.0 TO 25.0 KG' },
+        { name: 'UNDER 27 KG', displayName: 'Under 27 kg', limit: 'OVER 25.0 TO 27.0 KG' },
+        { name: 'UNDER 29 KG', displayName: 'Under 29 kg', limit: 'OVER 27.0 TO 29.0 KG' },
+        { name: 'UNDER 32 KG', displayName: 'Under 32 kg', limit: 'OVER 29.0 TO 32.0 KG' },
+        { name: 'UNDER 35 KG', displayName: 'Under 35 kg', limit: 'OVER 32.0 TO 35.0 KG' },
+        { name: 'UNDER 38 KG', displayName: 'Under 38 kg', limit: 'OVER 35.0 TO 38.0 KG' },
+        { name: 'UNDER 41 KG', displayName: 'Under 41 kg', limit: 'OVER 38.0 TO 41.0 KG' },
+        { name: 'UNDER 44 KG', displayName: 'Under 44 kg', limit: 'OVER 41.0 TO 44.0 KG' },
+        { name: 'UNDER 50 KG', displayName: 'Under 50 kg', limit: 'OVER 44.0 TO 50.0 KG' },
+        { name: 'UNDER 60 KG', displayName: 'Under 60 kg', limit: 'OVER 50.0 TO 60.0 KG' }
       ],
       FEMALE: [
-        { name: 'UNDER 14 KG', limit: 'NOT EXCEEDING 14.0 KG' },
-        { name: 'UNDER 16 KG', limit: 'OVER 14.0 TO 16.0 KG' },
-        { name: 'UNDER 18 KG', limit: 'OVER 16.0 TO 18.0 KG' },
-        { name: 'UNDER 20 KG', limit: 'OVER 18.0 TO 20.0 KG' },
-        { name: 'UNDER 22 KG', limit: 'OVER 20.0 TO 22.0 KG' },
-        { name: 'UNDER 24 KG', limit: 'OVER 22.0 TO 24.0 KG' },
-        { name: 'UNDER 26 KG', limit: 'OVER 24.0 TO 26.0 KG' },
-        { name: 'UNDER 29 KG', limit: 'OVER 26.0 TO 29.0 KG' },
-        { name: 'UNDER 32 KG', limit: 'OVER 29.0 TO 32.0 KG' },
-        { name: 'UNDER 35 KG', limit: 'OVER 32.0 TO 35.0 KG' },
-        { name: 'UNDER 38 KG', limit: 'OVER 35.0 TO 38.0 KG' },
-        { name: 'UNDER 41 KG', limit: 'OVER 38.0 TO 41.0 KG' },
-        { name: 'UNDER 47 KG', limit: 'OVER 41.0 TO 47.0 KG' },
-        { name: 'UNDER 57 KG', limit: 'OVER 47.0 TO 57.0 KG' }
+        { name: 'UNDER 14 KG', displayName: 'Under 14 kg', limit: 'NOT EXCEEDING 14.0 KG' },
+        { name: 'UNDER 16 KG', displayName: 'Under 16 kg', limit: 'OVER 14.0 TO 16.0 KG' },
+        { name: 'UNDER 18 KG', displayName: 'Under 18 kg', limit: 'OVER 16.0 TO 18.0 KG' },
+        { name: 'UNDER 20 KG', displayName: 'Under 20 kg', limit: 'OVER 18.0 TO 20.0 KG' },
+        { name: 'UNDER 22 KG', displayName: 'Under 22 kg', limit: 'OVER 20.0 TO 22.0 KG' },
+        { name: 'UNDER 24 KG', displayName: 'Under 24 kg', limit: 'OVER 22.0 TO 24.0 KG' },
+        { name: 'UNDER 26 KG', displayName: 'Under 26 kg', limit: 'OVER 24.0 TO 26.0 KG' },
+        { name: 'UNDER 29 KG', displayName: 'Under 29 kg', limit: 'OVER 26.0 TO 29.0 KG' },
+        { name: 'UNDER 32 KG', displayName: 'Under 32 kg', limit: 'OVER 29.0 TO 32.0 KG' },
+        { name: 'UNDER 35 KG', displayName: 'Under 35 kg', limit: 'OVER 32.0 TO 35.0 KG' },
+        { name: 'UNDER 38 KG', displayName: 'Under 38 kg', limit: 'OVER 35.0 TO 38.0 KG' },
+        { name: 'UNDER 41 KG', displayName: 'Under 41 kg', limit: 'OVER 38.0 TO 41.0 KG' },
+        { name: 'UNDER 47 KG', displayName: 'Under 47 kg', limit: 'OVER 41.0 TO 47.0 KG' },
+        { name: 'UNDER 57 KG', displayName: 'Under 57 kg', limit: 'OVER 47.0 TO 57.0 KG' }
       ]
     }
   }
@@ -351,6 +352,7 @@ function validateTournamentDivisions(value) {
           fail(`${name}.weightCategories.${gender} must be a non-empty array`);
         }
         const categoryNames = new Set();
+        const inputLabels = new Map();
         for (const [categoryIndex, categoryValue] of weightCategories[gender].entries()) {
           const categoryName = `${name}.weightCategories.${gender}[${categoryIndex}]`;
           const category = requireObject(categoryValue, categoryName);
@@ -359,6 +361,17 @@ function validateTournamentDivisions(value) {
           const normalizedName = valueName.toUpperCase().replace(/[^A-Z0-9]/g, '');
           if (categoryNames.has(normalizedName)) fail(`${name}.weightCategories.${gender} must not contain duplicate names`);
           categoryNames.add(normalizedName);
+          if (category.displayName !== undefined) {
+            const displayName = requireString(category.displayName, categoryName + '.displayName');
+            if (displayName.length > 64 || /[\x00-\x1f]/.test(displayName)) fail(categoryName + '.displayName must be a single line of at most 64 characters');
+          }
+          // Old packs acquire their previous numeric presentation at validation time.
+          category.displayName ??= globalThis.SftsWeightLabels.label(category);
+          for (const alias of [category.name, category.displayName, globalThis.SftsWeightLabels.label({...category, displayName: undefined})]) {
+            const key = alias.toUpperCase().replace(/KGS\b/g, 'KG').replace(/[^A-Z0-9.]/g, '');
+            if (inputLabels.has(key) && inputLabels.get(key) !== categoryIndex) fail(categoryName + '.displayName conflicts with another category name or label');
+            inputLabels.set(key, categoryIndex);
+          }
         }
       }
     } else {

@@ -3,6 +3,7 @@
   const key = value => String(value || '').trim().toUpperCase().replace(/KGS\b/g, 'KG').replace(/[^A-Z0-9.]/g, '');
   function label(category) {
     if (!category) return '';
+    if (typeof category.displayName === 'string' && category.displayName.trim()) return category.displayName.trim();
     const limit = String(category.limit || '').trim().toUpperCase();
     const upper = limit.match(/(?:EXCEEDING |TO )(\d+(?:\.\d+)?) KG$/);
     if (upper) return 'Under ' + Number(upper[1]) + ' kg';
@@ -11,7 +12,7 @@
     return category.name;
   }
   function resolve(division, gender, value) {
-    const choices = (division?.weightCategories?.[String(gender).toUpperCase()] || []).filter(c => key(c.name) === key(value) || key(label(c)) === key(value));
+    const choices = (division?.weightCategories?.[String(gender).toUpperCase()] || []).filter(c => key(c.name) === key(value) || key(label(c)) === key(value) || key(label({...c, displayName: undefined})) === key(value));
     return choices.length === 1 ? choices[0] : null;
   }
   function display(divisions, entry) {

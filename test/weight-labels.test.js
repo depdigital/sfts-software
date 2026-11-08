@@ -36,3 +36,26 @@ test('all 84 default categories resolve from numeric labels without changing lim
  assert.equal(context.weightCategoryDisplay({division:'JUNIOR',weightCategory:'LIGHTWEIGHT'}),'Under 52 kg');
  assert.equal(context.weightCategoryDisplay({division:'JUNIOR',gender:'MALE',weightCategory:'LIGHTWEIGHT'}),'Under 59 kg');
 });
+
+test('explicit rulepack labels are authoritative, round-trip, and retain old input aliases',async()=>{
+ const {validateRules}=await import('../src/rules.js');
+ const original=await readRulesFile('config/rules.default.json');
+ const draft=structuredClone(original);
+ const junior=draft.tournament.divisions.find(d=>d.id==='JUNIOR');
+ const category=junior.weightCategories.FEMALE.find(c=>c.name==='LIGHTWEIGHT');
+ category.displayName='Up to 52 kg';
+ const validated=validateRules(JSON.parse(JSON.stringify(draft)));
+ const division=validated.tournament.divisions.find(d=>d.id==='JUNIOR');
+ const updated=division.weightCategories.FEMALE.find(c=>c.name==='LIGHTWEIGHT');
+ assert.equal(label(updated),'Up to 52 kg');
+ assert.equal(display(validated.tournament.divisions,{division:'JUNIOR',gender:'FEMALE',weightCategory:'LIGHTWEIGHT'}),'Up to 52 kg');
+ for(const alias of ['LIGHTWEIGHT','Under 52 kg','Up to 52 kg'])assert.equal(resolve(division,'FEMALE',alias),updated);
+ assert.equal(updated.limit,category.limit);
+ const legacy=structuredClone(original);
+ for(const d of legacy.tournament.divisions)for(const sex of ['MALE','FEMALE'])for(const c of d.weightCategories[sex])delete c.displayName;
+ assert.deepEqual(validateRules(legacy).tournament.divisions,original.tournament.divisions);
+ category.displayName='FINWEIGHT';assert.throws(()=>validateRules(draft),/conflicts/);
+ category.displayName='Under 49 kg';assert.throws(()=>validateRules(draft),/conflicts/);
+ category.displayName='';assert.throws(()=>validateRules(draft),/displayName/);
+ category.displayName=42;assert.throws(()=>validateRules(draft),/displayName/);
+});
