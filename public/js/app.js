@@ -595,7 +595,7 @@ function playerMetaText(player, practiceMode = false) {
   }
   const name = String(player.playerName || "").trim() || "PLAYER NAME —";
   const division = String(player.division || "").trim();
-  const category = String(player.categoryGroup || player.weightCategory || "").trim() || "CATEGORY —";
+  const category = String(weightCategoryDisplay(player)).trim() || "CATEGORY —";
   const stateCode = String(player.stateCode || "").trim() || "STATE —";
   const district = String(player.district || "").trim() || "DISTRICT —";
   return [name, division, category, stateCode, district].filter(Boolean).join(" · ");
@@ -1362,7 +1362,7 @@ function rulepackDivisions() {
 
 function manualCategoryLabel(category) {
   const competition = category.competition === "FRESHER KYORUGI" ? "FRESHER" : "KYORUGI";
-  return `${category.eventName} · ${category.divisionLabel || category.division} · ${category.gender} · ${category.categoryGroup || category.weightCategory} · ARENA ${category.arenaNumber} · ${competition}`;
+  return `${category.eventName} · ${category.divisionLabel || category.division} · ${category.gender} · ${weightCategoryDisplay(category)} · ARENA ${category.arenaNumber} · ${competition}`;
 }
 
 function manualSelectedCategory() {
@@ -1426,7 +1426,7 @@ function renderManualCategories() {
   for (const choice of choices) {
     const option = document.createElement("option");
     option.value = choice.name;
-    option.textContent = `${choice.name} · ${choice.ageLabel || choice.limit || ""}`;
+    option.textContent = `${isGroup ? choice.name : globalThis.SftsWeightLabels.label(choice)} · ${choice.ageLabel || choice.limit || ""}`;
     select.appendChild(option);
   }
   if ([...select.options].some(option => option.value === previous)) select.value = previous;
@@ -1504,12 +1504,10 @@ function clearManualEntryMessages() {
 
 function manualCategorySummary(category = manualSelectedCategory()) {
   if (category) {
-    return `${category.divisionLabel || category.division} · ${category.gender} · ${category.categoryGroup || category.weightCategory} · ARENA ${category.arenaNumber}`;
+    return `${category.divisionLabel || category.division} · ${category.gender} · ${weightCategoryDisplay(category)} · ARENA ${category.arenaNumber}`;
   }
   const division = rulepackDivisions().find(item => item.id === $("manualDivision")?.value);
-  const categoryName = division?.categoryType === "GROUP"
-    ? $("manualCategoryGroup")?.value
-    : $("manualWeightCategory")?.value;
+  const categoryName = weightCategoryDisplay({division: division?.id, gender: $("manualGender")?.value, categoryGroup: division?.categoryType === "GROUP" ? $("manualCategoryGroup")?.value : "", weightCategory: $("manualWeightCategory")?.value});
   return `${division?.label || "DIVISION"} · ${$("manualGender")?.value || "GENDER"} · ${categoryName || "CATEGORY"} · ARENA ${$("manualArenaNumber")?.value || "—"}`;
 }
 
@@ -1558,7 +1556,7 @@ function renderManualReview() {
   const details = manualBoutPayload();
   const category = manualSelectedCategory();
   const division = category?.divisionLabel || rulepackDivisions().find(item => item.id === details.division)?.label || details.division;
-  const categoryName = category?.categoryGroup || category?.weightCategory || details.categoryGroup || details.weightCategory;
+  const categoryName = weightCategoryDisplay(category || details);
   $("manualReviewCategory").innerHTML =
     manualReviewRow("DIVISION", division) +
     manualReviewRow("GENDER", category?.gender || details.gender) +
@@ -2300,7 +2298,7 @@ function renderManualCategoryReport() {
     </section>`;
   }).join("");
   report.innerHTML = `<header><h1>${escapeHtml(category.eventName)}</h1><h2>OFFICIAL CATEGORY RESULT</h2></header>
-    <div class="categoryReportMeta"><span><b>DATE:</b> ${escapeHtml(category.eventDate)}</span><span><b>VENUE:</b> ${escapeHtml(category.venue)}</span><span><b>ARENA:</b> ${escapeHtml(category.arenaNumber)}</span><span><b>COMPETITION:</b> ${escapeHtml(category.competition)}</span><span><b>DIVISION:</b> ${escapeHtml(category.divisionLabel || category.division)}</span><span><b>GENDER:</b> ${escapeHtml(category.gender)}</span><span><b>CATEGORY:</b> ${escapeHtml(category.categoryGroup || category.weightCategory)}</span><span><b>RULESET:</b> ${escapeHtml(category.ruleset?.name || "—")} ${escapeHtml(category.ruleset?.version || "")}</span><span><b>GENERATED:</b> ${escapeHtml(reportDateTime(new Date().toISOString()))}</span></div>
+    <div class="categoryReportMeta"><span><b>DATE:</b> ${escapeHtml(category.eventDate)}</span><span><b>VENUE:</b> ${escapeHtml(category.venue)}</span><span><b>ARENA:</b> ${escapeHtml(category.arenaNumber)}</span><span><b>COMPETITION:</b> ${escapeHtml(category.competition)}</span><span><b>DIVISION:</b> ${escapeHtml(category.divisionLabel || category.division)}</span><span><b>GENDER:</b> ${escapeHtml(category.gender)}</span><span><b>CATEGORY:</b> ${escapeHtml(weightCategoryDisplay(category))}</span><span><b>RULESET:</b> ${escapeHtml(category.ruleset?.name || "—")} ${escapeHtml(category.ruleset?.version || "")}</span><span><b>GENERATED:</b> ${escapeHtml(reportDateTime(new Date().toISOString()))}</span></div>
     <h3>PLACEMENTS</h3><div class="categoryReportPlacements"><span><b>GOLD:</b> ${escapeHtml(placementText(placements.gold))}</span><span><b>SILVER:</b> ${escapeHtml(placementText(placements.silver))}</span><span><b>BRONZE 1:</b> ${escapeHtml(placementText(placements.bronze1))}</span><span><b>BRONZE 2:</b> ${escapeHtml(placementText(placements.bronze2))}</span><span><b>STATUS:</b> ${escapeHtml(category.status)}</span><span><b>SOURCE:</b> ${reportUsesCalculatedPlacements ? "SOFTWARE CALCULATION" : "OPERATOR OVERRIDE"}</span></div>
     <section class="categoryReportParticipants"><h3>PARTICIPANTS (${manualParticipants(records).size})</h3><table><thead><tr><th>PLACE</th><th>PLAYER</th><th>CLUB</th><th>STATE</th><th>DISTRICT</th><th>BOUTS</th></tr></thead><tbody>${participantRows || '<tr><td colspan="6">NO PARTICIPANTS RECORDED</td></tr>'}</tbody></table></section>
     <section class="categoryReportBoutSummary"><h3>BOUT SUMMARY</h3><table><thead><tr><th>OFFICIAL BOUT</th><th>SFTS MATCH</th><th>STAGE</th><th>RED / AFFILIATION</th><th>BLUE / AFFILIATION</th><th>ROUND SCORES</th><th>ROUND WINS</th><th>WINNER</th><th>DEFEATED</th><th>RESULT</th><th>START / END</th></tr></thead><tbody>${boutRows || '<tr><td colspan="11">NO COMPLETED BOUTS RECORDED</td></tr>'}</tbody></table></section>
@@ -2466,7 +2464,7 @@ function renderTournament(tournament) {
   if (!status) return;
   if (tournament?.format === "IMPORTED_MATCHES") {
     const event = tournament.event;
-    $("importCategorySummary").textContent = event ? `${event.divisionLabel || event.division} · ${event.gender} · ${event.categoryGroup || event.weightCategory}` : "Division, gender and weight category will be read from the file.";
+    $("importCategorySummary").textContent = event ? `${event.divisionLabel || event.division} · ${event.gender} · ${weightCategoryDisplay(event)}` : "Division, gender and weight category will be read from the file.";
     const matches = tournament.schedule.filter(bout => bout.status !== "BYE");
     status.textContent = event ? `${matches.length} MATCHES IN CURRENT CATEGORY · ${matches.filter(bout => bout.status === "COMPLETED").length} COMPLETED · ${tournament.schedule.length - matches.length} BYES` : "NO TOURNAMENT FILE IMPORTED";
     if (typeof renderImportWizard === "function") renderImportWizard();
@@ -2823,7 +2821,7 @@ function renderTournamentResults(tournament) {
         <td>${escapeHtml(result.groupId)}</td>
         <td>${escapeHtml(result.division || "—")}</td>
         <td>${escapeHtml(result.gender)}</td>
-        <td>${escapeHtml(result.weightCategory || "—")}</td>
+        <td>${escapeHtml(result.categoryGroup ? "—" : weightCategoryDisplay(result) || "—")}</td>
         <td>${escapeHtml(result.categoryGroup || "—")}</td>
         <td>${escapeHtml(placeLabel(result.place))}</td>
         <td>${escapeHtml(result.playerName)}</td>
@@ -2844,7 +2842,7 @@ function renderSchedule(tournament) {
   renderTournamentResults(tournament);
   if (tournament?.format === "IMPORTED_MATCHES") {
     const event = tournament.event;
-    summary.textContent = event ? `${event.eventName} · ${event.eventDate} · ${event.venue} · ARENA ${event.arenaNumber} · ${event.competition} · ${event.divisionLabel || event.division} · ${event.gender} · ${event.categoryGroup || event.weightCategory}` : "NO CATEGORY MATCH FILE IMPORTED";
+    summary.textContent = event ? `${event.eventName} · ${event.eventDate} · ${event.venue} · ARENA ${event.arenaNumber} · ${event.competition} · ${event.divisionLabel || event.division} · ${event.gender} · ${weightCategoryDisplay(event)}` : "NO CATEGORY MATCH FILE IMPORTED";
     const busy = lastState && (lastState.running || lastState.phase === "BREAK" || lastState.phase === "TIE_DECISION" || (lastState.phase === "ROUND" && (lastState.roundStarted || lastState.roundHistory?.length || lastState.red.score || lastState.blue.score || lastState.red.gamjeom || lastState.blue.gamjeom)));
     const next = lastFixtureWorkbook?.schedulePolicy
       ? lastFixtureWorkbook.selectedKey === lastFixtureWorkbook.nextMatch?.categoryKey ? tournament.schedule.find(bout => bout.boutNo === lastFixtureWorkbook.nextMatch.bout.boutNo) : null
@@ -2903,7 +2901,7 @@ function renderSchedule(tournament) {
           (bout.status === "SCHEDULED" || bout.status === "IN_PROGRESS");
         return `<tr class="${bout.status === "COMPLETED" ? "completed" : bout.status === "IN_PROGRESS" ? "inProgress" : ""}">
         <td>${bout.boutNo}</td><td>${escapeHtml(bout.groupId)}</td><td>${escapeHtml(bout.division || "—")}</td><td>${escapeHtml(bout.gender)}</td>
-        <td>${escapeHtml(bout.weightCategory || "—")}</td><td>${escapeHtml(bout.categoryGroup || "—")}</td><td>${bout.round}</td>
+        <td>${escapeHtml(bout.categoryGroup ? "—" : weightCategoryDisplay(bout) || "—")}</td><td>${escapeHtml(bout.categoryGroup || "—")}</td><td>${bout.round}</td>
         <td>${escapeHtml(bout.redPlayerName)}</td><td>${escapeHtml(bout.bluePlayerName)}</td>
         <td>${escapeHtml(bout.winnerName || "—")}</td>
         <td>${escapeHtml(bout.status)}</td>
@@ -3582,3 +3580,9 @@ window.startNewMatch = startNewMatch;
 window.openTestMode = openTestMode;
 window.closeTestMode = closeTestMode;
 window.changeRemoteMode = changeRemoteMode;
+
+function weightCategoryDisplay(entry) {
+    const active = typeof lastManualCompetition !== 'undefined' ? lastManualCompetition?.categories?.find(c => c.id === lastManualCompetition.activeCategoryId) : null;
+    const fallback = active || (typeof lastTournament !== 'undefined' ? lastTournament?.event : null);
+    return globalThis.SftsWeightLabels ? globalThis.SftsWeightLabels.display(rulepackDivisions(), { ...fallback, ...entry }) : entry?.categoryGroup || entry?.weightCategory || '';
+  }

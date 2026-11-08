@@ -1,3 +1,5 @@
+import '../public/js/weightLabels.js';
+const weightLabels = globalThis.SftsWeightLabels;
 import express from "express";
 import crypto from "node:crypto";
 import { execFile } from "node:child_process";
@@ -369,10 +371,7 @@ function resolveTournamentDivision(value) {
 }
 
 function resolveWeightCategory(division, gender, value) {
-  const normalized = normalizeTournamentValue(value);
-  return (division?.weightCategories?.[gender] || []).find(category => (
-    normalizeTournamentValue(category.name) === normalized
-  )) || null;
+  return weightLabels.resolve(division, gender, value);
 }
 
 function resolveCategoryGroup(division, value) {
@@ -1311,7 +1310,7 @@ async function writeFileToUsb(context, fileName, buffer) {
 
 async function writeManualCategoryPdfToUsb(context, category, records, options) {
   const result = await fileJobs.run('pdf', {
-    category,
+    category: { ...category, weightCategory: category.categoryGroup ? '' : weightLabels.display(tournamentDivisionDefinitions(), category) },
     records,
     options,
     generatedAt: new Date().toISOString()
@@ -1328,7 +1327,7 @@ async function unmountUsb(context) {
 function tournamentScheduleRows() {
   if (tournament.format === 'IMPORTED_MATCHES') return tournament.schedule.map(bout => ({
     'Bout Number': bout.officialBoutNo, Stage: bout.stage, Division: bout.division, Gender: bout.gender,
-    'Weight Category': bout.weightCategory, Group: bout.categoryGroup,
+    'Weight Category': bout.categoryGroup ? '' : weightLabels.display(tournamentDivisionDefinitions(), bout), Group: bout.categoryGroup,
     'Hong Name': bout.RED?.playerName || bout.redPlayerName || 'BYE', 'Hong Club': bout.RED?.club || '', 'Hong State Code': bout.RED?.stateCode || '', 'Hong District': bout.RED?.district || '',
     'Chung Name': bout.BLUE?.playerName || bout.bluePlayerName || 'BYE', 'Chung Club': bout.BLUE?.club || '', 'Chung State Code': bout.BLUE?.stateCode || '', 'Chung District': bout.BLUE?.district || '',
     Status: bout.status, Winner: bout.winnerName || ''
@@ -1338,7 +1337,7 @@ function tournamentScheduleRows() {
     'Bracket ID': bout.groupId,
     Division: bout.division,
     Gender: bout.gender,
-    'Weight Category': bout.weightCategory,
+    'Weight Category': bout.categoryGroup ? '' : weightLabels.display(tournamentDivisionDefinitions(), bout),
     'Category Group': bout.categoryGroup,
     Round: bout.round,
     'Red Player': bout.redPlayerName,
@@ -1353,7 +1352,7 @@ function tournamentScheduleRows() {
     'Bracket ID': bye.groupId,
     Division: bye.division,
     Gender: bye.gender,
-    'Weight Category': bye.weightCategory,
+    'Weight Category': bye.categoryGroup ? '' : weightLabels.display(tournamentDivisionDefinitions(), bye),
     'Category Group': bye.categoryGroup,
     Round: bye.round,
     'Red Player': bye.playerName,
@@ -1369,7 +1368,7 @@ function tournamentResultRows() {
   if (tournament.format === 'IMPORTED_MATCHES') {
     const category = manualCompetition.categories.find(item => item.id === tournament.categoryId);
     return Object.entries(category?.placements || {}).filter(([, player]) => player).map(([place, player]) => ({
-      Division: category.division, Gender: category.gender, 'Weight Category': category.weightCategory, Group: category.categoryGroup,
+      Division: category.division, Gender: category.gender, 'Weight Category': category.categoryGroup ? '' : weightLabels.display(tournamentDivisionDefinitions(), category), Group: category.categoryGroup,
       Place: ({ gold: '1ST', silver: '2ND', bronze1: '3RD', bronze2: '3RD' })[place], Player: player.playerName, Club: player.club, Status: category.status
     }));
   }
@@ -1386,7 +1385,7 @@ function tournamentResultRows() {
         'Bracket ID': group.id,
         Division: group.division,
         Gender: group.gender,
-        'Weight Category': group.weightCategory,
+        'Weight Category': group.categoryGroup ? '' : weightLabels.display(tournamentDivisionDefinitions(), group),
         'Category Group': group.categoryGroup,
         Place: placeLabel,
         'Player ID': placement.playerId,

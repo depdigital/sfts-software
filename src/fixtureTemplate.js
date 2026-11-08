@@ -1,3 +1,4 @@
+import '../public/js/weightLabels.js';
 import { FIXTURE_HEADERS, MAX_WORKBOOK_CATEGORIES, MAX_WORKBOOK_ROWS } from './fixtureImport.js';
 import { buildFixtureProgression } from './fixtureProgression.js';
 import { SCHEDULE_HEADERS, fixtureSourceLabel, validateWorkbookSchedule } from './fixtureSchedule.js';
@@ -16,6 +17,9 @@ const CLUBS = [
 const categoryKey = value => value.toUpperCase().replace(/[^A-Z0-9]/g, '');
 
 export function createFixtureTemplateSheets(divisions) {
+  divisions = divisions.map(d => d.categoryType !== 'WEIGHT' ? d : {
+    ...d, weightCategories: Object.fromEntries(Object.entries(d.weightCategories).map(([gender, choices]) => [gender, choices.map(c => ({...c, name: globalThis.SftsWeightLabels.label(c)}))]))
+  });
   const profiles = [];
   const candidates = new Map();
   for (const division of divisions) for (const gender of ['MALE', 'FEMALE']) {

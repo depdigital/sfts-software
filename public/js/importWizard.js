@@ -48,7 +48,7 @@ function renderImportCategorySelectors() {
   const divisionEntries = entries.filter(item => item.event.division === selected.event.division);
   const genders = [...new Set(divisionEntries.map(item => item.event.gender))].map(value => [value, value]);
   const categories = divisionEntries.filter(item => item.event.gender === selected.event.gender).map(item => [item.key,
-    `${item.event.categoryGroup || item.event.weightCategory}${item.status ? ' · ' + item.status : ''}`]);
+    `${weightCategoryDisplay(item.event)}${item.status ? ' · ' + item.status : ''}`]);
   fill('importDivision', divisions, selected.event.division);
   fill('importGender', genders, selected.event.gender);
   fill('importWeightCategory', categories, selected.key);
@@ -149,7 +149,7 @@ function openImportedCategoryDelete() {
     ? `This will permanently delete this category, its bracket, all ${count} saved bout record${count === 1 ? '' : 's'} and their match-history entries. This cannot be undone.`
     : 'This will permanently remove this category and its bracket from Data Import. This cannot be undone.';
   const event = selected.event;
-  $('importDeleteCategorySummary').textContent = `${event.eventName} · ${event.divisionLabel || event.division} · ${event.gender} · ${event.categoryGroup || event.weightCategory}`;
+  $('importDeleteCategorySummary').textContent = `${event.eventName} · ${event.divisionLabel || event.division} · ${event.gender} · ${weightCategoryDisplay(event)}`;
   $('importDeleteConfirmationField').classList.toggle('hidden', !confirmation);
   $('importDeleteConfirmationLabel').textContent = confirmation ? `TYPE ${confirmation} TO CONFIRM` : '';
   $('importDeleteConfirmation').value = '';
@@ -272,12 +272,12 @@ function renderImportWizard() {
   const next = active || (lastFixtureWorkbook?.schedulePolicy ? scheduled?.bout : unfinished);
   const category = lastManualCompetition.categories.find(item => item.id === fixture.categoryId);
   const event = fixture.event;
-  const context = `${event.eventName} · ${event.divisionLabel || event.division} · ${event.gender} · ${event.categoryGroup || event.weightCategory}`;
+  const context = `${event.eventName} · ${event.divisionLabel || event.division} · ${event.gender} · ${weightCategoryDisplay(event)}`;
   if (next) {
     const round = fixture.schedule.filter(bout => bout.round === next.round && bout.status !== 'BYE');
     const progress = `${next.stage} — MATCH ${scheduled && !active ? scheduled.roundMatchIndex : round.findIndex(bout => bout.boutNo === next.boutNo) + 1} OF ${scheduled && !active ? scheduled.roundMatchCount : round.length}`;
     const nextEvent = scheduled && !active ? scheduled.event : event;
-    const nextContext = `${nextEvent.eventName} · ${nextEvent.divisionLabel || nextEvent.division} · ${nextEvent.gender} · ${nextEvent.categoryGroup || nextEvent.weightCategory}`;
+    const nextContext = `${nextEvent.eventName} · ${nextEvent.divisionLabel || nextEvent.division} · ${nextEvent.gender} · ${weightCategoryDisplay(nextEvent)}`;
     const recoveryError = scheduled && !active ? scheduled.recoveryError : fixture.recoveryError;
     const resting = !active && scheduled?.restRequired?.length;
     const restMessage = resting ? `REST REQUIRED: ${scheduled.restRequired.join(' and ')} competed in the previous match. Select another category manually, finish at least one match, then return here.` : '';

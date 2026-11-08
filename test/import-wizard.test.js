@@ -60,6 +60,7 @@ async function wizard() {
       return { ok: true, json: async () => ({ ok: true, tournament: JSON.parse(JSON.stringify(fixture)) }) };
     }
   });
+  vm.runInContext(app.slice(app.indexOf('function weightCategoryDisplay(')), context);
   vm.runInContext(script, context);
   for (const [start, end] of [
     ['function importEventDetails()', 'async function importUsbFile()'],

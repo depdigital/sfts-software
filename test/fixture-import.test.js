@@ -247,6 +247,7 @@ test('import UI displays supplied sides safely, keeps row order and locks match 
       { boutNo: 2, officialBoutNo: 'SF-A', stage: 'SEMIFINAL', RED: { playerName: 'Next Hong', club: 'Club' }, BLUE: { playerName: 'Next Chung', club: 'Club' }, status: 'SCHEDULED' }
     ]
   };
+  vm.runInContext(app.slice(app.indexOf('function weightCategoryDisplay(')), context);
   context.renderTournament(fixture);
   context.renderSchedule(fixture);
   assert.match(get('importCategorySummary').textContent, /SENIOR.*MALE.*FLYWEIGHT/);
